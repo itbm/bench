@@ -4,7 +4,7 @@
 // shows instead of the title its shell or page sets. Return saves, and
 // Escape, or the field losing the focus, cancels.
 
-import { act, overlayOpen, store, update } from './state.js';
+import { act, overlayOpen, shownCurrent, store, switchTab, update } from './state.js';
 import { esc, itemOf, labelOf, tabKey, uniqueTabName } from './util.js';
 import { hidePreview } from './preview.js';
 
@@ -25,24 +25,26 @@ let switching = null;
 let switchTimer = 0;
 
 // clickTab switches to tab index, for a click on it, with clicks, the
-// click's count (0 from the keyboard). On the current tab, a click only
-// gives the keyboard to the tab's window again, so a single click waits
-// for SWITCH_WAIT, in case it's the first of a double-click, which renames
-// the tab instead (startTabRename): the window would take the keyboard
-// from the field.
+// click's count (0 from the keyboard). On the tab that the title bar shows
+// as current (shownCurrent), a click only gives the keyboard to the tab's
+// window again, so a single click waits for SWITCH_WAIT, in case it's the
+// first of a double-click, which renames the tab instead (startTabRename):
+// the window would take the keyboard from the field. A click on the tab
+// that Go has current, while a switch to another is on its way, is a click
+// on another tab: it switches back at once (decision 67).
 export function clickTab(index, clicks) {
   cancelTabClick();
   const send = () => {
-    const call = act('SwitchTab', index);
+    const call = switchTab(index);
     switching = call;
     call.then(() => { if (switching === call) switching = null; });
   };
-  if (clicks === 1 && store.view && store.view.current === index) {
+  if (clicks === 1 && store.view && shownCurrent(store.view) === index) {
     // By then, another tab, or a menu or dialog, can have the keyboard,
     // and the click is out of date.
     switchTimer = setTimeout(() => {
       switchTimer = 0;
-      if (store.view && store.view.current === index && !overlayOpen()) send();
+      if (store.view && shownCurrent(store.view) === index && !overlayOpen()) send();
     }, SWITCH_WAIT);
     return;
   }
@@ -204,13 +206,15 @@ export function closeRename(restore) {
 }
 
 // commitRename saves the name typed. A tab's name is saved with SaveTab,
-// with its layout and small-screen setting as they are ("custom" keeps the
-// tab's panes as they are), and numbered by Go if another tab has it; an
-// unchanged or empty name keeps the tab's. A terminal's or web page's
-// name is saved with RenameItem, and an empty one gives it its automatic
-// title back. While the call is on its way, the field waits; if Go refuses,
-// its message shows, and the field stays for another try, unless the focus
-// has gone elsewhere meanwhile. A dialog or menu that has opened meanwhile,
+// with its layout, small-screen setting, and colour as they are ("custom"
+// keeps the tab's panes as they are; the colour goes back as Go sent it,
+// which Go checks, so that one the page doesn't know isn't lost), and
+// numbered by Go if another tab has it; an unchanged or empty name keeps
+// the tab's. A terminal's or web page's name is saved with RenameItem,
+// and an empty one gives it its automatic title back. While the call is
+// on its way, the field waits; if Go refuses, its message shows, and the
+// field stays for another try, unless the focus has gone elsewhere
+// meanwhile. A dialog or menu that has opened meanwhile,
 // as ⌘T opens New tab (commandKeys in keyboard.js), keeps the focus.
 export async function commitRename() {
   const { ui, view } = store;
@@ -224,7 +228,7 @@ export async function commitRename() {
       closeRename(true);
       return;
     }
-    call = ['SaveTab', r.index, { name: typed, preset: 'custom', smallScreens: tab.smallScreens || 'stack' }];
+    call = ['SaveTab', r.index, { name: typed, preset: 'custom', smallScreens: tab.smallScreens || 'stack', colour: tab.colour || '' }];
   } else {
     const item = itemOf(view, r.itemId);
     const shown = item ? item.label || '' : '';

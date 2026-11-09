@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/itbm/bench/internal/config"
+	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/mac"
 	"github.com/itbm/bench/internal/term"
 	"github.com/itbm/bench/internal/ui"
@@ -65,7 +66,10 @@ func runApp(c *cli) error {
 		Platform:    p,
 		Attach:      p.AttachWindow,
 		Fill:        p.FillWindow,
+		Place:       p.PlaceWindow,
 		TagPopOut:   p.TagPopOutWindow,
+		SlideDown:   p.ShowDropdown,
+		SlideUp:     p.HideDropdown,
 		Appearance:  p.SetWindowAppearance,
 		SystemDark:  p.SystemDark,
 		NewTerms:    func(cb term.Callbacks) term.Host { return term.NewManager(cb) },
@@ -246,25 +250,45 @@ func putBack(path string) (windows.Restored, error) {
 	return windows.RestoreFromFileReport(p, path)
 }
 
+// scriptsHere is nil: the macOS app is what the script subcommands
+// control.
+func scriptsHere() error { return nil }
+
+// forwardToBench sends a script subcommand's arguments to the Bench
+// running with the support folder dir (ui.Forward), and doesn't return
+// once it has.
+func forwardToBench(dir string, args []string) error {
+	if err := ui.Forward(dir, args); errors.Is(err, ui.ErrNotRunning) {
+		// It quit since bench asked it for its list.
+		return errNotRunning
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
+
 // consoleEmitter is the headless engine's Emitter: it prints toasts and
 // drops everything else, as there's no frontend.
 type consoleEmitter struct{ w io.Writer }
 
-func (consoleEmitter) State(workspace.View)                {}
-func (e consoleEmitter) Toast(message string)              { fmt.Fprintln(e.w, message) }
-func (e consoleEmitter) ActionToast(t workspace.Toast)     { fmt.Fprintln(e.w, t.Text) }
-func (consoleEmitter) Command(workspace.Command)           {}
-func (consoleEmitter) TermData(workspace.TermData)         {}
-func (consoleEmitter) PopOutTerminal(string, string) error { return nil }
-func (consoleEmitter) CloseTerminalWindow(string)          {}
-func (consoleEmitter) MenuBar(workspace.MenuBar)           {}
-func (consoleEmitter) BringForward()                       {}
-func (consoleEmitter) ShortcutsChanged()                   {}
-func (consoleEmitter) PauseShortcuts(bool)                 {}
-func (consoleEmitter) FillScreen()                         {}
-func (consoleEmitter) Quit()                               {}
-func (consoleEmitter) Relaunch()                           {}
-func (consoleEmitter) Appearance(string)                   {}
+func (consoleEmitter) State(workspace.View)                   {}
+func (e consoleEmitter) Toast(message string)                 { fmt.Fprintln(e.w, message) }
+func (e consoleEmitter) ActionToast(t workspace.Toast)        { fmt.Fprintln(e.w, t.Text) }
+func (consoleEmitter) Command(workspace.Command)              {}
+func (consoleEmitter) TermData(workspace.TermData)            {}
+func (consoleEmitter) PopOutTerminal(string, string) error    { return nil }
+func (consoleEmitter) CloseTerminalWindow(string)             {}
+func (consoleEmitter) ShowDropdown(string, string, int) error { return nil }
+func (consoleEmitter) HideDropdown(string)                    {}
+func (consoleEmitter) MenuBar(workspace.MenuBar)              {}
+func (consoleEmitter) BringForward()                          {}
+func (consoleEmitter) ShortcutsChanged()                      {}
+func (consoleEmitter) PauseShortcuts(bool)                    {}
+func (consoleEmitter) FillScreen()                            {}
+func (consoleEmitter) MoveToScreen(layout.Rect, bool)         {}
+func (consoleEmitter) Quit()                                  {}
+func (consoleEmitter) Relaunch()                              {}
+func (consoleEmitter) Appearance(string)                      {}
 
 // CheckShortcuts says nothing about the shortcuts: the headless engine
 // registers none.

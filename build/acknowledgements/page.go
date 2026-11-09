@@ -343,6 +343,19 @@ const pageComment = `<!--
   this file, so don't edit it: run make acknowledgements instead.
 -->`
 
+// dropGuard is the page's only script. A link or file dropped on the page
+// would load in its place, and its window has no address bar to go back
+// with, so the page takes no drops: it cancels each drag over it, and says
+// that it can't drop.
+const dropGuard = `<script>
+for (const type of ['dragenter', 'dragover', 'drop']) {
+  document.addEventListener(type, (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+  });
+}
+</script>`
+
 var page = template.Must(template.New("page").Parse(`<!doctype html>
 <html lang="en-GB">
 <head>
@@ -353,6 +366,7 @@ var page = template.Must(template.New("page").Parse(`<!doctype html>
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="light.css" media="(prefers-color-scheme: light)">
+{{.Guard}}
 </head>
 <body class="is-acknowledgements">
 <main class="ack">
@@ -395,8 +409,9 @@ func render(entries []entry) ([]byte, error) {
 	var buf bytes.Buffer
 	data := struct {
 		Comment template.HTML
+		Guard   template.HTML
 		Entries []entry
-	}{template.HTML(pageComment), entries}
+	}{template.HTML(pageComment), template.HTML(dropGuard), entries}
 	if err := page.Execute(&buf, data); err != nil {
 		return nil, err
 	}

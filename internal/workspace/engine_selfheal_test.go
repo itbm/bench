@@ -323,7 +323,7 @@ func TestDesktopChangeDoesntHoldRedocks(t *testing.T) {
 	if h.frame(zed) != h.bodyOf("p11") {
 		t.Errorf("Bench should put the window back at once: %v", h.frame(zed))
 	}
-	if n := len(h.e.redocks[zed]); n != 1 {
+	if n := len(h.e.redocks[zed].at); n != 1 {
 		t.Errorf("tries used: %d, want 1", n)
 	}
 }

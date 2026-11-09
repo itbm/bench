@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -70,11 +71,44 @@ const (
 	DensityCompact  = "compact"  // A shorter title bar, pane headers, tabs, and sub-tabs.
 )
 
+// Values for Settings.CoveringWindows.
+const (
+	CoveringHide  = "hide"  // Hide what covers Bench as it comes forward (decision 68).
+	CoveringLeave = "leave" // Leave windows over Bench where they are.
+)
+
 // Values for Settings.PaneHeaders.
 const (
 	PaneHeadersAlways = "always" // Every pane has its header.
 	PaneHeadersAuto   = "auto"   // A pane with one App window, and nothing to report, has none.
 )
+
+// Values for Tab.Colour: the colours a tab can have. Each is checked for
+// 3:1 at least, as a mark, on the title bar's and pane headers' colours,
+// light and dark (styles.css and light.css, docs/architecture.md,
+// decision 74).
+const (
+	ColourRed    = "red"
+	ColourYellow = "yellow"
+	ColourGreen  = "green"
+	ColourCyan   = "cyan"
+	ColourBlue   = "blue"
+	ColourPurple = "purple"
+	ColourPink   = "pink"
+	ColourGrey   = "grey"
+)
+
+// TabColours returns the colours a tab can have, in the order that Tab
+// properties shows them.
+func TabColours() []string {
+	return []string{ColourRed, ColourYellow, ColourGreen, ColourCyan, ColourBlue, ColourPurple, ColourPink, ColourGrey}
+}
+
+// IsTabColour reports whether s is one of TabColours. "" isn't: it's no
+// colour.
+func IsTabColour(s string) bool {
+	return slices.Contains(TabColours(), s)
+}
 
 // Settings is the [settings] table.
 type Settings struct {
@@ -124,6 +158,11 @@ type Settings struct {
 	HideOtherTabs bool `toml:"hide_other_tabs" json:"hideOtherTabs"`
 	// Also hide every app Bench doesn't manage.
 	HideOtherApps bool `toml:"hide_other_apps" json:"hideOtherApps"`
+	// hide, or leave: what Bench does, as it comes forward, with windows
+	// that aren't in a tab and cover it. Hide hides their app, or parks
+	// the window when the app has windows elsewhere; leave leaves them
+	// over Bench's own controls.
+	CoveringWindows string `toml:"covering_windows" json:"coveringWindows"`
 	// app-pane, focused-pane, or float.
 	NewWindows string `toml:"new_windows" json:"newWindows"`
 	// switch-tab, bring-here, or off.
@@ -148,8 +187,18 @@ type Settings struct {
 	// again when the terminal starts next time, with its programs' colours
 	// and the rest in grey.
 	KeepTerminalOutput bool `toml:"keep_terminal_output" json:"keepTerminalOutput"`
+	// How tall the drop-down terminal is, in percent of its screen's
+	// height, from MinDropdownHeight to MaxDropdownHeight.
+	DropdownHeight int `toml:"dropdown_height" json:"dropdownHeight"`
 	// How long to wait for a tab's apps to open.
 	LaunchTimeout Duration `toml:"launch_timeout" json:"launchTimeout"`
+	// Let the bench command, from Terminal or a script, switch tabs, move
+	// the shown window, start launchers, and list what Bench shows, with
+	// windows' and pages' titles and the notifications waiting in them.
+	// Off by default. bench:// links work either way, because they can only
+	// switch tabs, as a click does, and show (docs/architecture.md,
+	// decision 77).
+	AllowScripts bool `toml:"allow_scripts" json:"allowScripts"`
 }
 
 // Shortcuts is the [shortcuts] table. Its type lives in the shortcuts
@@ -165,6 +214,10 @@ type Tab struct {
 	Sizes []float64 `toml:"sizes,omitempty" json:"sizes,omitempty"`
 	// stack, tabs, or same. Empty means stack; Format leaves it out.
 	SmallScreens string `toml:"small_screens,omitempty" json:"smallScreens,omitempty"`
+	// One of TabColours, for the tab's underline, a band along its pane
+	// headers, and a dot beside its name in lists. Empty means none;
+	// Format leaves it out.
+	Colour string `toml:"colour,omitempty" json:"colour,omitempty"`
 	// One per pane in the preset, in reading order.
 	Panes []Pane `toml:"pane" json:"panes"`
 }
@@ -189,6 +242,13 @@ type Item struct {
 	Web string `toml:"web,omitempty" json:"web,omitempty"`
 	// Web item: data store name; items with the same profile share logins.
 	Profile string `toml:"profile,omitempty" json:"profile,omitempty"`
+	// Web item (web only): whether Bench loads the page, hidden, soon after
+	// it opens, and keeps it running, so that the page can post
+	// notifications and show its unread count before the user shows it.
+	// Missing means off, until the page first posts a notification, when
+	// Bench turns it on; false means the user turned it off, and Bench
+	// leaves it off. See KeepsRunning.
+	KeepRunning *bool `toml:"keep_running,omitempty" json:"keepRunning,omitempty"`
 	// Web item: a folder to open in VS Code for the Web.
 	VSCode string `toml:"vscode,omitempty" json:"vscode,omitempty"`
 	// Built-in item: a terminal's starting folder.
@@ -210,6 +270,14 @@ type Item struct {
 // StartsAgain reports whether a terminal item with Run runs it again when
 // Bench next opens: start_again, which is true if it's missing.
 func (it Item) StartsAgain() bool { return it.StartAgain == nil || *it.StartAgain }
+
+// KeepsRunning reports whether a web item's page is kept running in the
+// background: keep_running, which is false if it's missing.
+func (it Item) KeepsRunning() bool { return it.KeepRunning != nil && *it.KeepRunning }
+
+// KeepRunningOf returns the keep_running field for a web item whose page
+// Bench, or the user, has set to keep running in the background, or not.
+func KeepRunningOf(on bool) *bool { return &on }
 
 // Launcher is a [[launcher]] entry: a terminal, or an app's window, that the
 // add dialog and Jump to… add each time they're chosen, first in their
@@ -335,6 +403,10 @@ type State struct {
 	Items map[string]ItemState `json:"items"`
 	// Floating holds items that were popped out of Bench.
 	Floating []string `json:"floating"`
+	// Dropdown is the terminal that is the drop-down, one of Floating
+	// (decision 72). Older files don't have it, and older builds ignore
+	// it: the terminal is then popped out, with no window of its own.
+	Dropdown string `json:"dropdown,omitempty"`
 	// Apps holds what Bench remembers about the apps that have items, by
 	// lower-case bundle ID. Older files don't have it, and older builds
 	// ignore it.
@@ -347,6 +419,13 @@ type State struct {
 	// time if that display is still there. Older files don't have it, and
 	// older builds ignore it.
 	Screen *ScreenState `json:"screen,omitempty"`
+	// PreferredScreen is the display that the user last chose for Bench's
+	// window, by moving the window or filling the screen with it, which
+	// can be another display than Screen: when macOS moves the window
+	// because a display went away, Screen changes and this doesn't, so
+	// that Bench goes back to the display when it comes back (decision
+	// 70). Older files don't have it, and older builds ignore it.
+	PreferredScreen *ScreenState `json:"preferredScreen,omitempty"`
 	// Dialogs holds the size of each of Bench's dialogs that the user has
 	// resized, by kind, such as "settings", for it to open at that size
 	// next time. Older files don't have it, and older builds ignore it.
@@ -359,6 +438,16 @@ type State struct {
 	// check_for_updates setting. Older files don't have it, and older
 	// builds ignore it.
 	Updates *UpdatesState `json:"updates,omitempty"`
+	// Covering holds the apps, by lower-case bundle ID, that Bench has said
+	// it hid, or moved a window of out of sight, because a window of
+	// theirs covered Bench, so that it doesn't say so again (decision 68).
+	// Older files don't have it, and older builds ignore it.
+	Covering []string `json:"covering,omitempty"`
+	// WindowTools holds the window tools, such as Rectangle, by lower-case
+	// bundle ID, whose notice the user has dismissed, so that Bench doesn't
+	// show it again (decision 69). Older files don't have it, and older
+	// builds ignore it.
+	WindowTools []string `json:"windowTools,omitempty"`
 }
 
 // UpdatesState is what Bench knows of its releases.
@@ -491,4 +580,9 @@ type ItemState struct {
 	// Zoom is a Web item's page zoom, as a scale such as 1.25 for 125%, or
 	// 0 for actual size. Older files don't have it.
 	Zoom float64 `json:"zoom,omitempty"`
+	// KeepRunning is a web page's keep_running, as its config entry has it
+	// (see Item.KeepRunning): missing until Bench or the user sets it. It
+	// keeps the setting for a page that config.toml doesn't list, such as
+	// one added in Bench. Older files don't have it.
+	KeepRunning *bool `json:"keepRunning,omitempty"`
 }

@@ -55,7 +55,8 @@ a recorded demo, but much of that layer hasn't been checked by hand.
   [macOS update check](#the-macos-update-check) updates an ad hoc build),
   the About
   panel's credits, the Acknowledgements window, sign-ins and notifications
-  in Web items, VS Code for the Web, live previews, `bench arrange`, crash
+  in Web items, VS Code for the Web, live previews, `bench arrange`,
+  `bench://` links and the script subcommands (decision 77), crash
   recovery, putting windows back after sleep, a lock, or a switch of user,
   losing Accessibility permission while Bench runs, multiple displays,
   desktops (Spaces), macOS 14, Intel Macs (the runner has macOS 15 on
@@ -208,7 +209,7 @@ install instead.
 
 | Job | Runner | Steps |
 | --- | --- | --- |
-| Linux | `ubuntu-latest` | `gofmt` check, `go vet ./...`, `go test -race ./...`, `go vet` and `go test` with `-tags server`, building the browser preview, and the browser tests. |
+| Linux | `ubuntu-24.04` (Playwright 1.56.1 does not support 26.04) | `gofmt` check, `go vet ./...`, `go test -race ./...`, `go vet` and `go test` with `-tags server`, building the browser preview, and the browser tests. |
 | macOS | `macos-15` (Apple silicon) | `go vet ./...`, `go test ./...`, `go build ./cmd/bench` (which compiles `internal/mac` and the Wails app), and `make app SIGN_IDENTITY=-`, to check that `Bench.app` assembles and signs. Then it runs `bench version` and `bench layout` from the bundle, to check that the signed binary starts under the hardened runtime. Last, it assembles `Bench.app` again with Sparkle and an update key made for the run, and checks Sparkle's signatures and entitlements. |
 
 The repository is private and macOS minutes cost more, so the macOS job
@@ -271,6 +272,12 @@ not `Bench.app`. It installs iTerm2, VS Code, and Zed with Homebrew, with
    [Read the log](#read-the-log)).
 4. Quits Bench, and logs whether the apps that Bench hid are visible
    again.
+5. Sums up how long each arrangement took, from Bench's `arranged` lines
+   in `bench.log` (decision 67): the median and the worst for each
+   reason, such as `tab-shortcut`, in `steps.log` and
+   `arrange-times.txt`. A slow time never fails the job. The times are
+   for comparing runs: a runner is slower than a Mac, and with
+   `BENCH_DEBUG` Bench logs every platform call too.
 
 The runner's image gives `/bin/bash` and the runner's own processes
 Accessibility, Screen Recording, and synthetic input permission, and Bench,
@@ -290,6 +297,7 @@ keeps for 7 days:
 | `steps.log` | Each step, and what the script checked, such as which tab a window ended up in. |
 | `captions.txt`, `recording-started` | When each step and the recording started, in Unix seconds, to match steps to the video. |
 | `bench.log` | Bench's standard error, with every platform call and event, and the engine's decisions. |
+| `arrange-times.txt` | How long each arrangement took: the median and the worst for each reason, then each `arranged` line (decision 67). |
 | `home/` | Bench's support folder at the end: `config.toml`, `state.json`, and `view.json`. |
 | `diagnostics.txt` | The macOS version, the screen, the installed apps, and ffmpeg's capture devices. |
 | `displays.txt`, `ffmpeg.log` | The display modes and the one the script chose, and ffmpeg's messages. |
@@ -502,11 +510,29 @@ and `WAILS_SERVER_PORT` environment variables, which would change the
 address and port, and it refuses calls to Go that come from other web
 sites, or through a host name other than `localhost` or `127.0.0.1`.
 
+With **Allow scripts to control Bench** on, the preview answers
+`bench list` on the socket in its folder, so
+`bin/bench list --json --dir <the preview's folder>` lists its tabs
+(decision 77). The other script commands need the macOS app, and say so.
+`bench://` links need the app too.
+
 In the preview, Bench's global shortcuts work while the page has focus, and
 Control+K also opens the jump palette. The bar above the window fits the
-window to the browser or simulates a monitor or a laptop. Its **Minimise
-window** minimises the window that the focused pane shows, as Command-M
-does on a Mac.
+window to the browser or simulates a monitor or a laptop. Its **Simulate**
+menu holds the buttons that act as macOS or another app would. Its
+**Minimise window** minimises the window that the focused pane shows, as
+Command-M does on a Mac. Its **Unplug monitor**, with **Monitor** chosen,
+takes the monitor away, and Bench goes to the laptop's screen; it then
+reads **Plug in monitor**, which puts the monitor back, and once the
+screens settle, Bench goes back to it, with a toast and **Undo** (decision
+70). Its **Rectangle** starts and stops the demo's Rectangle, a window
+tool, so that the status bar says what it can do to Bench, and Settings ▸
+Keyboard says which of Bench's shortcuts it uses too, and its **Keep
+moving window** has something move the window that the focused pane shows
+out of its pane, again and again, until Bench stops putting it back and
+its pane says so (decision 69). After you click **Dismiss** on the
+notice, remove `windowTools` from the preview's `state.json` to see the
+notice again.
 
 ## Build the app
 
@@ -1010,12 +1036,17 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] Filling again: with Bench filling the monitor, unplug it. Once
       macOS has moved Bench to the laptop's screen, Bench fills that
       screen, once, within about 2 seconds, and the tab is arranged
-      again. Plug the monitor back in: Bench stays filling the laptop's
-      screen. Make the window smaller, then unplug and plug in again: it
-      stays smaller. With Bench filling the screen, change the resolution
-      in **System Settings ▸ Displays**, and show and hide the Dock
-      (Option-Command-D): Bench fills the new visible area each time, and
-      doesn't keep zooming.
+      again. Plug the monitor back in: about 2 seconds after you plug it
+      in, Bench goes back to the monitor, fills it, and says "Back on" and
+      the monitor's name, with **Undo** (decision 70; see
+      [A monitor that comes back](#a-monitor-that-comes-back)). Unplug it
+      again, make the window smaller on the laptop's screen, then plug the
+      monitor in again: Bench stays on the laptop's screen, at that size,
+      as you chose the laptop's screen. With Bench filling the screen,
+      change the
+      resolution in **System Settings ▸ Displays**, and show and hide the
+      Dock (Option-Command-D): Bench fills the new visible area each time,
+      and doesn't keep zooming.
 - [ ] The minimum size: double-click the title bar's free space to zoom,
       double-click again, then drag the window's corner inwards: it stops
       at 640 by 480 points. The same after the green button, and after
@@ -1110,7 +1141,8 @@ through these before each release, and after changes to `internal/mac`,
       With Bench filling the screen, start picture-in-picture in the
       browser that the default config's float rule names, move it over
       Bench, and click Bench's tab row: it stays. A Finder window over
-      Bench hides instead.
+      Bench goes instead (see
+      [Windows that cover Bench](#windows-that-cover-bench)).
 - [ ] A docked window dragged out by the user: its pane shows **Dock again**.
 - [ ] Bench on a second desktop (Space): items whose windows are on another
       desktop show "On another desktop".
@@ -1188,11 +1220,13 @@ through these before each release, and after changes to `internal/mac`,
 - [ ] Right-clicking a tab, a sub-tab, and the empty part of a pane's
       header, and Control-clicking them, opens the menu at the pointer,
       both while Bench is active and while a docked app is. Near the
-      window's right and bottom edges the menu stays inside the window. The
-      empty part of a header opens the shown window's menu, and closing it
-      without choosing focuses that pane. Right-clicking an empty pane, its
-      header or its body, opens its menu at the pointer: **Add a window or
-      app…** opens the add dialog for it, and **Close this pane** closes it.
+      screen's right and bottom edges, macOS keeps the menu on the screen;
+      it can go past the window's edges (see [Native menus](#native-menus)).
+      The empty part of a header opens the shown window's menu, and closing
+      it without choosing focuses that pane. Right-clicking an empty pane,
+      its header or its body, opens its menu at the pointer: **Add a window
+      or app…** opens the add dialog for it, and **Close this pane** closes
+      it.
 - [ ] With Bench's window at its smallest, 640 by 480, Tab properties,
       Settings, the add dialog, the jump palette, and the welcome guide each
       fit inside the window, clear of the traffic lights, with their
@@ -1511,8 +1545,10 @@ through these before each release, and after changes to `internal/mac`,
       Inspector (some Electron apps' frameless windows, or a utility
       panel), dock it, and close it from Bench. Bench focuses it and
       chooses its app's **File ▸ Close Window** (or **Close**), never
-      **Close Tab** or **Close All**. An app whose menus are in another
-      language says "Bench couldn't close … Close it in …".
+      **Close Tab** or **Close All**. An app whose menus are in a language
+      that Bench doesn't know, such as Czech, says "Bench couldn't close …
+      Close it in …". For the languages Bench knows, see
+      [Other languages](#other-languages).
 - [ ] Apps that hide their window on close: Slack's desktop app and Music.
       Close their windows from Bench: about 1.5 seconds later the sub-tab
       goes, the app keeps running, and no toast says it may be asking. Open
@@ -2021,9 +2057,11 @@ through these before each release, and after changes to `internal/mac`,
       browser, with the body filled in: the headings, the Bench version (as
       `bin/bench version` prints it), "macOS 15.x (arm64)" or similar, each
       display with its size and which is main and which Bench is on, the
-      layout, both permissions, the notices, and the log's path written from
-      `~`. Nothing is sent until you submit it on GitHub. With 10 notices,
-      it lists 8 and "And 2 more.", and GitHub still opens the page.
+      layout, both permissions, the notices, the times of the latest tab
+      switches and of the latest other arrangements, for each reason
+      (decision 67), and the log's path written from `~`. Nothing is sent
+      until you submit it on GitHub. With 10 notices, it lists 8 and "And 2
+      more.", and GitHub still opens the page.
 - [ ] **The log file** (decision 47). After `make app` and opening
       `Bench.app` from the Finder, `~/Library/Logs/Bench/bench.log` exists
       with `-rw-------`, in a folder with `drwx------`, and starts with a
@@ -2122,9 +2160,9 @@ through these before each release, and after changes to `internal/mac`,
       then the keys of Bench's window, then a terminal's keys. Change one in
       Settings and open the sheet again: it shows the new keys. **Change
       Shortcuts…** opens Settings ▸ Keyboard. An empty pane (**Split right
-      with an empty pane**) says "Drag a sub-tab here, or press ⌃⌥⇧ and an
-      arrow to move the shown window here.", and pressing that moves the
-      window into it.
+      with an empty pane**) says "Drag a sub-tab here, or a folder or app
+      from the Finder. Or press ⌃⌥⇧ and an arrow to move the shown window
+      here.", and pressing that moves the window into it.
 - [ ] The README's screenshots and tour (`docs/images/`) show the title bar
       and status bar as they are now: the tabs' **+** right after the last
       tab, no dot or tab name in the status bar, 4 points between panes,
@@ -2462,7 +2500,8 @@ Outlook on the web as a Web item. Run with `BENCH_DEBUG=1` (see
       counts on tabs and sub-tabs** in **Settings ▸ General**: the pills go,
       and the title has "(3)" again. Turn it on again.
 - [ ] **Pages not shown yet**: put Outlook on the web in a tab of its own,
-      with a count showing, and switch to another tab. Quit Bench, read
+      with a count showing, and **Keep Running in the Background** off in
+      its menu, and switch to another tab. Quit Bench, read
       the email on your phone, and open Bench again. Outlook's tab shows no
       count, and the menu bar item's total leaves Outlook out. Switch to
       Outlook's tab: no count shows while the page loads, not even the old
@@ -2524,8 +2563,8 @@ one on YouTube. Run with `BENCH_DEBUG=1` to see the `web-state-changed`
 events in the log.
 
 - [ ] **Back and Forward**: in a fresh Slack page, the ⋯ menu's **Page**
-      row has **Back** and **Forward** dimmed, and **Pane ▸ Page ▸ Back**
-      too. Click into another channel: **Back** turns on within a moment
+      submenu has **Back** and **Forward** dimmed, and **Pane ▸ Page ▸
+      Back** too. Click into another channel: **Back** turns on within a moment
       (the log shows `canGoBack=true`), and goes back. **Forward** then
       turns on and goes forward. A two-finger swipe does the same, and the
       buttons follow it. Going back to a page on another site that the
@@ -2534,7 +2573,8 @@ events in the log.
       page again, keeping its place in the history. On a page whose process was ended (Activity Monitor ▸ force
       quit its "Web Content" process), it loads the page again too.
 - [ ] **Zoom**: **Zoom In** twice makes Slack's text bigger at once, with
-      "Zoomed Slack to 125%." **Actual Size** reads **125%**. Switch tabs
+      "Zoomed Slack to 125%." **Actual Size** reads **Actual Size (now
+      125%)**. Switch tabs
       and back, pop the page out and back in, and quit and reopen Bench: it
       stays at 125% each time, and `state.json` has `"zoom": 1.25` for it.
       Outlook stays at 100%. **Zoom In** stops at 300% and **Zoom Out** at
@@ -2765,7 +2805,12 @@ Decision 53. On macOS 14 or later.
 
 ### Menus and messages
 
-Decision 63. Use the example config, with Bench filling a monitor.
+Decision 63. Use the example config, with Bench filling a monitor. The
+app shows the ⋯ and right-click menus as native menus, which macOS draws
+(decision 71), so do **Submenus with the pointer** and **Submenus with
+the keyboard and VoiceOver** in the browser preview in Safari, which
+draws its menus in HTML, and the [native menus](#native-menus) checks in
+the app.
 
 - [ ] **Submenus with the pointer**: in Code, open Zed's ⋯ menu. Rest
       the pointer on **Move to Tab**: after a moment, its submenu opens
@@ -3010,6 +3055,1140 @@ checks in light and dark, and once with **Increase contrast** on in
       of sections at its left. Open **Appearance**: a shadow at the bottom
       of the section shows that there's more below.
 
+### Switching speed and the flash
+
+Decision 67. Use a config whose tabs have Chrome, Slack, and an Electron
+app such as VS Code or Obsidian, each with windows in more than one tab,
+and `hide_other_tabs` on, as it is by default. Bench fills a monitor. Quit
+Bench, and open it with `open --env BENCH_DEBUG=1 bin/Bench.app`, so that
+`bench.log` has a line for each arrangement (see [Read the log](#read-the-log)).
+
+- [ ] **Measure a switch**: switch between the tabs with their shortcuts,
+      and with clicks, ten times each, and tap Control+Option+&#96; five
+      times. Then run
+      `grep 'msg=arranged' ~/Library/Logs/Bench/bench.log | tail -40`:
+      each switch has a line, with `reason=tab-shortcut` for a shortcut and
+      for Control+Option+&#96;, and `reason=tab` for a click, its time in
+      `ms`, and the `windows` it moved, parked, or raised. Lines with other
+      reasons can come between them, such as `apps-opened` after a switch
+      that opened an app, or `window-moved` after an app moved its own
+      window. Note the times in the pull request, for the tabs with Chrome,
+      with Slack, and with the Electron app.
+- [ ] **Look for the flash**: with Bench still open with `BENCH_DEBUG`, put
+      one Chrome window in tab 1 and two in tab 2, and switch to a tab
+      without Chrome, so that Bench hides it. Then switch to tab 1. Tab 2's
+      Chrome windows don't show over tab 1, not even for a moment: Bench
+      parks them before it shows Chrome. Do the same with Slack, and with
+      the Electron app. Record the screen (⌘⇧5) and step through the video
+      if you aren't sure. If an app's windows still flash, run
+      `grep -E 'msg=(Window|Park|Minimise|Unhide) ' ~/Library/Logs/Bench/bench.log | tail -30`
+      just after the switch, and find the app's `Unhide`:
+      - `Window` lines with an `err` before the `Unhide`, for the app's
+        windows, and no `Park`: the Accessibility API can't read a hidden
+        app's windows. Bench parked them once the app showed, as before.
+      - `Park` lines before the `Unhide`, and `Park` again for the same
+        windows after it: the windows didn't move while the app was
+        hidden, which the Accessibility API may refuse for some apps, so
+        Bench parked them again once the app showed.
+      - `Minimise` after the `Unhide`: there was no place to park the
+        window clear of another display (see the next check).
+      Note which apps do which.
+- [ ] **The flash with more than one display**: put Bench on a display with
+      a taller display on each side that reaches below it, and make a
+      Chrome window of tab 2 wider than Bench's display. Switch to a tab
+      without Chrome, then to tab 1. The wide window is minimised only after
+      Chrome shows, as before: the log has its `Minimise` after Chrome's
+      `Unhide`, and Chrome's other windows of tab 2 are parked before it.
+- [ ] **The fallback**: after a switch in each of the checks above, every
+      window of the new tab is in its pane, and the windows of other tabs
+      are parked in the corner, minimised, or hidden with their app: none
+      is left on screen, and no notice says a window couldn't be parked.
+- [ ] **The title bar at once**: with a tab whose apps take a moment to
+      arrange, press its shortcut, from Bench and from another app with
+      `show_on_tab_shortcut` on: the tab shows as current in the title bar
+      at once, before the windows move, and stays current. Click a tab, and
+      choose one in the jump palette and in the overview: the same. Click a
+      tab, and at once click the tab you came from: the tab you came from
+      shows as current at once, and Bench ends on it. Tap
+      Control+Option+&#96;: the tab you go back to shows as current as you
+      release the keys, before the windows move. Press
+      Control+Option+&#96; and hold Control+Option: the title bar doesn't
+      change until you let go. Press the shortcut of the tab you're on:
+      nothing in the title bar changes.
+- [ ] **The report**: quit Bench, open it without `BENCH_DEBUG`, switch
+      tabs as in the first check, drag Bench's window for a few seconds,
+      and choose **Help ▸ Report a Problem…**. The issue has a part for the
+      tab switches, with a line for each reason, such as
+      "- tab-shortcut: median 41 ms, worst 180 ms (20 times, up to 6
+      windows changed)", most frequent first, and a part for the other
+      arrangements, with `bench-moved` for the drag. The drag didn't push
+      the switches out of the first part.
+- [ ] **Not changed**: drag Bench's window, and resize it from an edge:
+      the docked windows follow as before.
+
+### Windows that cover Bench
+
+Decision 68. Bench fills a monitor, and a second display is connected.
+Before you start, quit Bench and remove `covering` from `state.json`, so
+that Bench tells you about each app again. VoiceOver is on for the first
+check.
+
+- [ ] **A Finder window over Bench**: close every Finder window, then open
+      one and move it over Bench's tabs. Click Bench's status bar. Finder
+      hides, and a toast says "Hid Finder because it covered Bench.", with
+      **Keep over Bench**. VoiceOver reads the message and the button's
+      name, and Tab reaches the button. Click Finder's icon in the Dock:
+      the window comes back where it was. Click Bench again: Finder hides
+      again, with no toast.
+- [ ] **Two displays**: open two TextEdit documents. Put one over Bench
+      and the other on the second display. Click Bench. Only the document
+      over Bench goes: the other stays on the second display, and TextEdit
+      isn't hidden. The toast says "Hid the TextEdit window “Untitled”
+      because it covered Bench." (with the document's name). The window
+      that went is parked below the bottom of Bench's display, or, if
+      every place there shows on the second display, minimised. Click the
+      document on the second display: the other comes back where it was.
+- [ ] **Another desktop**: park a TextEdit document as in the check
+      before. Go to another desktop (Control-Right Arrow) and click
+      TextEdit's icon in the Dock there. Go back to Bench's desktop with
+      TextEdit still in front: the document comes back where it was. Park
+      it again, then put TextEdit's other document in full screen and go
+      to it: when you come back and click TextEdit, the parked document
+      comes back.
+- [ ] **A display goes**: park a TextEdit document, then click Zed, or any
+      app but TextEdit. Disconnect the second display, and connect it
+      again. If macOS moves the parked document over Bench, Bench moves it
+      out of sight again once the displays settle, and again when you
+      click Bench.
+- [ ] **Quit and crash**: with a TextEdit document parked as in the check
+      before, quit Bench: the document comes back. Open Bench, park the
+      document again, and run `pkill -9 -x Bench`. The watchdog puts the
+      document back within a few seconds, and `parked.json` no longer
+      lists it.
+- [ ] **Keep over Bench**: open Calculator over Bench and click Bench.
+      Calculator hides, with the toast. Click **Keep over Bench**:
+      Calculator shows again, and a toast says "Added a rule to
+      config.toml: Calculator windows now stay over Bench, and new ones
+      stay out of your tabs.", with **Undo**. `config.toml` ends with
+      `[[rule]]`, `app = "com.apple.calculator"`, and `float = true`.
+      Click Bench: Calculator stays. Switch to another tab and drag a
+      divider. Choose **Tab ▸ Undo Keep over Bench**: the rule goes from
+      `config.toml`, and Calculator hides again. The tab and the pane
+      sizes stay as they are.
+- [ ] **Keep over Bench later**: remove `covering` from `state.json`
+      again, and the rule from the check before from `config.toml`. Open
+      Calculator over Bench, click Bench, and let the toast go. Choose
+      **Help ▸ Recent Messages**: the message has **Keep over Bench**,
+      which Tab reaches. Click it: Calculator shows again, and the button
+      goes from the list.
+- [ ] **An app in a tab**: put a Safari window in a tab, then open a
+      second Safari window that isn't in a tab, over Bench, on a tab
+      without Safari. Click Bench: the toast for Safari has no button. Do
+      the same for Finder with a `[[rule]]` that has
+      `app = "com.apple.finder"` and `tab = "Research"`: the toast has no
+      button either.
+- [ ] **Leave them**: in Settings ▸ Windows, choose **Leave them** for
+      **When Bench comes forward**. The line below says that windows left
+      in place sit over Bench's own tabs, panes, and buttons. Save. A
+      Finder window over Bench stays when you click Bench. Choose **Hide
+      windows that cover Bench** again and save. Click the Finder window,
+      then click Bench: the Finder window goes.
+- [ ] **How it looks**: look at the choice and the toast in light and
+      dark, with **Increase contrast** on (System Settings ▸
+      Accessibility ▸ Display), and with Bench's window at 640 by 480
+      points: the choice's buttons and line fit, and the toast's button is
+      in view.
+- [ ] **Not changed**: windows of an app with a window docked in the
+      current tab stay over Bench, and picture-in-picture that a float rule
+      names stays, as in [Before each release](#before-each-release).
+
+### Window tools
+
+Decision 69. Install Rectangle (from rectangleapp.com or Homebrew), open
+it once, and choose its recommended shortcuts. Quit Bench, and remove
+`windowTools` from `state.json`, so that Bench shows each tool's notice
+again. Run Bench with `BENCH_DEBUG=1` (see [Read the log](#read-the-log)),
+with Bench's default shortcuts. VoiceOver is on for the third check.
+
+- [ ] **Rectangle moves a docked window**: on a tab with two panes side by
+      side and Zed docked in the left one, focus Zed's window and press
+      Rectangle's **Center** (⌃⌥C, a key that Bench doesn't use) four
+      times, a second apart. Bench puts it back three times, then the log
+      says "an app or a window tool keeps moving a window; leaving it",
+      Zed's sub-tab has the amber warning sign, and its pane says "Zed or
+      Rectangle keeps moving this window", with **Dock again**. Switch to
+      another tab and back: the message stays. Click **Dock again**: the
+      window goes back, and Bench puts it back three times again. Do it
+      again, then press Control+Option+0 (**Rearrange**): the window goes
+      back. Do it again, then drag the window yourself: the pane says
+      "Moved out of its
+      pane". Click **Dock again**, then choose **Pane ▸ Grow Pane** five
+      times, a second apart, with Zed's pane focused: Zed's window follows
+      its pane each time, with no mark, even if Zed nudges it after each
+      resize.
+- [ ] **A drag with snapping**: with Rectangle's snapping on, drag Zed's
+      docked window to the screen's left edge. Rectangle snaps it to the
+      left half, and its pane says "Moved out of its pane", not "Zed or
+      Rectangle keeps moving this window": your drag undocked it first.
+- [ ] **The notice**: with Rectangle running, open Bench. The status bar
+      says "Rectangle is running. It can move docked windows out of their
+      panes. It uses the same keys as Bench for Focus a pane (⌃⌥←, ⌃⌥→,
+      ⌃⌥↑, ⌃⌥↓), Move a window (⌃⌥⇧↑), and Zoom pane (⌃⌥↩). …". VoiceOver
+      reads it, and Tab reaches **Keyboard settings** and **Dismiss**.
+      **Keyboard settings** opens Settings ▸ Keyboard, where **Focus a
+      pane** says "Rectangle uses ⌃⌥←, ⌃⌥→, ⌃⌥↑, and ⌃⌥↓ too. Both apps
+      may act on these keys.", with a suggestion that Rectangle doesn't
+      use, and **Zoom pane** says "Rectangle uses ⌃⌥↩ too. Both apps may
+      act on this key." Change **Zoom pane** to another key and save: the
+      notice no longer names it, and the recent messages list the notice
+      once. Quit Rectangle: the notice goes. Open Rectangle again, and
+      click Bench: the notice comes back. **Dismiss** takes it away. Quit
+      Bench and open it again: no notice, `state.json` lists
+      `com.knollsoft.rectangle` under `windowTools`, and Settings ▸
+      Keyboard still says which keys Rectangle uses.
+- [ ] **Rectangle's shortcuts change while Bench runs**: in Rectangle's
+      settings, record ⌃⌥⌘L for **Left Half**, then click Bench. Settings ▸
+      Keyboard no longer says that Rectangle uses ⌃⌥←, and the log says
+      "a window tool's shortcuts changed". Clear the recorded shortcut
+      again afterwards.
+- [ ] **Rectangle's shortcuts are read correctly**: in the log, "a window
+      tool is running" has `readKeys=true`, and with the recommended set,
+      `keys=22` for a Rectangle first installed after version 94, or
+      `keys=21` before. Then, each time with `windowTools` removed from
+      `state.json` and Bench quit and opened again, check that the
+      notice's keys follow Rectangle's own settings: Spectacle's set
+      (quit Rectangle, run `defaults delete com.knollsoft.Rectangle`, open
+      Rectangle, and choose Spectacle's shortcuts), which gives `keys=16`
+      and shares only Move a window (⌃⌥⇧←, ⌃⌥⇧→, ⌃⌥⇧↑) with Bench's
+      defaults; then the recommended set again, and a shortcut you
+      recorded, such as ⌃⌥0 for **Maximize**, which then names
+      **Rearrange**; and a shortcut you cleared, such as **Left Half**,
+      which then leaves out ⌃⌥←. Bench reads Rectangle's
+      preferences, in `com.knollsoft.Rectangle`, with the hardened runtime
+      of a signed `Bench.app` too: if `readKeys=false`, the notice says
+      only "Its shortcuts can use the same keys as Bench's", and macOS
+      stopped Bench reading them.
+- [ ] **Both apps act on a key**: with Rectangle's recommended set and
+      Bench's default shortcuts, press ⌃⌥→ with a docked window focused.
+      macOS gave Bench no error for ⌃⌥→. Note what happens: Bench
+      focuses the pane to the right, Rectangle moves the window to the
+      right half, or both (then Bench puts the window back). Quit and open
+      Rectangle and Bench in the other order, and do it again. Note the
+      results in the release notes if they differ from "both apps may act
+      on the same key".
+- [ ] **A tool that starts later**: quit Rectangle, then open it again
+      while Bench runs, after removing `windowTools` from `state.json`
+      with Bench quit first. The notice comes within a few seconds, at the
+      latest when you next switch tabs or click Bench, as macOS doesn't
+      announce apps with no Dock icon. Quit Rectangle: the notice goes.
+      Open it again: the notice comes back, as you didn't dismiss it.
+- [ ] **The other tools' bundle IDs**: these bundle IDs are unsure. For
+      each tool you can install, run
+      `osascript -e 'id of app "Loop"'` (with the tool's name) and check
+      that it matches, then open the tool while Bench runs: the notice
+      names it, and says only that its shortcuts can use the same keys as
+      Bench's. Correct `internal/workspace/windowtools.go` for each one
+      that's wrong, and take off its `unsure` once it's checked.
+  - Loop: `com.MrKai77.Loop`
+  - Divvy from the App Store: `com.mizage.Divvy`, and from its website:
+    `com.mizage.direct.Divvy`
+  - Swish: `co.highlyopinionated.swish`
+  - AeroSpace: `bobko.aerospace`
+  - yabai: `com.koekeishiya.yabai`. It's a command-line program that
+    usually runs without an app bundle, so macOS may not list it at all,
+    and Bench then says nothing about it. Check whether it shows in
+    `lsappinfo list`.
+- [ ] **App Store tools**: with Magnet from the App Store running, the
+      notice names Magnet, and says only that its shortcuts can use
+      Bench's keys, as Bench can't read a sandboxed app's container.
+- [ ] **How it looks**: look at a pane that says something keeps moving
+      its window, its sub-tab's warning sign, and the notice, in light and
+      dark, with **Increase contrast** on, and with Bench's window at 640
+      by 480 points: the message and **Dock again** fit, and the notice is
+      cut short in the status bar, with all of it in the list.
+
+### A monitor that comes back
+
+Decision 70. Use a MacBook and an external monitor, with **Open Bench
+filling the screen** on. Run Bench with `BENCH_DEBUG=1` (see
+[Read the log](#read-the-log)), and check on macOS 26 and on macOS 27, as
+macOS 27 may put windows back on a display itself. Between checks, quit
+Bench and remove `preferredScreen` from `state.json`, or move Bench to the
+display that the check starts on.
+
+- [ ] **Unplug and plug in**: move Bench to the monitor, filling it, on a
+      tab with two docked windows. Unplug the monitor: Bench goes to the
+      laptop's screen, fills it, and changes to the compact layout if it's
+      narrower than `compact_below`. Plug the monitor in again. Nothing
+      moves while the displays settle; then Bench goes back to the
+      monitor, fills it, changes to the wide layout, and docks the windows
+      there. The toast says "Back on" and the monitor's name as macOS
+      gives it, for example "Back on DELL U2723QE.", with **Undo**, and
+      the log says "moving Bench back to the display it was on". If
+      macOS 27 puts Bench back on the monitor itself, there's no toast and
+      no second move: Bench only fills the monitor, if it doesn't fill it
+      already.
+- [ ] **Undo**: after Bench goes back, click **Undo** in the toast: Bench
+      goes back to the laptop's screen, filling it, and the toast says
+      "Back on Built-in Retina Display." (or your laptop's display name).
+      Unplug the monitor and plug it in again: Bench stays on the
+      laptop's screen. Drag Bench to the monitor, unplug it and plug it in
+      again, wait for the toast to go, then do it again with the
+      **Undo** beside "Back on" in the recent messages.
+- [ ] **Your own change comes first**: with the monitor unplugged, choose
+      **Move Tab Right** on a tab. Plug the monitor in, and wait for Bench
+      to go back. **Tab ▸ Undo** reads **Undo Move Tab**, and the jump
+      palette's Undo row says the same. Choose it: the tab goes back, and
+      Bench stays on the monitor. Do it again with the `undo` shortcut.
+      The recent messages still have **Undo** beside "Back on".
+- [ ] **A window you made smaller**: on the monitor, tile Bench into its
+      left half (**Window ▸ Move & Resize ▸ Left**). Unplug the monitor and
+      plug it in again: Bench goes back to the left half of the monitor,
+      at that size, and doesn't fill it. Then fill the monitor again, and
+      while the monitor is unplugged, tile Bench into half of the laptop's
+      screen: when the monitor comes back, Bench stays in half of the
+      laptop's screen, with no toast. Do it again with **View ▸ Fill the
+      Screen** on the laptop's screen in place of the tile: Bench stays
+      on the laptop's screen.
+- [ ] **Bench's own fill doesn't choose**: with Bench filling the
+      monitor, unplug it, and let Bench fill the laptop's screen, as
+      **Filling again** says. Plug the monitor in: Bench goes back to it.
+- [ ] **Lid closed**: with Bench on the laptop's screen and the monitor
+      connected, close the lid, so that macOS moves Bench to the monitor.
+      Resize Bench there. Open the lid: Bench stays on the monitor, with no
+      toast. Do it again without resizing Bench: Bench goes back to the
+      laptop's screen when the lid opens.
+- [ ] **On purpose**: with both connected, drag Bench from the monitor to
+      the laptop's screen. Unplug the monitor and plug it in again: Bench
+      stays on the laptop's screen, with no toast. Drag Bench back to the
+      monitor to choose it again.
+- [ ] **Display sleep**: with Bench on the monitor, let the monitor sleep
+      (or switch it to another input) until macOS moves Bench to the
+      laptop's screen, then wake it: Bench goes back, as when it's plugged
+      in. A monitor that sleeps without macOS removing it leaves Bench
+      where it is, with no toast. Do it with the Mac asleep too (**Apple
+      menu ▸ Sleep**, with the lid open): after the wake, Bench is on the
+      monitor, with at most one toast, also when macOS put Bench on the
+      laptop's screen for only a moment as the Mac woke.
+- [ ] **During a hold, a tab switch, or a menu**: with the monitor
+      unplugged, hold Control+Option after **Last used tab**, so that the
+      tabs show, and plug the monitor in while you hold: Bench doesn't
+      move until you let go, then goes back to the monitor on the tab you
+      chose. Then, with a tab whose app isn't open, such as Calendar,
+      switch to it and plug the monitor in at once: Bench goes back once
+      the app's window has docked. Then right-click a sub-tab, and plug
+      the monitor in while its native menu is open: Bench doesn't move
+      while the menu is open, and goes back once you close it. The same
+      with Settings open: Bench goes back once you close it.
+- [ ] **Hidden or minimised**: with the monitor unplugged, hide Bench
+      (Command-H), plug the monitor in, wait 5 seconds, then show Bench
+      from the Dock: Bench goes back to the monitor as it shows. Do it
+      again with the window minimised.
+- [ ] **The same model twice**: with two monitors of the same model, move
+      Bench to the second. Quit Bench, plug the monitors into each other's
+      ports, and open it: it opens on the monitor at the same place as
+      before. Unplug that monitor and plug it in again: Bench goes back to
+      it, and not to the other one.
+- [ ] **Quit while away**: with Bench on the monitor, unplug it, quit
+      Bench, plug the monitor in, and open Bench: it opens on the monitor,
+      filled. Unplug it, quit, and open Bench with the monitor still
+      unplugged: it opens on the laptop's screen, and goes back to the
+      monitor when you plug it in.
+- [ ] **Window ▸ Move to**: with both connected, move Bench to the other
+      display with macOS's **Window ▸ Move to** menu: that display is then
+      the one chosen, as with a drag.
+- [ ] **How it looks**: the toast, with **Undo**, in light and dark, with
+      **Increase contrast** on, and with Bench's window at 640 by 480
+      points; VoiceOver reads the toast as it shows. The move back, and its
+      **Undo**, are one jump to the other display, filling it at once: the
+      window doesn't change size on the display it leaves first, and
+      doesn't zoom slowly. The same with **Reduce motion** on, in **System
+      Settings ▸ Accessibility ▸ Display**. Click **Undo** in the toast as
+      soon as it shows: Bench ends up on the laptop's screen, filling it,
+      not part way or un-zoomed.
+
+### Native menus
+
+Decision 71. Use the example config, with Bench filling a monitor, Brave
+as the default browser, and **Keyboard navigation** on in **System
+Settings ▸ Keyboard**. Do the checks in light and dark, and once with
+**Increase contrast** on in **System Settings ▸ Accessibility ▸
+Display**.
+
+- [ ] **A web page stays in view**: in Comms, with Slack's page shown,
+      right-click Slack's sub-tab. A native menu opens at the pointer, and
+      Slack's page and the docked windows stay in view behind it: nothing
+      goes blank or flashes, and Bench doesn't come in front of the docked
+      windows. Press Escape: the menu closes, and the page hasn't loaded
+      again. Click Slack's **⋯**: the menu opens below the button, at its
+      left. Do the same for a tab, an empty pane, and a terminal (a
+      right-click in it), and for the layout button (**Auto ▾**) in a
+      window narrower than 1,200 points: each opens as a native menu, and
+      the docked windows and web pages stay in view.
+- [ ] **From the keyboard**: move the focus to Slack's sub-tab, and press
+      Shift-F10: its menu opens below the sub-tab, with no item chosen.
+      Down Arrow chooses the first item that's on, typing an item's first
+      letters chooses it, and Return runs it. Do it again with
+      Control-Return, and with the menu key of a PC keyboard if there's
+      one. Escape closes the menu and gives the sub-tab the keyboard back:
+      Left and Right Arrow move along the sub-tabs again. On a tab,
+      Shift-F10 opens its menu below the tab; choose **Tab Properties…**:
+      the dialog opens, and when it closes, the tab has the keyboard
+      again. In a terminal, open its menu from the keyboard, then press
+      Escape: typing reaches the terminal.
+- [ ] **VoiceOver**: with VoiceOver on, open Slack's **⋯** menu from the
+      keyboard. VoiceOver reads it as a menu, and each item as you move,
+      with its shortcut after its name, such as "Split Right (⌃⌥⇧→)". It
+      reads items that are off as dimmed, and the notes and status lines,
+      such as "Loading", as dimmed items too. It says that **Move to
+      Pane**, **Move to Tab**, and **Page** have submenus. Close the menu:
+      VoiceOver is back on the sub-tab. Open a terminal's menu: its items
+      have no keys after their names, such as **Copy**, not "Copy (⌘C)".
+- [ ] **Submenus**: in Slack's **⋯** menu, rest the pointer on **Page**:
+      its submenu opens, with **Back** and **Forward**, dimmed in a fresh
+      page, then **Zoom In**, **Zoom Out**, and **Actual Size**, as in
+      **Pane ▸ Page**. **Find in Page…**, **Copy Page Link**, and **Stop
+      Sound and Video** are below **Page**, in the menu itself. Choose
+      **Zoom In**: Slack zooms to 110%, and the submenu now reads **Actual
+      Size (now 110%)**. Open Zed's **⋯** menu and press Right Arrow on
+      **Move to Pane**: it lists the other pane, as **Pane with** and the
+      window it shows. Press Left Arrow, then Right Arrow on **Move to
+      Tab**: it lists the tabs, with Code dimmed, each with its shortcut,
+      and **New Tab**. Choose **Research**: Zed goes there, with the
+      toast. A submenu whose items are all off is dimmed, and doesn't
+      open.
+- [ ] **The web app entry**: quit and reopen Bench, then at once open
+      Slack's **⋯** menu. It opens within a third of a second, and has
+      **Make a Web App in Brave…**, or **Use the Slack Web App from
+      Brave** once there's one. If the first menu after Bench opens
+      doesn't have it, close it and open it again: the next one does, and
+      opens without a wait that you notice. So does every menu of Slack's
+      after that.
+- [ ] **A menu from the jump palette over a docked app**: in Code, click
+      in Zed's window and type a few letters. Press Control+Option+Space,
+      type "window options", and press Return: Zed's **⋯** menu opens
+      below its button, and stays open for as long as you leave it, even
+      after a few seconds; Zed doesn't come in front, and the menu doesn't
+      close. Press Escape: the menu closes, and what you type next reaches
+      Zed. Do it again, and choose **Move to Tab ▸ Research**: Zed goes
+      there, and the keyboard doesn't go back to it.
+- [ ] **A window that opens while a menu is open**: quit Calendar. Make
+      a tab whose pane has Calendar, and switch to it: Calendar starts to
+      open. At once, right-click a sub-tab in Bench, and leave the menu
+      open: when Calendar's window arrives, Bench doesn't focus it, so the
+      menu stays open. (macOS can still bring Calendar forward as it opens,
+      which closes the menu.) Close the menu: the keyboard stays in Bench.
+- [ ] **Two quick right-clicks**: in Comms, right-click Slack's sub-tab
+      and, at once, Outlook's. Only Slack's menu opens. Press Escape:
+      Outlook's pane isn't focused.
+- [ ] **Near the screen's edges**: move Bench's window so that a pane is
+      at the right edge of the screen, and open its **⋯** menu: the menu
+      stays on the screen, and **Move to Tab**'s submenu opens to the
+      left. Open a menu near the bottom of the screen: macOS moves the
+      menu up to fit. Resize Bench's window to 640 by 480 points and open
+      Slack's **⋯** menu: the menu can go past the window's edges, but
+      not the screen's, and all of it can be reached.
+- [ ] **Long names**: rename a tab with a name of 80 characters. In Zed's
+      **⋯** menu, **Move to Tab** shows the name cut short with an
+      ellipsis, and the menu isn't as wide as the screen.
+- [ ] **Something changes while it's open**: open Zed's **⋯** menu, and
+      quit Zed from the Dock with the pointer, or from a terminal with
+      `sleep 3; osascript -e 'quit app "Zed"'` run first. Once Zed has
+      gone, choose **Split Right**: nothing happens, and nothing else
+      moves.
+- [ ] **With the other menus' changes**: in Comms, right-click the
+      Research tab and choose **Rearrange**: the title bar shows Research
+      as current at once, before its windows move, as a click on the tab
+      does (decision 67). With `BENCH_DEBUG=1`, the log has an `arranged`
+      line with `reason=tab`, then one with `reason=rearrange`. Have
+      Rectangle keep moving a docked window, as in [Window
+      tools](#window-tools): the window's **⋯** menu says why on its first
+      line, dimmed, and has **Dock Again**, which docks it. Click Finder,
+      move a Finder window over Bench, then click Bench's **⋯** button:
+      Bench comes forward and the Finder window goes, with its toast, as
+      before (decision 68); open more menus: nothing more goes, and no
+      other toast shows.
+- [ ] **What still raises Bench**: open the add dialog, the jump
+      palette, and the status bar's list of notices, and drag a sub-tab:
+      each draws over the docked windows, which go behind Bench and come
+      back when it closes, as before. Pop out a terminal and right-click
+      in its window: its menu is drawn in its window, as before, with
+      **Back to Bench**.
+
+### The drop-down terminal
+
+Decision 72. Use the example config, with Bench filling a monitor and a
+second display if you have one. Quit Rectangle and the other window
+tools, apart from the check with Rectangle below: ⌃⌥D is Rectangle's
+**First Third**. Set the `dropdown` shortcut to ⌃⌥D in
+**Settings ▸ Keyboard**. Do the checks in light and dark, and once with
+**Increase contrast** on in **System Settings ▸ Accessibility ▸
+Display**.
+
+- [ ] **Use as Drop-down**: in Code, open the terminal's **⋯** menu and
+      choose **Use as Drop-down**. The terminal leaves its pane, and
+      slides down from the top of the screen, below the menu bar, as wide
+      as the screen and 40% of its height tall, with a bar that says
+      "Drop-down: zsh — ~/code" and has **Back to Bench** and **Hide**.
+      The toast says "… is the drop-down now. Press ⌃⌥D to show or hide
+      it." Type `echo hi` and press Return: it runs in the drop-down.
+- [ ] **Over another app, and the keyboard back**: click in TextEdit's
+      window, so that it has the keyboard, and press ⌃⌥D. The drop-down
+      slides down over TextEdit and has the keyboard: what you type goes
+      to its shell. TextEdit's menu bar stays, and Bench doesn't come
+      forward: its window stays behind TextEdit. Press ⌃⌥D again: the
+      drop-down slides up, and what you type next goes to TextEdit, with
+      no click. Do it again with **Show Drop-down** in Bench's menu bar
+      item's menu, and with **View ▸ Show Drop-down** while Bench is in
+      front.
+- [ ] **A click elsewhere**: show the drop-down over TextEdit, then click
+      in TextEdit's window: the drop-down slides up, and TextEdit has the
+      keyboard. Show it again, and click in Bench's window: it hides.
+      Press ⌃⌥D: it shows. Run `sleep 60` and press ⌘W, then click in
+      TextEdit while Bench asks: the drop-down stays. Choose **Cancel**.
+- [ ] **Clicks, copy, and paste over another app**: with TextEdit in
+      front, show the drop-down and click in its terminal: TextEdit's
+      menu bar stays, and Bench doesn't become the active app. Select
+      some output with the pointer and press ⌘C, then press ⌘V: the text
+      is pasted at the prompt. Press ⌘F: the terminal's find bar opens.
+- [ ] **On another desktop and over full screen**: move to another
+      desktop (Space) with Control+Right Arrow, and press ⌃⌥D: the
+      drop-down shows there, and macOS doesn't switch back to Bench's
+      desktop. Put Safari in full screen and press ⌃⌥D: the drop-down
+      shows over Safari, and Safari stays in full screen. Press Escape
+      at the prompt: the drop-down hides, and Safari has the keyboard.
+- [ ] **Bench's screen**: with two displays, click in a window on the
+      display without Bench, and press ⌃⌥D: the drop-down shows at the
+      top of Bench's display, as wide as it. Hide Bench with ⌘H and press
+      ⌃⌥D again: it's on Bench's display still. In **System Settings ▸
+      Displays ▸ Arrange…**, put the other display above Bench's. Press
+      ⌃⌥D: the drop-down fades in at the top of Bench's display, and
+      nothing of it shows on the display above. Press ⌃⌥D again: it fades
+      out. Put the other display beside Bench's again: it slides.
+- [ ] **While Bench is hidden**: press ⌘H in Bench, then ⌃⌥D: the
+      drop-down shows, and Bench stays hidden. Hide it again.
+- [ ] **Escape**: in the drop-down, at the prompt, press Escape: it
+      hides a moment later. Show it, and press Escape twice: it hides at
+      once. Show it, run `vim`, and press Escape: vim gets it (type `:q`
+      and Return to leave), and the drop-down stays. Run `less
+      /etc/hosts`, press Escape, then `q`: the same. With **Use Option as
+      Meta key** on, Option+B moves back a word in the shell, and the
+      drop-down stays. Turn it off, type `echo a b`, and press Escape
+      then B at once: the cursor moves back a word, and the drop-down
+      stays. Click the bar, and press Escape: it hides.
+- [ ] **⌘Escape**: show the drop-down, run `vim`, and press ⌘Escape: the
+      drop-down hides, and vim gets nothing. Show it: vim is still in
+      normal mode; type `:q` and Return. Point at **Hide**: its tooltip
+      says "Hide the drop-down (⌘⎋)". Turn the `dropdown` shortcut off,
+      show the drop-down with **View ▸ Show Drop-down**, and press
+      ⌘Escape: it hides.
+- [ ] **VoiceOver**: with VoiceOver on, press ⌃⌥D. VoiceOver says
+      "Drop-down terminal", and reads the shell's prompt and new output.
+      It reads **Back to Bench** and **Hide** in the bar. Hide the
+      drop-down: VoiceOver is back where it was, in the app before.
+- [ ] **Reduce motion**: turn on **Reduce motion** in **System Settings
+      ▸ Accessibility ▸ Display**. Press ⌃⌥D: the drop-down appears
+      without sliding, and goes without sliding. Turn it off: it slides
+      again.
+- [ ] **The first show after Bench opens**: quit Bench with the drop-down
+      hidden, and open it again. Press ⌃⌥D: the drop-down slides down on
+      the first press, not the second, and its shell is new, in its
+      folder. Quit Bench with it showing: when Bench opens, it's hidden.
+- [ ] **Height**: in **Settings ▸ Terminals**, set **Drop-down height** to
+      60 and save. Press ⌃⌥D: the drop-down is 60% of the screen's height
+      tall. Type 95 and save: Settings says "The drop-down's height must
+      be from 20 to 90 percent of the screen." and stays open.
+- [ ] **Needing you while hidden**: in the drop-down, run `sleep 5;
+      printf '\a'` and hide it at once. After 5 seconds, a bell follows
+      the name in Bench's menu bar item, its menu and the **View** menu
+      have **Show Drop-down — Needs Attention**, and a notification
+      arrives with "Drop-down" as
+      its subtitle. Click the notification: the drop-down shows, and the
+      bell goes. Run `sleep 5` and hide it: when it ends, the same, for
+      the finished command. With **Icon only** chosen for the menu bar
+      item, the bell shows beside the icon.
+- [ ] **Across tab switches**: run `top` in the drop-down and hide it.
+      Switch tabs a few times, then show it: `top` is still running.
+- [ ] **⌘W**: run `sleep 60` in the drop-down and press ⌘W: Bench asks
+      before it ends the terminal; choose **Cancel**, and it stays. Press
+      Control+C, then ⌘W: it closes, and the terminal has gone. Press
+      ⌃⌥D: a new terminal, in your home folder, is the drop-down.
+- [ ] **Back into a pane**: show the drop-down, and click **Back to
+      Bench**: the terminal goes into the focused pane, and Bench comes
+      forward. Make it the drop-down again, then choose **Move into This
+      Pane** in another pane's **⋯** menu: it's a sub-tab there, with its
+      output, and ⌃⌥D makes a new terminal, in your home folder, the
+      drop-down.
+- [ ] **Undo and lists of windows**: move a tab, then make a terminal
+      the drop-down, and undo: the tab moves back, and the drop-down is
+      still the drop-down. Open **New Tab from Open Windows…** and the
+      jump palette: neither lists the drop-down under the windows that
+      aren't in a tab.
+- [ ] **Another terminal**: with one terminal as the drop-down, choose
+      **Use as Drop-down** for another: the first goes back into the
+      second's pane, and the second slides down.
+- [ ] **Raised mode**: open the jump palette in Bench, so that it's
+      raised, then press ⌃⌥D: the drop-down shows over Bench's window.
+- [ ] **At 640 by 480**: make Bench's window 640 by 480 points, and show
+      the drop-down: its size follows the screen, not the window, and
+      its bar fits.
+- [ ] **When Bench comes forward** (decision 68): click Finder, and move
+      a Finder window over Bench's window. Show the drop-down over it,
+      then click Bench's icon in the Dock. Finder hides, and the toast
+      says "Hid Finder because it covered Bench." Nothing says that Bench
+      hid itself or the drop-down, and Bench's window stays. Show the
+      drop-down again: it slides down as before.
+- [ ] **Switch times** (decision 67): run Bench with `BENCH_DEBUG=1`
+      (see [Read the log](#read-the-log)). Show and hide the drop-down
+      five times with ⌃⌥D, then run
+      `grep 'msg=arranged' ~/Library/Logs/Bench/bench.log | tail -5`:
+      none of the lines is from then. Switch tabs with the drop-down
+      showing: the switch has its `reason=tab-shortcut` or `reason=tab`
+      line as before, and the drop-down stays. **Help ▸ Report a
+      Problem…** has no reason for the drop-down.
+- [ ] **With Rectangle** (decision 69): open Rectangle with its
+      recommended shortcuts. In **Settings ▸ Keyboard**, **Show or hide
+      the drop-down** says "Rectangle uses ⌃⌥D too. Both apps may act on
+      this key." and suggests a key that Rectangle doesn't use, and the
+      notice about Rectangle names "Show or hide the drop-down (⌃⌥D)"
+      last. Use the suggestion. Show the drop-down over TextEdit and
+      press Rectangle's ⌃⌥C (**Center**): no pane says that something
+      keeps moving a window. Hide the drop-down and show it again: it's
+      across the top of the screen. Quit Rectangle.
+- [ ] **A display that goes and comes back** (decision 70): with Bench
+      on the monitor, filling it, show the drop-down there, and unplug
+      the monitor. Once Bench fills the built-in display, the drop-down
+      is across the top of the built-in display, as wide as it, and
+      still has the keyboard. Plug the monitor in again: Bench goes back
+      to it, with "Back on" and the monitor's name, and the drop-down
+      stays on the built-in display. Hide it and show it: it's on the
+      monitor. Hide Bench with ⌘H, unplug the monitor, and show the
+      drop-down: it's on the built-in display, where macOS put Bench.
+
+### Drop files and folders
+
+Decision 73. Use the example config, with Bench filling a monitor. Make a
+folder `~/Desktop/Drop test` with a file `Q4 report (final).pdf`, a file
+`café ünï.txt`, and a folder `bench-site` in it, and keep a Finder window
+on it beside Bench. Do the checks in light and dark, and once with
+**Increase contrast** on in **System Settings ▸ Accessibility ▸
+Display**.
+
+- [ ] **On a terminal**: drag `Q4 report (final).pdf` to Code's terminal.
+      While it's over the terminal, the terminal has a tint and a frame in
+      the accent colour, and the frame follows the pointer to the
+      terminal, not the pane's header, with no offset. Drop it: the
+      terminal shows
+      `/Users/you/Desktop/Drop\ test/Q4\ report\ \(final\).pdf`, with
+      your user's name, and a space after it, and no Return. Press
+      Control-A, type `ls `, and press Return: `ls` lists the file. Drop two files at
+      once: both paths, each with a space after it. Drop `café ünï.txt`:
+      its letters stay as they are.
+- [ ] **A paste, in a program that asks for one**: run `claude` in a
+      terminal and drop the file on it: the path shows as pasted text,
+      and no Return is sent. Run `cat -v` and drop it: no
+      `^[[200~` shows, as `cat` doesn't ask for pastes to be marked.
+- [ ] **The keyboard stays**: click in TextEdit, then drop a file on a
+      terminal in Bench's window: the path is typed, and TextEdit still
+      has the keyboard and stays in front.
+- [ ] **On a pane's header**: drag `bench-site` to Code's left pane's
+      header: the header has a tint and a frame while it's over it. Drop
+      it: a new terminal, in `~/Desktop/Drop test/bench-site`, joins the
+      pane and shows. Drag `/Applications/Calculator.app` (or another app
+      that isn't running) from a Finder window of `/Applications` to the
+      header: the app opens, and its window joins the pane. Drop
+      `Q4 report (final).pdf` on the header: the toast says "Drop folders
+      and apps here. Drop files on a terminal."
+- [ ] **The focus after a drop on a pane**: focus Code's left pane (Zed),
+      then drop an app that isn't running on the right pane's header: the
+      right pane becomes the focused pane, Zed doesn't come in front of
+      the Finder, and the app's window comes to the right pane.
+- [ ] **An empty pane**: split a pane, so that it has an empty pane, and
+      drop `bench-site` on the empty pane's body: a terminal opens there.
+- [ ] **The tab +**: drop `bench-site` and an app on the **+** after the
+      tabs: the **+** is outlined while they're over it. A new tab,
+      **bench-site**, with two panes, opens, and the toast has **Undo**.
+      Click **Undo**: the tab goes, and the app's window goes back to
+      where it was. Drop nine folders at once: the toast says to drop at
+      most 8, and that Bench opened none, and nothing opens.
+- [ ] **Nothing to open**: put Calculator's only window in a tab, then
+      drop `/Applications/Calculator.app` on the **+**: Bench makes no
+      tab, `config.toml` doesn't change, and the toast says why. Make an
+      empty folder `MyApp.xcodeproj` in `~/Desktop/Drop test` and drop it
+      on the **+**: the toast says "Drop folders and apps here. Drop files
+      on a terminal.", and no tab opens. Drop it on a terminal: its path
+      is typed.
+- [ ] **An app outside `/Applications`**: copy an app to
+      `~/Desktop/Drop test` and drop it on a pane's header: it opens and
+      joins the pane, and the add dialog lists it under **Apps** until
+      Bench quits.
+- [ ] **A docked app's pane**: drop the file on Zed's or VS Code's window
+      in a pane: the app opens the file, as it does outside Bench, and
+      Bench shows no highlight and no toast.
+- [ ] **A Web item's page**: drop the file on a Web item's page: the page
+      gets it, as in Safari. On a page that doesn't take files, Bench's
+      page stays, and the Web item's page doesn't go to the file.
+- [ ] **A popped-out terminal**: pop a terminal out of Bench, and drop
+      the file on its window's bar and on its terminal: the path is typed
+      in its terminal each time, once. Pop out a terminal with `false` as
+      its `command`, so that its command has finished, and drop the file
+      on it: the toast in the popped-out window says "The command has
+      finished. Press Return, then drop again.", and Bench's window shows
+      nothing.
+- [ ] **The drop-down**: show the drop-down over a Finder window, and
+      drag the file from the part of the Finder window below it, without
+      clicking first. If the drop-down stays, drop the file on it: the
+      path is typed in its terminal. If it hides as the drag starts, note
+      that in the release notes' known problems. Drop a link from Safari
+      on the drop-down: its own toast says what Bench takes.
+- [ ] **The windows over Bench stay**: with **When Bench comes forward**
+      set to **Hide windows that cover Bench**, move the Finder window of
+      `~/Desktop/Drop test` over part of Bench, click the Finder, and drop
+      `bench-site` on a pane's header that it doesn't cover. The new
+      terminal gets the keyboard and Bench comes forward, but the Finder
+      window stays where it is, with no toast about it. Drop `bench-site`
+      on the **+** in the same way: the new tab shows as current, the
+      Finder window stays, and the toast with **Undo** stays. Click the
+      Finder, then click Bench's status bar: the Finder hides, as in
+      [Windows that cover Bench](#windows-that-cover-bench).
+- [ ] **A window that keeps moving**: with Rectangle running, make Zed's
+      pane say "Zed or Rectangle keeps moving this window", as in
+      [Window tools](#window-tools). Drop `bench-site` on that message: a
+      new terminal joins the pane and shows, and Zed's sub-tab keeps its
+      amber warning sign. Click Zed's sub-tab: the message and **Dock
+      again** are still there, and Zed's window is where Rectangle put it.
+      Drop the PDF on the message: the toast says "Drop folders and apps
+      here. Drop files on a terminal.", and the window stays.
+- [ ] **Elsewhere**: drop the file on the tab strip's empty space and on
+      the status bar: the toast says where to drop files.
+- [ ] **A link**: drag a link from Safari's address bar to Bench's title
+      bar and to a terminal: the toast says "Bench takes files, folders,
+      and apps from the Finder.", and Bench's window stays as it was.
+      Drag text from TextEdit into the jump palette's field: the text goes
+      into the field. Select text in the status bar, drag it, and drop it
+      in the status bar; then drag a link from Safari to the title bar
+      again: the toast still says what Bench takes.
+- [ ] **An image from Safari, a photo from Photos**: drag an image from a
+      web page in Safari, and a photo from Photos, to Code's terminal:
+      nothing is highlighted while they're over it, nothing is typed, and
+      the toast says "Save it as a file first, then drag the file from the
+      Finder." Save the image, and drag its file from the Finder: its
+      path is typed.
+- [ ] **Acknowledgements**: open **Bench ▸ Acknowledgements**, and drop a
+      PDF from the Finder and a link from Safari on it: the cursor shows
+      that it can't drop, and the page stays as it was.
+- [ ] **At 640 by 480**: make Bench's window 640 by 480 points. Drop
+      `bench-site` on the **+** and on the title bar's pane in the `tabs`
+      view: each works, and each highlight fits. Drop the PDF on a pane's
+      header and on the status bar, and a link on the title bar: each
+      toast shows its whole message, on one line. Hide the status bar
+      and do it again: each message still shows in full in the title
+      bar.
+- [ ] **VoiceOver**: with VoiceOver on, drop a file on a terminal:
+      VoiceOver reads the typed path, as for typed text, and the drop
+      changes nothing else that VoiceOver reads.
+
+### Tab colours
+
+Decision 74. Use the example config, in which Comms is blue and Code is
+green, with Bench filling a monitor. Do the checks in light and dark, and
+once with **Increase contrast** on in **System Settings ▸ Accessibility ▸
+Display**.
+
+- [ ] **The title bar and panes**: on Comms, the tab has its raised
+      background and a blue line across its bottom, and Code has a short
+      green line. Each pane header in Comms has a thin blue band along its
+      top, which stops short of the pane's border at the top and the
+      sides. The focused pane's border is orange, and the band doesn't
+      touch it. Every line, band, and dot is easy to see, in light, dark,
+      and with Increase contrast. Give Comms **Yellow**: the yellow line
+      and bands don't look like the orange border, and the panes that
+      aren't focused don't look focused.
+- [ ] **The Tab menu**: open **Tab** in the menu bar. Comms and Code have
+      a round dot before their names, blue and green, sharp on a Retina
+      screen and about as tall as a capital letter. Research has no dot,
+      but its name lines up with the others. The tick of the current tab
+      still shows. Switch macOS between light and dark: both dots are easy
+      to see on both menus. Give Research a colour in Tab properties: the
+      menu has its dot the next time it opens.
+- [ ] **Tab properties**: open Tab properties for Comms. **Colour** is the
+      first row under the name, with **Blue** chosen and named beside
+      the colours. Press Tab from **Position**: the focus goes to **Blue**,
+      and the arrow keys choose the colours on either side. Choose **Pink**
+      and **Save**: the tab, its panes, the overview of every tab, the jump
+      palette, and the Tab menu turn pink, and `config.toml` has
+      `colour = "pink"` for Comms, with the old file in `config.toml.bak`.
+      The message has **Undo**, and **Tab ▸ Undo Change Tab Properties**
+      in the menu bar takes the change back: Comms is blue again, in
+      `config.toml` too. Choose **None** and **Save**: the colour goes, and
+      so does the `colour` line.
+- [ ] **VoiceOver**: with VoiceOver on, open Tab properties and move to
+      **Colour**. VoiceOver reads "Colour, radio group" and each swatch by
+      its name, as "Blue, selected, radio button, 6 of 9". The tab strip
+      reads the tabs' names as before, without their colours.
+- [ ] **Rename, delete, and reload**: double-click Code and rename it: it
+      stays green. Delete Code with **Delete tab**, then **Undo**: it comes
+      back green. Delete it again, quit and open Bench, and choose **Tab ▸
+      Reopen Closed Tab**: it comes back green. In `config.toml`, change
+      Comms' colour to `"orange"` and reload: the status bar reports
+      `"orange" isn't a tab colour`, and Bench keeps the last config that
+      worked. Change it to `"gray"`: the status bar asks `did you mean
+      "grey"?`.
+- [ ] **Move to Tab**: click a sub-tab's **⋯** in Code, and open **Move
+      to Tab**, then **Also Show In**. Both are native menus (see [Native
+      menus](#native-menus)): Comms has a blue dot and Code a green one,
+      as sharp as the Tab menu's, Research has none but lines up with
+      them, and **New Tab** has none. **Pane ▸ Move to Tab** in the menu
+      bar has the same dots. Give Research a colour: each of these menus
+      has its dot the next time it opens.
+- [ ] **A switch**: on Comms, click Code. Code's tab
+      has its raised background and full green line at once, before its
+      windows show, and Comms' line is short again; the pane headers turn
+      green as Code's panes show.
+- [ ] **The warning sign**: give Code **Yellow**, choose **Compact** in
+      **Settings ▸ Appearance**, and make Zed's pane say "Zed or Rectangle
+      keeps moving this window", as in [Window tools](#window-tools). The
+      amber warning sign on Zed's sub-tab is clear of the yellow band
+      above it, and doesn't look like it, in light, dark, and with
+      Increase contrast. Choose **Standard** again: the sign is still clear
+      of the band.
+- [ ] **Drops and the drop-down**: drag a folder from the Finder over a
+      pane header in Comms, as in [Drop files and
+      folders](#drop-files-and-folders): the header has the orange frame,
+      and the blue band shows inside it, below the frame. Move the folder
+      away: the band goes back up. Show the drop-down terminal (see [The
+      drop-down terminal](#the-drop-down-terminal)): it has no colour,
+      whichever tab is current.
+- [ ] **A small window**: make Bench's window its smallest, 640 by 480
+      points. The current tab's coloured line shows, and in Tab
+      properties, the colours are in view on one row, without scrolling.
+
+### Other languages
+
+Decision 75. Do these checks on a Mac set to German, and again on a Mac
+set to Japanese. To set the language, open **System Settings ▸ General ▸
+Language & Region**, and put the language first in **Preferred
+Languages**. Then log out and in again, so that every app opens in that
+language. Dock a Safari window, a Finder window, a Terminal window, a Mail
+viewer window, and a Notes window in one tab. On the Mac set to Japanese,
+dock a Chrome window too.
+
+- [ ] **It builds**: `internal/mac` compiles `benchCopyMenuKey` and
+      `benchMenusFileFirst` in `ax_darwin.m`, and the Go exports
+      `benchNewWindowRank` and `benchCloseWindowRank`, with a title, a key
+      character, and modifiers, and `benchFileMenuRank`, as
+      `bridge_darwin.h` declares them. `go test ./internal/mac/` passes on
+      the Mac.
+- [ ] **New Window**: for each app, choose **New window** in the pane's
+      add dialog. Safari opens a new window, not a private window or a
+      tab: in German, **Ablage ▸ Neues Fenster**, and in Japanese,
+      **ファイル ▸ 新規ウインドウ**. Terminal opens a window with the first
+      profile in its **Neues Fenster** (**新規ウインドウ**) submenu, in the
+      menu after **Terminal**. Finder opens a new Finder window: in
+      Japanese, from **新規Finderウインドウ**, which counts because it has
+      Command-N. Each new window comes to the pane. Then drag Safari from
+      the Finder's Applications folder onto another pane's header: Safari
+      opens a new window in the same way, and it comes to that pane
+      (decision 73). In Japanese, **New window** for Chrome opens Chrome
+      again, so no window opens while Chrome has one: Chrome titles the
+      item **新しいウィンドウ**, with a small ィ, which isn't Apple's
+      title. This is a known gap (decision 75). If Chrome opens a new
+      window, note it.
+- [ ] **No message and no note**: **New window** for Mail opens a new
+      viewer window in German (**Neues Fenster**, with Option-Command-N).
+      In Japanese, it opens Mail again, as **新規ビューアウインドウ**
+      doesn't have Command-N. **New window** for Notes opens Notes again.
+      No new message or note opens in either language.
+- [ ] **Close Window**: find a window without a close button, as in
+      [Before each release](#before-each-release), and dock it. Before you
+      close it, note the titles of its app's close items in Accessibility
+      Inspector. Then close the window from Bench. Bench doesn't log which
+      item it chooses, so tell it from those titles. Most apps with such
+      windows have menus in English, even on a German or a Japanese Mac.
+      Then the window closes with **Close Window**, or **Close**, which
+      shows only that English still works. To check the localised titles,
+      you need such a window in an app whose menus are in German or
+      Japanese, as macOS gives them to Apple's apps. Then the window closes
+      with **Fenster schließen**, or **Schließen**, in German, and with
+      **ウインドウを閉じる**, or **閉じる**, in Japanese. Note the app, its
+      titles, and whether the window closed. If you find no such app, write
+      that nobody has checked the localised titles of Close on a Mac yet.
+- [ ] **The key equivalents**: in Accessibility Inspector, Safari's
+      **Neues Fenster** has `AXMenuItemCmdChar` "N" and
+      `AXMenuItemCmdModifiers` 0, and **Neues privates Fenster** has "N"
+      and 1, for Shift. **Tab schließen** (**タブを閉じる**) has "W" and 0,
+      and **Fenster schließen** (**ウインドウを閉じる**) has "W" and 1.
+      These are the keys that `appMenus` in `internal/mac/menus_test.go`
+      gives Safari. If any differs, Bench reads keys wrongly, or the tests
+      don't match Safari: note what the Inspector shows.
+- [ ] **The titles**: in Safari, Finder, TextEdit, Terminal, and Mail,
+      check that the menus have the titles of `menuLanguages` in
+      `internal/mac/menus.go`, for German and for Japanese: New Window,
+      Close Window, Close, and Finder's New Finder Window. Note any that
+      differ, with the app and the macOS version. The other languages in
+      the table come from the same source, but nobody has checked them on
+      a Mac yet: Danish, Dutch, Finnish, French, Italian, Korean,
+      Norwegian, Polish, Portuguese (Brazil and Portugal), Russian,
+      Simplified and Traditional Chinese, Spanish, Swedish, and Turkish.
+      Check one or two of them if you can.
+- [ ] **English still works**: on a Mac set to English, **New window**
+      opens a window of Safari, Finder (**New Finder Window**), Terminal
+      (from **Shell ▸ New Window**), and Mail (**New Viewer Window**), and
+      no private window, tab, message, or note.
+
+### Pages kept running in the background
+
+Decision 76. Use a build with your changes, and the example config, with
+Slack and Outlook on the web signed in, each in a tab of its own, other
+than the first tab. Allow Bench in **System Settings ▸ Notifications**. Run
+with `BENCH_DEBUG=1` (see [Read the log](#read-the-log)): the log has the
+`LoadWebView` calls.
+
+- [ ] **It builds**: `internal/mac` compiles `benchWebLoad`,
+      `benchWebKeepRunning`, `benchOffline`, and `retryLoadSoon` in
+      `web_darwin.m`, as `bridge_darwin.h` declares them, and
+      `Platform.LoadWebView` and `Platform.KeepWebViewRunning` in
+      `platform_darwin.go`.
+- [ ] **The first notification**: show Slack once, and switch to another
+      tab. Have someone send you a direct message. A notification comes,
+      and Bench says "Slack will keep running in the background, so it can
+      notify you.", with **Undo**. `config.toml` has `keep_running = true`
+      in Slack's entry. Slack's ⋯ menu has **Keep Running in the
+      Background** ticked, before its label, and so does **Pane ▸ Page**
+      while Slack is shown. A second notification says nothing more.
+- [ ] **The first notification, in another app**: remove `keep_running`
+      from Outlook's entry. Show Outlook once, then switch to Mail.app.
+      Send yourself an email. The notification comes, and Bench says
+      nothing yet. Switch back to Bench: then it says "Outlook will keep
+      running in the background, so it can notify you.", with **Undo**.
+      After the message has gone, **Tab ▸ Undo** reads **Undo Keep Running
+      in the Background**, and **Help ▸ Recent Messages** has the message
+      with **Undo**. Undo leaves you on the tab you're on.
+- [ ] **A tab not opened since start**: turn **Keep Running in the
+      Background** on for Outlook too. Quit Bench, and open it again on the
+      first tab. Don't open Slack's tab or Outlook's tab. Within about 10
+      seconds, the log has `LoadWebView` for each, one at a time, a few
+      seconds apart. Their tabs and sub-tabs show their unread counts. Send
+      yourself a Slack message and an email: their notifications come, and
+      their counts change, without showing either tab. Click a
+      notification: Bench shows the page, already loaded, with no reload.
+- [ ] **Hidden pages keep running**: leave Bench on the first tab for 30
+      minutes, with Slack and Outlook kept running and never shown. New
+      messages still notify, and the counts still change. WebKit may slow
+      down the timers of pages that can't be seen: note how late the
+      notifications come, if they do.
+- [ ] **A page's process ends while it's hidden**: with Slack kept running
+      and its tab not shown, find Slack's "Web Content" process in Activity
+      Monitor (the one whose memory grew as Slack loaded), and quit it.
+      Within a few seconds, a new one starts, and Slack's notifications and
+      count come again, without showing its tab. Turn **Keep Running in the
+      Background** off for Slack, and quit its process again: it reloads
+      only when you show it.
+- [ ] **No network as Bench opens**: with Slack and Outlook kept running,
+      quit Bench, turn Wi-Fi off, and open Bench. Wait 10 seconds, and turn
+      Wi-Fi on. Within about a minute, Slack and Outlook load, without
+      showing their tabs, and their counts and notifications come. Switch
+      to Slack's tab: it shows loaded, with no blank pane. With Wi-Fi off,
+      a page that isn't kept running and that you show stays blank; show
+      it again once Wi-Fi is on, and it loads.
+- [ ] **Shown later**: switch to Slack's tab. The page shows at once in its
+      pane, at the right size and zoom, with the keyboard in it when you
+      click it, and no white flash. Pop it out and back in: it stays
+      loaded.
+- [ ] **Not loaded yet**: put Gmail behind Slack in a pane, with **Keep
+      Running in the Background** off. After Bench opens, hold the pointer
+      over Gmail's sub-tab: the tooltip says "Not loaded yet: no
+      notifications or counts until you show it". VoiceOver reads it after
+      Gmail's name. In **Show All Tabs**, Gmail's tooltip says the same,
+      and VoiceOver reads "1 page not loaded yet" on the tab's card. Show
+      Gmail: the note goes.
+- [ ] **Undo and off**: click the toast's **Undo**, or choose **Keep
+      Running in the Background** again: it's unticked, and `config.toml`
+      has `keep_running = false`. The page stays loaded until you quit. Open
+      Bench again: the page doesn't load until you show it, and later
+      notifications don't turn it on again.
+- [ ] **With the other items**: Slack's **⋯** menu, a native menu
+      (decision 71), has **Keep Running in the Background** ticked while
+      it's on, after **Stop Sound and Video**, and unticked while it's off;
+      its **Page** submenu has no ticks. While pages load in the background,
+      the log has their `LoadWebView` lines and no `arranged` lines for
+      them (decision 67). With a Finder window over Bench, click Bench:
+      Finder goes (decision 68), and the pages kept running stay loaded and
+      hidden, and their counts go on changing. A page's **⋯** menu has no
+      **Use as Drop-down** (decision 72).
+- [ ] **Memory**: keep four chat and mail pages running, such as Slack,
+      Outlook, Gmail, and Teams, in tabs you don't open. In Activity Monitor,
+      note the memory of Bench and of each "Web Content" process, after 5
+      minutes and after an hour, and the same with none kept running. Write
+      the numbers in decision 76. Bench doesn't put pages to sleep or unload
+      them until these numbers say whether it needs to.
+
+### Links and scripts
+
+Decision 77. Use a `Bench.app` built with your changes, in
+`/Applications`, so that macOS registers its `bench` URL scheme, and the
+example config, which has the tabs Comms, Code, Notes, and Research, and
+the launcher **Claude**. In Terminal, set
+`alias bench=/Applications/Bench.app/Contents/MacOS/bench`.
+
+- [ ] **It builds**: `bundle_test.go` passes, and
+      `plutil -p /Applications/Bench.app/Contents/Info.plist` shows
+      `CFBundleURLTypes` with the scheme `bench`.
+- [ ] **A link from Safari**: with Bench on Comms, type `bench://tab/Code`
+      in Safari's address bar and press Return. Allow Safari to open Bench
+      if it asks. Bench comes forward on Code. Try `bench://tab/code`,
+      `bench://tab/2`, `bench://next`, `bench://previous`, and
+      `bench://last`: each switches, and brings Bench forward.
+      `bench://jump` opens Jump to…, and `bench://overview` shows every
+      tab; each again leaves it open.
+- [ ] **A link from Shortcuts**: make a shortcut with the **Open URLs**
+      action and the URL `bench://tab/Notes`, as the user guide says. Run
+      it from the Shortcuts app, and from the menu bar: Bench switches to
+      Notes.
+- [ ] **A name with spaces**: rename Research to "Mail and chat". In
+      Terminal, run `open "bench://tab/Mail%20and%20chat"`: Bench
+      switches to it. Rename it back.
+- [ ] **Refused links**: run `open "bench://launch/Claude"`. Bench comes
+      forward, and a message says "Links can only switch tabs or show Jump
+      to… or every tab. Bench can't open bench://launch/Claude." Make
+      Bench's window 640 points wide, and try again: the message starts
+      with what links can do. Nothing starts. `open "bench://tab/Nope"`
+      says there's no tab called Nope, and `open "bench://quit"` that
+      links can only switch tabs. `open "bench://tab/C#"` says to write
+      `#` as `%23`.
+- [ ] **A link opens Bench**: quit Bench. Run `open "bench://tab/Notes"`.
+      Bench opens, and once its windows are in place it's on Notes. Note
+      how long that takes. Quit Bench again, and run
+      `open "bench://jump"`: Bench opens with Jump to… open. Do the same
+      with `open "bench://overview"`, which shows every tab, and
+      `open "bench://quit"`, whose message shows once Bench has opened.
+- [ ] **A link's first show of a tab**: give Research a terminal with
+      `command = "top"`, and open Bench on Comms. Run
+      `open "bench://tab/Research"`: Bench switches, and `top` starts,
+      as when you click the tab.
+- [ ] **A link shows the tab at once**: give Research a slow app, such as
+      Xcode, and open Bench on Comms. Run `open "bench://tab/Research"`:
+      the title bar shows Research as current at once, and its windows
+      follow, as when you click the tab. Run `bench next` with the setting
+      on (below): the same. Open **Help ▸ Report a Problem**: the switch
+      times list `link` and `script`.
+- [ ] **A link and windows over Bench**: set **When Bench comes forward**
+      in **Settings ▸ Windows** to hide the windows that cover Bench, and
+      put a Finder window over Bench's. Run `open "bench://tab/Code"` from
+      Terminal: Bench comes forward on Code, and the Finder window hides,
+      as when you click Bench in the Dock.
+- [ ] **A link while a menu is open**: run `sleep 3; open "bench://jump"`,
+      and right-click a tab in Bench before 3 seconds pass. The menu stays
+      open, and Jump to… doesn't show over it. Close the menu with Escape:
+      Jump to… opens, and has the keyboard. Do the same with
+      `bench://overview`, which shows every tab once the menu closes.
+- [ ] **A flood of links**: on Comms, run
+      `for i in $(seq 20); do open -g "bench://next" & done; wait`. Bench
+      switches a few times, at most 4, then ignores the rest, and shows no
+      message for them. Its log says once that it ignored links that came
+      too quickly. Wait a second, and run `open "bench://next"`: Bench
+      switches. `bench next` in a loop isn't limited.
+- [ ] **Scripts with the setting off**: with **Allow scripts to control
+      Bench** off, run `bench tab Code`. It prints "bench tab: Scripts
+      can't control Bench: open Bench, turn on Allow scripts to control
+      Bench in Settings ▸ Advanced, then try again." and `echo $?` prints
+      1. Bench stays on its tab, and shows no message. `bench list` says
+      the same. `ls -l ~/Library/Application\ Support/Bench/` has no
+      `bench.sock`, and has `forward.key` as `-rw-------`. (Bench's own
+      check of what is forwarded to it, for a program that skips the
+      command, has Go tests: `TestRunScriptNeedsAllowScripts`.)
+- [ ] **Quit Bench, setting off**: quit Bench, and run `bench next`. It
+      prints the same, with status 1, and Bench doesn't open.
+- [ ] **Bench opens while a command runs**: quit Bench. Run
+      `open -a Bench; for i in 1 2 3 4 5 6 7 8 9 10; do bench next; sleep 0.2; done`.
+      Bench opens and stays open: the command never takes the lock that
+      tells Bench another one is running.
+- [ ] **Forged commands**: with the setting on, post the notification
+      that Wails forwards with, unencrypted, as another app could:
+      `swift -e 'import Foundation; DistributedNotificationCenter.default().postNotificationName(.init("com.github.itbm.bench"), object: "{\"args\":[\"x\",\"next\"]}", userInfo: nil, deliverImmediately: true)'`.
+      Bench stays on its tab: it drops what isn't encrypted with
+      `forward.key`. `bench next` still works. Open Bench again from
+      Finder while it runs: it comes forward, as before.
+- [ ] **Recorded commands**: with the setting on, record what Wails
+      forwards, as another app could:
+      `swift -e 'import Foundation; let c = DistributedNotificationCenter.default(); c.addObserver(forName: .init("com.github.itbm.bench"), object: nil, queue: nil) { n in print(n.object!); exit(0) }; RunLoop.main.run()' > /tmp/sent.txt`,
+      and run `bench next` in another window. Bench goes to the next tab.
+      Post the same text again at once:
+      `swift -e 'import Foundation; DistributedNotificationCenter.default().postNotificationName(.init("com.github.itbm.bench"), object: try! String(contentsOfFile: "/tmp/sent.txt").trimmingCharacters(in: .whitespacesAndNewlines), userInfo: nil, deliverImmediately: true)'`.
+      Bench stays on its tab, and its log says "dropped a script command,
+      as it came before". Post it again after 10 seconds: Bench stays, and
+      the log says it wasn't sent within 10 seconds of coming.
+- [ ] **Turn it on**: open Bench, and tick **Allow scripts to control
+      Bench** in **Settings ▸ Advanced**. VoiceOver reads its name and its
+      help. Click **Save**. `ls -l` of the support folder shows `bench.sock`
+      as `srw-------`.
+- [ ] **Scripts with the setting on**: from Terminal, while another app is
+      in front, run `bench tab Code`, `bench tab 1`, `bench next`,
+      `bench previous`, and `bench last`. Each prints nothing, with status
+      0, and Bench comes forward on the tab. Note how long each takes:
+      Wails waits up to 0.3 seconds for a link before it forwards.
+      `bench tab "Nope"` prints "bench tab: there's no tab called Nope."
+      with status 1, and `bench tab Mail and chat` prints how to use it,
+      with status 2. Quit Bench, and run `bench next`: it says that Bench
+      isn't running or can't answer scripts, with status 1.
+- [ ] **Move to tab**: on Code, show Zed in the focused pane. Run
+      `bench move-to-tab Comms`. Zed moves to Comms's focused pane, Bench
+      stays on Code, and the message has **Undo** and **Go there**.
+      `bench move-to-tab Code` prints that Bench is on Code already, with
+      status 1, and Bench shows nothing.
+- [ ] **Move to tab from the drop-down**: set up the drop-down terminal,
+      show it, and run `bench move-to-tab Comms` in it. It prints that the
+      drop-down has the keyboard, so there's no shown window to move, with
+      status 1. Nothing moves, and Bench shows no message.
+- [ ] **Launch**: run `bench launch Claude`. A terminal starts in the
+      focused pane, runs `claude`, and Bench comes forward.
+      `bench launch claude` works too. `bench launch Nope` prints that
+      there's no launcher called Nope, with status 1, and Bench shows
+      nothing.
+- [ ] **List**: run `bench list`, then `bench list --json | jq .`. Each
+      lists every tab, pane, and item, with the current tab and the shown
+      items marked. Ring a terminal's bell in another tab (`printf '\a'`),
+      and have Slack show an unread count: the list has the bell, as "Rang
+      the bell", and the counts, with the totals. Show that terminal in a
+      second tab too: `jq .attention` still says 1, as the Dock's badge
+      does. Give the terminal a long title: `bench list` cuts the title,
+      and still ends its line with "(Rang the bell)".
+- [ ] **List's colours, pages, and drop-down**: give Comms the colour
+      blue, and turn on **Keep Running in the Background** for Slack. Give
+      Notes a web page with it off, and open Bench again on Comms. In
+      `bench list --json | jq .`, Comms has `"colour": "blue"`, Slack has
+      `"keepRunning": true`, and the page on Notes has `"notLoaded": true`;
+      `bench list` says "(not loaded yet)" after it. Show Notes: the page
+      loads, and the note goes. With the drop-down terminal set up,
+      `bench list` ends with "Drop-down" and its terminal, and
+      `jq .dropdown.shown` is `true` while it shows. Without one,
+      `jq .dropdown` is `null`.
+- [ ] **Raycast**: add the user guide's script command, and run **Switch
+      to Code** from Raycast: Bench switches to Code.
+- [ ] **Turn it off again**: untick the setting and save. `bench.sock`
+      goes, and `bench tab Code` refuses again. Turn it on, quit Bench:
+      `bench.sock` goes.
+- [ ] **A stale socket**: with the setting on, force-quit Bench in
+      Activity Monitor. `bench.sock` stays. Run `bench list`: it says
+      Bench isn't running. Open Bench: `bench list` works, as Bench
+      replaced the old socket.
+- [ ] **Another user**: from another account on the Mac, run
+      `nc -U "/Users/you/Library/Application Support/Bench/bench.sock"`,
+      with your own user name: it's refused, as only you can open the
+      folder and the socket.
+- [ ] **A long support folder**: run Bench with `BENCH_HOME` set to a
+      folder whose path is about 100 characters long, and the setting on.
+      The status bar says that scripts can't control Bench, as the
+      socket's path is longer than macOS allows. Links still work. With a
+      folder whose path is 92 bytes, so that `bench.sock`'s is 103, the
+      longest that macOS allows, `bench list` works.
+- [ ] **Something in the socket's place**: quit Bench, and run
+      `touch ~/Library/Application\ Support/Bench/bench.sock`. Open Bench
+      with the setting on: the status bar says there's a file that isn't
+      Bench's socket. `bench list` says Bench can't answer scripts, not
+      that the setting is off. Remove the file: within 5 seconds the
+      message goes, and `bench list` works, without touching the setting.
+
 ### Milestone checks
 
 - [ ] **Arranging without Bench's window.** With the test config below,
@@ -3022,9 +4201,10 @@ checks in light and dark, and once with **Increase contrast** on in
       Research. When you press Control-C, it puts everything back.
 - [ ] **Layering.** Clicking Bench's tabs, sub-tabs, and pane headers never
       hides a docked window. Moving or resizing Bench re-docks within one
-      frame of releasing the mouse. Menus, dialogs, and drags appear above
-      docked windows (raised mode), and the docked windows come back when
-      they close.
+      frame of releasing the mouse. Bench's menus open over the docked
+      windows and web pages, which stay in view (decision 71). Dialogs and
+      drags appear above docked windows (raised mode), and the docked
+      windows come back when they close.
 - [ ] **Persistence.** Quit and reopen Bench: the arrangement is intact.
 - [ ] **Web items.** Slack and Outlook stay signed in after quitting and
       reopening Bench, and a Slack message notification appears in
@@ -3186,6 +4366,12 @@ logs, at debug level:
 - every platform event, such as `window-moved`, with its window and app,
   and whether the mouse button was held on the window (`mouseDown`);
 - the engine's decisions, such as putting back a window that its app moved;
+- how long each arrangement took, from what asked for it to the last
+  window placed, as one `arranged` line with its `reason` (such as `tab`,
+  `tab-shortcut`, or `bench-moved`), its time in milliseconds (`ms`), and
+  the most windows that it moved, parked, or raised (`windows`)
+  (decision 67). With `BENCH_DEBUG`, the times include writing the log.
+  **Help ▸ Report a Problem…** has the latest times without it;
 - what each Web item's web view decides about a navigation of its page, a
   new window, or a popup's navigation (`web navigation`, `web popup`, and
   `web popup navigation`), such as `decision=in-browser`, with the scheme

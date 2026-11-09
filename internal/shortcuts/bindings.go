@@ -41,10 +41,10 @@ func AddedKeys(field string) string {
 // next and previous window (next_window, and next_window with Shift added),
 // zoom pane, the keys that arrange the panes (grow and shrink pane, equal
 // panes, and next and previous layout), the last used tab, adding the front
-// window to the focused pane, undo, and sending the shown window to tabs 1
-// to 9 and the last used tab. It returns the bindings that parse and an
-// error for each that doesn't, naming the field: each error is a
-// *FieldError.
+// window to the focused pane, undo, the drop-down, and sending the shown
+// window to tabs 1 to 9 and the last used tab. It returns the bindings that
+// parse and an error for each that doesn't, naming the field: each error is
+// a *FieldError.
 //
 // An empty field turns its bindings off without an error. When two fields
 // make the same shortcut, the first in that order keeps it and the other
@@ -56,11 +56,11 @@ func AddedKeys(field string) string {
 // default, which mustn't take a shortcut that the config gives another
 // field, such as "ctrl+alt+`", which Suggest offers for next_window.
 // config.Parse turns it off then. add_front_window comes after it: it's off
-// by default, and newer still, and undo after that, for the same reason.
-// send_to_tab_modifiers comes last, though the table lists it with
-// move_window_modifiers, for the same reason as last_tab: config.Parse
+// by default, and newer still, and undo and dropdown after that, for the
+// same reason. send_to_tab_modifiers comes last, though the table lists it
+// with move_window_modifiers, for the same reason as last_tab: config.Parse
 // turns it off in a config that leaves it out and gives one of its
-// shortcuts to another field, even add_front_window or undo.
+// shortcuts to another field, even add_front_window, undo, or dropdown.
 func Bindings(s Config) ([]Binding, []error) {
 	b := &builder{owner: make(map[string]string)}
 	b.withKeys("tab_modifiers", s.TabModifiers, ActionTab, tabKeys)
@@ -81,6 +81,7 @@ func Bindings(s Config) ([]Binding, []error) {
 	b.single("last_tab", s.LastTab, ActionLastTab)
 	b.single("add_front_window", s.AddFrontWindow, ActionAddFrontWindow)
 	b.single("undo", s.Undo, ActionUndo)
+	b.single("dropdown", s.Dropdown, ActionDropdown)
 	b.sendToTab("send_to_tab_modifiers", s.SendToTabModifiers)
 	return b.bindings, b.errs
 }

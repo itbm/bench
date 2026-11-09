@@ -21,7 +21,7 @@
 // shown as the focus moves. Only the strips of tabs and sub-tabs close
 // and have menus.
 
-import { store } from './state.js';
+import { menuOpen, store } from './state.js';
 import { closeTab, quickClose } from './close.js';
 import { openTabMenu, openWindowMenu } from './menu.js';
 import { hidePreview } from './preview.js';
@@ -93,7 +93,7 @@ export function syncRoving() {
 function keepPlace() {
   const p = lastPlace;
   const active = document.activeElement;
-  if (!p || store.ui.overlay || store.ui.menu || (active && active !== document.body)) return;
+  if (!p || store.ui.overlay || menuOpen() || (active && active !== document.body)) return;
   if (document.querySelector('[data-key="' + CSS.escape(p.key) + '"]')) return;
   lastPlace = null;
   const strip = document.querySelector('[role="tablist"][data-scroll="' + CSS.escape(p.scroll) + '"]');

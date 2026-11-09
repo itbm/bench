@@ -115,11 +115,52 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   // it's drawn "Fit to browser".
   assert.deepEqual(fake.callsTo('SetDemoScreen').map((c) => c.args), [['fit', 1440]]);
 
-  // The demo bar's Minimise window minimises the focused pane's window,
-  // as Command-M does in the app.
+  // The demo bar's Simulate shows what the preview can pretend happens.
+  // Its Minimise window minimises the focused pane's window, as Command-M
+  // does in the app, and hides the list again.
+  assert.equal(await page.isVisible('#demo-bar [data-action="demo-minimise"]'), false);
+  await page.click('#demo-simulate');
+  assert.equal(await page.getAttribute('#demo-simulate', 'aria-expanded'), 'true');
   assert.equal(await page.isVisible('#demo-bar [data-action="demo-minimise"]'), true);
+  assert.deepEqual(await page.locator('#demo-simulate-menu button').allTextContents(),
+    ['Minimise window', 'Post notification', 'Bring Bench forward', 'Unplug monitor', 'VoiceOver', 'Rectangle', 'Keep moving window']);
   await page.click('#demo-bar [data-action="demo-minimise"]');
   assert.deepEqual((await fake.waitForCall('DemoMinimise')).args, []);
+  assert.equal(await page.isVisible('#demo-simulate-menu'), false);
+  assert.equal(await page.getAttribute('#demo-simulate', 'aria-expanded'), 'false');
+  // Its Bring Bench forward does what a click on Bench does in the app,
+  // while another app is in front: Bench hides the windows that cover it.
+  await page.click('#demo-simulate');
+  assert.equal(await page.textContent('#demo-bar [data-action="demo-come-forward"]'), 'Bring Bench forward');
+  await page.click('#demo-bar [data-action="demo-come-forward"]');
+  assert.deepEqual((await fake.waitForCall('DemoComeForward')).args, []);
+  // Its Post notification has the focused pane's page post one, as Slack
+  // does for a new message.
+  await page.click('#demo-simulate');
+  await page.click('#demo-bar [data-action="demo-notify"]');
+  assert.deepEqual((await fake.waitForCall('DemoNotify')).args, []);
+  // From the keyboard, Simulate's list takes the focus, Escape hides it
+  // and gives the focus back, and a click elsewhere hides it too.
+  await page.focus('#demo-simulate');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement.dataset.action === 'demo-minimise');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.isVisible('#demo-simulate-menu'), false);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-simulate');
+  await page.click('#demo-simulate');
+  await page.click('#demo-bar strong');
+  assert.equal(await page.isVisible('#demo-simulate-menu'), false);
+  // The bar stays one line at this width, as Bench's window is below it:
+  // the hint ends in "…" where it doesn't fit, and its title has all of it.
+  const bar = await page.$eval('#demo-bar', (el) => ({
+    tops: [...el.children].filter((c) => !c.hidden).map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)),
+    hint: [el.querySelector('#demo-hint').textContent, el.querySelector('#demo-hint').title],
+  }));
+  assert.equal(new Set(bar.tops).size, 1, 'the demo bar is one line: ' + bar.tops);
+  assert.equal(bar.hint[1], bar.hint[0]);
+  assert.match(bar.hint[0], /^Drag a sub-tab onto another pane/);
+  // At this width, the hint has room for all of it, ⌃K too.
+  assert.equal(await page.$eval('#demo-hint', (el) => el.scrollWidth <= el.clientWidth), true, 'the hint is cut short');
 
   await page.click('[data-screen="monitor"]');
   const call = await fake.waitForCall('SetDemoScreen', (a) => a[0] === 'monitor');
@@ -131,6 +172,40 @@ test('in the browser preview, draws the traffic lights and the screen picker', a
   await page.waitForFunction(() => document.querySelectorAll('.pane').length === 2
     && document.querySelector('.pane[data-pane-id="p4"]').getBoundingClientRect().top
       === document.querySelector('.pane[data-pane-id="p3"]').getBoundingClientRect().top);
+});
+
+test('in the browser preview, Simulate unplugs the monitor and plugs it in again', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true, screen: 'monitor' }) });
+  t.after(close);
+  await page.waitForSelector('#app-window[data-screen="monitor"]');
+  await page.click('#demo-simulate');
+  assert.equal(await page.textContent('#demo-monitor'), 'Unplug monitor');
+  assert.match(await page.getAttribute('#demo-monitor', 'title'), /^Pretend that you unplug the monitor, as on a Mac/);
+  await page.click('#demo-monitor');
+  assert.deepEqual((await fake.waitForCall('SetDemoMonitor')).args, [false]);
+  assert.equal(await page.isVisible('#demo-simulate-menu'), false);
+  // Bench is on the laptop's screen, as the screen picker says, and the
+  // button plugs the monitor in again.
+  await page.waitForSelector('#app-window[data-screen="laptop"]');
+  assert.equal(await page.getAttribute('#screen-picker [data-screen="laptop"]', 'aria-checked'), 'true');
+  assert.equal(await page.textContent('#demo-monitor'), 'Plug in monitor');
+  assert.match(await page.getAttribute('#demo-monitor', 'title'), /^Pretend that you plug the monitor in again/);
+  // From the keyboard, as any of Simulate's buttons.
+  await page.focus('#demo-simulate');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement.dataset.action === 'demo-minimise');
+  // Past Post notification and Bring Bench forward.
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-monitor');
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('SetDemoMonitor', (a) => a[0] === true)).args, [true]);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'demo-simulate');
+  await page.waitForSelector('#app-window[data-screen="monitor"]');
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('Back on Monitor.'));
+  assert.equal(await page.textContent('#toast .toast-action'), 'Undo');
+  assert.equal(await page.textContent('#demo-monitor'), 'Unplug monitor');
 });
 
 test('the compact view shows one pane, and Show Side by Side changes to the wide layout', async (t) => {
@@ -164,7 +239,7 @@ test('the compact view shows one pane, and Show Side by Side changes to the wide
   const disabled = await page.$$eval('.menu-item[disabled]', (els) => els.map((el) => el.textContent));
   assert.deepEqual(disabled, ['Move Left']);
   assert.equal(await page.$('#window-menu .menu-note'), null);
-  assert.equal(await page.$('.menu-heading:text("Move to Pane")'), null);
+  assert.ok(!labels.includes('Move to Pane'), labels.join(', '));
   await page.click('#window-menu [data-action="menu-sub"]:has-text("Move to Tab")');
   await page.click('#menu-sub .menu-item:has-text("Comms")');
   const move = await fake.waitForCall('MoveItemToTab');
@@ -334,7 +409,8 @@ test('without Accessibility, a sub-tab with no window offers to open its app', a
 test('outside the preview, App and Web bodies are left empty for the native window', async (t) => {
   const { page, close } = await openBench({ world: defaultWorld({ current: 0 }) });
   t.after(close);
-  const bodies = await page.$$eval('.pane-body', (els) => els.map((el) => [el.dataset.native, el.children.length]));
+  // The panes' bodies: the drop-down's, which is hidden, is a terminal's.
+  const bodies = await page.$$eval('#panes .pane-body', (els) => els.map((el) => [el.dataset.native, el.children.length]));
   assert.deepEqual(bodies, [['w1', 0], ['w2', 0]]);
 });
 

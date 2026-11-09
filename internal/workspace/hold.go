@@ -123,55 +123,93 @@ func (e *Engine) recentTabsLocked() []*Tab {
 
 // startHoldLocked starts a hold after last_tab's shortcut, if its
 // modifiers are still held, and reports whether it did. It doesn't while a
-// menu or dialog is open, when the shortcut has no modifiers, or while
-// Bench is hidden and tab shortcuts leave it hidden
+// menu or dialog is open (menuOrDialogLocked), when the shortcut has no
+// modifiers, or while Bench is hidden and tab shortcuts leave it hidden
 // (settings.show_on_tab_shortcut), as Bench couldn't show the tabs then.
 // The shortcut goes back to the last used tab at once instead. A hold
 // starts before Bench has switched tabs too, with the first other tab in
 // the tab bar chosen, as Command-Tab works from the first press.
 func (e *Engine) startHoldLocked() bool {
-	if !e.started || e.overlay || e.closed {
-		return false
-	}
-	if (e.benchHidden || e.p.OwnAppHidden()) && !e.cfg.Settings.ShowOnTabShortcut {
-		return false
-	}
-	mods := platform.ModifiersNamed(shortcuts.Modifiers(e.cfg.Shortcuts.LastTab))
-	if mods == 0 || e.p.HeldModifiers()&mods != mods {
-		return false
-	}
-	tabs := e.recentTabsLocked()
-	if len(tabs) < 2 {
+	mods := e.holdModifiersLocked()
+	if mods == 0 {
 		return false
 	}
 	e.holds++
-	h := &holdState{id: e.holds, tabs: tabs, sel: 1, none: e.lastTabLocked() < 0, mods: mods, start: e.clk.Now()}
+	h := &holdState{id: e.holds, tabs: e.recentTabsLocked(), sel: 1, none: e.lastTabLocked() < 0, mods: mods, start: e.clk.Now()}
 	e.hold = h
-	h.timer = e.after(holdPoll, func() { e.pollHoldLocked(h) })
+	e.pollHoldLater(h)
 	return true
 }
 
-// pollHoldLocked asks whether the hold's modifiers are still held. Once
-// they aren't, it switches to the chosen tab. Held past holdDelay, it
-// shows the tabs, unless a menu or dialog is open. Past holdLimit, or once
-// the Mac has slept, it gives up first: the keys seen let go of after a
-// sleep were let go of before it, or in it.
-func (e *Engine) pollHoldLocked(h *holdState) {
-	if e.hold != h {
+// holdModifiersLocked returns last_tab's modifiers if its shortcut would
+// start a hold now (startHoldLocked), or 0 if it would switch at once.
+func (e *Engine) holdModifiersLocked() platform.Modifiers {
+	if !e.started || e.menuOrDialogLocked() || e.closed || len(e.model.Tabs) < 2 {
+		return 0
+	}
+	if (e.benchHidden || e.p.OwnAppHidden()) && !e.cfg.Settings.ShowOnTabShortcut {
+		return 0
+	}
+	mods := platform.ModifiersNamed(shortcuts.Modifiers(e.cfg.Shortcuts.LastTab))
+	if mods == 0 || e.p.HeldModifiers()&mods != mods {
+		return 0
+	}
+	return mods
+}
+
+// pollHoldLater asks again, after holdPoll, whether hold h's modifiers are
+// still held (pollHold).
+func (e *Engine) pollHoldLater(h *holdState) {
+	h.timer = e.clk.AfterFunc(holdPoll, func() { e.pollHold(h) })
+}
+
+// pollHold asks whether hold h's modifiers are still held
+// (pollHoldLocked). Once they're let go of, it switches to the tab chosen
+// as a tab's shortcut does (switchShowing): the title bar shows the tab
+// as current at once, before Bench has arranged it, and the switch is
+// timed as a tab shortcut's, from when Bench saw the keys let go of
+// (decision 67).
+func (e *Engine) pollHold(h *holdState) {
+	at := e.clk.Now()
+	e.lockAt(at, "")
+	letGo := !e.closed && e.pollHoldLocked(h)
+	to := -1
+	if letGo {
+		to = e.holdTargetLocked(h)
+	}
+	e.unlock()
+	if !letGo {
 		return
+	}
+	e.switchShowing(to, at, reasonTabShortcut, func() error {
+		if e.hold == h {
+			e.endHoldLocked(true)
+		}
+		return nil
+	})
+}
+
+// pollHoldLocked asks whether the hold's modifiers are still held, and
+// reports whether they've been let go of: the hold then ends, switching to
+// the chosen tab (pollHold). Held past holdDelay, it shows the tabs,
+// unless a menu or dialog is open. Past holdLimit, or once the Mac has
+// slept, it gives up first: the keys seen let go of after a sleep were let
+// go of before it, or in it.
+func (e *Engine) pollHoldLocked(h *holdState) bool {
+	if e.hold != h {
+		return false
 	}
 	h.timer = nil
 	now := e.clk.Now()
 	held := now.Sub(h.start)
 	if held >= holdLimit || now.Round(0).Sub(h.start.Round(0))-held > holdSlept {
 		e.endHoldLocked(false)
-		return
+		return false
 	}
 	if e.p.HeldModifiers()&h.mods != h.mods {
-		e.endHoldLocked(true)
-		return
+		return true
 	}
-	if !h.shown && held >= holdDelay && !e.overlay {
+	if !h.shown && held >= holdDelay && !e.menuOrDialogLocked() {
 		h.shown = true
 		// Bench takes the keyboard to show the tabs. Escape gives it back
 		// (see noteJumpLocked).
@@ -180,7 +218,22 @@ func (e *Engine) pollHoldLocked(h *holdState) {
 		em := e.em
 		e.later(func() { em.Command(Command{Name: holdTabsCommand}) })
 	}
-	h.timer = e.after(holdPoll, func() { e.pollHoldLocked(h) })
+	e.pollHoldLater(h)
+	return false
+}
+
+// holdTargetLocked returns the tab that ending hold h switches to, for the
+// title bar to show as current at once, or -1: for the current tab, which
+// it arranges again, and for a quick tap with no last used tab, which says
+// so instead (endHoldLocked).
+func (e *Engine) holdTargetLocked(h *holdState) int {
+	if h.none && !h.shown {
+		return -1
+	}
+	if i := e.model.IndexOf(h.tabs[h.sel]); i >= 0 && i != e.model.Current {
+		return i
+	}
+	return -1
 }
 
 // stepHoldLocked chooses the next tab of the hold (step 1) or the previous

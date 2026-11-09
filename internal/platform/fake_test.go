@@ -485,6 +485,68 @@ func TestStageManager(t *testing.T) {
 	}
 }
 
+func TestToolPreferences(t *testing.T) {
+	f, _ := newTestFake(t)
+	if got := f.ToolPreferences("com.knollsoft.Rectangle"); got.Shortcuts != nil || got.Numbers != nil || got.Texts != nil {
+		t.Errorf("ToolPreferences() = %+v, want none by default", got)
+	}
+	shortcuts := map[string]string{"leftHalf": "ctrl+alt+left", "maximize": ""}
+	f.SetToolPreferences("com.knollsoft.Rectangle", ToolPreferences{Shortcuts: shortcuts, Numbers: map[string]int64{"alternateDefaultShortcuts": 1}})
+	shortcuts["leftHalf"] = "changed"
+	got := f.ToolPreferences("COM.KNOLLSOFT.RECTANGLE")
+	if got.Shortcuts["leftHalf"] != "ctrl+alt+left" || got.Shortcuts["maximize"] != "" || got.Numbers["alternateDefaultShortcuts"] != 1 {
+		t.Errorf("ToolPreferences() = %+v, want what SetToolPreferences set, whatever the case", got)
+	}
+	got.Numbers["alternateDefaultShortcuts"] = 0
+	if f.ToolPreferences("com.knollsoft.Rectangle").Numbers["alternateDefaultShortcuts"] != 1 {
+		t.Error("changing what ToolPreferences returned changed the Fake's")
+	}
+	if calls := f.CallsTo("ToolPreferences"); len(calls) != 3 || calls[0].BundleID != "com.knollsoft.Rectangle" {
+		t.Errorf("calls = %+v", calls)
+	}
+}
+
+// A window tool that lives in the menu bar starts and stops without an
+// event, as on a Mac, which doesn't announce such apps.
+func TestAgents(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.InstallApp("com.knollsoft.Rectangle", "Rectangle", AppNotRegular())
+	f.InstallApp("dev.zed.Zed", "Zed")
+	running := func() bool {
+		return slices.ContainsFunc(f.RunningApps(), func(a App) bool { return a.BundleID == "com.knollsoft.Rectangle" })
+	}
+	if err := f.StartAgent("com.knollsoft.Rectangle"); err != nil {
+		t.Fatal(err)
+	}
+	if !running() {
+		t.Error("RunningApps doesn't list the app that StartAgent started")
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("StartAgent sent %+v, want no events", evs)
+	}
+	if err := f.StartAgent("com.knollsoft.Rectangle"); err == nil {
+		t.Error("StartAgent of a running app succeeded")
+	}
+	if err := f.StartAgent("dev.zed.Zed"); err == nil {
+		t.Error("StartAgent of a regular app succeeded")
+	}
+	if err := f.StartAgent("com.example.Missing"); err == nil {
+		t.Error("StartAgent of an app that isn't installed succeeded")
+	}
+	if err := f.StopAgent("com.knollsoft.Rectangle"); err != nil {
+		t.Fatal(err)
+	}
+	if running() {
+		t.Error("RunningApps lists the app that StopAgent stopped")
+	}
+	if evs := f.DrainEvents(); len(evs) != 0 {
+		t.Errorf("StopAgent sent %+v, want no events", evs)
+	}
+	if err := f.StopAgent("com.knollsoft.Rectangle"); err == nil {
+		t.Error("StopAgent of an app that isn't running succeeded")
+	}
+}
+
 func TestDockBadges(t *testing.T) {
 	f, _ := newTestFake(t)
 	f.AddApp("com.apple.mail", "Mail")
@@ -892,6 +954,73 @@ func TestWindowsAndWindow(t *testing.T) {
 		if err := call(); !errors.Is(err, ErrOtherDesktop) {
 			t.Errorf("acting on a window on another desktop: %v, want ErrOtherDesktop", err)
 		}
+	}
+}
+
+func TestUnplugAndPlugScreen(t *testing.T) {
+	laptop := Screen{ID: "laptop", Primary: true, Frame: layout.Rect{W: 1512, H: 982}, Visible: layout.Rect{Y: 33, W: 1512, H: 949}}
+	monitor := Screen{ID: "monitor", Frame: layout.Rect{X: 1512, W: 2560, H: 1440}, Visible: layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}}
+	f, _ := newTestFake(t)
+	f.SetScreens(laptop, monitor)
+	f.SetContentFrame(monitor.Visible)
+	if err := f.UnplugScreen("projector"); err == nil {
+		t.Error("unplugged a display that isn't connected")
+	}
+
+	// macOS moves Bench's window onto the laptop, no larger than its
+	// visible area.
+	if err := f.UnplugScreen("monitor"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Screens(); !slices.Equal(got, []Screen{laptop}) {
+		t.Errorf("unplugged: Screens() = %+v, want the laptop's alone", got)
+	}
+	if got := f.ContentFrame(); got != laptop.Visible || f.ScreenOfWindow().ID != "laptop" {
+		t.Errorf("unplugged: ContentFrame() = %+v, want the laptop's visible area", got)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{ScreensChanged, BenchMoved}; !slices.Equal(got, want) {
+		t.Errorf("unplugged: events = %v, want %v", got, want)
+	}
+
+	// Plugged in again, the monitor is back, and Bench's window stays.
+	f.PlugScreen(monitor)
+	if got := f.Screens(); !slices.Equal(got, []Screen{laptop, monitor}) {
+		t.Errorf("plugged in: Screens() = %+v, want both", got)
+	}
+	if got := f.ScreenOfWindow().ID; got != "laptop" {
+		t.Errorf("plugged in: Bench is on %q, want still the laptop", got)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{ScreensChanged}; !slices.Equal(got, want) {
+		t.Errorf("plugged in: events = %v, want %v", got, want)
+	}
+
+	// A display that Bench's window isn't on goes without moving it; one
+	// plugged in again with the same ID takes its place.
+	if err := f.UnplugScreen("monitor"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := kinds(f.DrainEvents()), []EventKind{ScreensChanged}; !slices.Equal(got, want) {
+		t.Errorf("unplugged without Bench: events = %v, want %v", got, want)
+	}
+	f.PlugScreen(monitor)
+	moved := monitor
+	moved.Frame.X, moved.Visible.X = -2560, -2560
+	f.PlugScreen(moved)
+	if got := f.Screens(); !slices.Equal(got, []Screen{laptop, moved}) {
+		t.Errorf("plugged in twice: Screens() = %+v, want the laptop's and the monitor once", got)
+	}
+
+	// Unplugging the primary display makes the first one left primary.
+	f.SetBenchScreen("laptop")
+	f.DrainEvents()
+	if err := f.UnplugScreen("laptop"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Screens(); len(got) != 1 || got[0].ID != "monitor" || !got[0].Primary {
+		t.Errorf("unplugged the primary display: Screens() = %+v, want the monitor, primary", got)
+	}
+	if got := f.ScreenOfWindow().ID; got != "monitor" {
+		t.Errorf("unplugged the primary display: Bench is on %q, want the monitor", got)
 	}
 }
 
@@ -1581,6 +1710,78 @@ func TestWebViews(t *testing.T) {
 	want2 := []string{"ShowWebView", "ShowWebView", "HideWebView", "HideWebView", "PopOutWebView", "DockWebView", "PopOutWebView", "DockWebView", "CloseWebView"}
 	if !slices.Equal(got, want2) {
 		t.Errorf("calls = %v, want %v", got, want2)
+	}
+}
+
+// TestLoadWebView checks that LoadWebView makes a web view hidden, with
+// its page's events, that it leaves one that exists as it is, and that
+// WebViewsMade lists each web view made, in order.
+func TestLoadWebView(t *testing.T) {
+	f, _ := newTestFake(t)
+	f.SetWebPages(func(address string) Page { return Page{Host: "host of " + address, Secure: true} })
+	f.SetWebTitles(func(address string) string { return "(3) " + address })
+	slack := WebView{URL: "https://app.slack.com/client", Profile: "slack", Zoom: 1.25}
+	frame := layout.Rect{X: 0, Y: 40, W: 1000, H: 700}
+	if err := f.LoadWebView("w1", slack, frame); err != nil {
+		t.Fatal(err)
+	}
+	want := FakeWebView{ID: "w1", View: slack, Frame: frame, Zoom: 1.25, Loaded: true, KeepRunning: true}
+	if got := f.WebViews()["w1"]; got != want {
+		t.Errorf("after loading, %+v, want %+v, hidden and kept running", got, want)
+	}
+	wantEvents := []Event{
+		{Kind: WebURL, ItemID: "w1", Body: slack.URL, Page: Page{Host: "host of " + slack.URL, Secure: true}},
+		{Kind: WebTitle, ItemID: "w1", Title: "(3) " + slack.URL},
+	}
+	if got := f.DrainEvents(); !slices.Equal(got, wantEvents) {
+		t.Errorf("events = %+v, want %+v", got, wantEvents)
+	}
+
+	// Showing it later sends nothing more, as its page has loaded.
+	if err := f.ShowWebView("w2", WebView{URL: "https://example.com/"}, frame); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ShowWebView("w1", slack, frame); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.WebViews()["w1"]; !got.Visible || got.Shows != 1 || !got.Loaded {
+		t.Errorf("after showing, %+v, want it visible, shown once, and loaded before", got)
+	}
+	if err := f.LoadWebView("w2", WebView{URL: "https://other.example/"}, layout.Rect{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.WebViews()["w2"]; got.Loaded || got.KeepRunning || !got.Visible || got.View.URL != "https://example.com/" {
+		t.Errorf("LoadWebView changed a web view that exists: %+v", got)
+	}
+	f.DrainEvents()
+
+	// KeepWebViewRunning says whether one keeps running while it's hidden.
+	f.KeepWebViewRunning("w2", true)
+	f.KeepWebViewRunning("w1", false)
+	f.KeepWebViewRunning("nope", true)
+	if w1, w2 := f.WebViews()["w1"], f.WebViews()["w2"]; w1.KeepRunning || !w2.KeepRunning {
+		t.Errorf("after KeepWebViewRunning, w1 %+v, w2 %+v", w1, w2)
+	}
+	if got, want := f.CallsTo("KeepWebViewRunning"), []Call{
+		{Method: "KeepWebViewRunning", Arg: "w2 true"}, {Method: "KeepWebViewRunning", Arg: "w1 false"},
+		{Method: "KeepWebViewRunning", Arg: "nope true"},
+	}; !slices.Equal(got, want) {
+		t.Errorf("calls = %v, want %v", got, want)
+	}
+
+	f.CloseWebView("w1")
+	if err := f.LoadWebView("w1", slack, frame); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := f.WebViewsMade(), []string{"w1", "w2", "w1"}; !slices.Equal(got, want) {
+		t.Errorf("WebViewsMade() = %v, want %v", got, want)
+	}
+	if got, want := methods(f.CallsTo("LoadWebView")), []string{"LoadWebView", "LoadWebView", "LoadWebView"}; !slices.Equal(got, want) {
+		t.Errorf("calls = %v, want %v", got, want)
+	}
+	f.SetErr("LoadWebView", errors.New("no"))
+	if err := f.LoadWebView("w3", slack, frame); err == nil || f.WebViews()["w3"] != (FakeWebView{}) {
+		t.Errorf("LoadWebView with an error set = %v, and made %+v", err, f.WebViews()["w3"])
 	}
 }
 

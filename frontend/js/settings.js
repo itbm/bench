@@ -36,8 +36,9 @@ const FIELD_SECTIONS = {
   showStatusBar: 'appearance', paneHeaders: 'appearance', appearance: 'appearance', density: 'appearance', gap: 'appearance',
   tabShortcutHints: 'appearance', scrollBars: 'appearance',
   openMissingApps: 'windows', hideOtherTabs: 'windows', hideOtherApps: 'windows', livePreviews: 'windows', dragToAdd: 'windows',
-  newWindows: 'windows', followFocus: 'windows',
+  newWindows: 'windows', followFocus: 'windows', coveringWindows: 'windows',
   terminalOptionAsMeta: 'terminals', notifyTerminals: 'terminals', keepTerminalOutput: 'terminals',
+  allowScripts: 'advanced',
 };
 
 // SECTION_KEY is where the page keeps the section that the dialog last
@@ -131,9 +132,20 @@ const FOLLOW_FOCUS = [
   { id: 'off', label: 'Do nothing' },
 ];
 
+// COVERING_WINDOWS is what Bench does, as it comes forward, with windows
+// that aren't in a tab and cover it: the covering_windows setting.
+const COVERING_WINDOWS = [
+  { id: 'hide', label: 'Hide windows that cover Bench' },
+  { id: 'leave', label: 'Leave them' },
+];
+
 // DEFAULT_FONT_SIZE is the terminals' text size by default, in points: the
 // terminal_font_size setting.
 const DEFAULT_FONT_SIZE = 12.5;
+
+// DEFAULT_DROPDOWN_HEIGHT is the drop-down terminal's height, in percent of
+// the screen, if Go's settings don't say.
+const DEFAULT_DROPDOWN_HEIGHT = 40;
 
 // openSettings opens the Settings dialog, with a draft of the settings, the
 // launchers, and the shortcuts, and the settings as it found them, so that
@@ -157,6 +169,7 @@ export function openSettings(section = '') {
   ui.settings = {
     compactBelow: String(s.compactBelow ?? ''),
     fontSize: String(s.terminalFontSize ?? DEFAULT_FONT_SIZE),
+    dropHeight: String(s.dropdownHeight ?? DEFAULT_DROPDOWN_HEIGHT),
     launchWait: secondsText(s.launchTimeout),
     settings: { ...s },
     base: { ...s },
@@ -281,6 +294,15 @@ export function setFontSize(value) {
   markChanged();
 }
 
+// setDropdownHeight changes the draft's height for the drop-down terminal,
+// in percent of the screen, without a redraw, as setThreshold does.
+export function setDropdownHeight(value) {
+  const d = store.ui.settings;
+  if (!d) return;
+  d.dropHeight = value;
+  markChanged();
+}
+
 // setLaunchWait changes how long the draft waits for apps to open, in
 // seconds, without a redraw, as setThreshold does.
 export function setLaunchWait(value) {
@@ -314,7 +336,9 @@ function markChanged() {
 // NUMBER_FIELDS are the Settings dialog's number fields, by id, and what
 // each holds in the draft. Their values are left out of the dialog's HTML
 // (fillSettings).
-const NUMBER_FIELDS = { 'compact-below': 'compactBelow', 'terminal-font-size': 'fontSize', 'launch-wait': 'launchWait' };
+const NUMBER_FIELDS = {
+  'compact-below': 'compactBelow', 'terminal-font-size': 'fontSize', 'dropdown-height': 'dropHeight', 'launch-wait': 'launchWait',
+};
 
 // isSettingsNumber reports whether a field is one of the Settings dialog's
 // number fields, where Return saves.
@@ -349,6 +373,7 @@ export function changedSections(view, d) {
   if (d.openAtLogin !== Boolean(view.openAtLogin)) changed.add('general');
   if (d.compactBelow !== String(base.compactBelow ?? '')) changed.add('screens');
   if (d.fontSize !== String(base.terminalFontSize ?? DEFAULT_FONT_SIZE)) changed.add('terminals');
+  if (d.dropHeight !== String(base.dropdownHeight ?? DEFAULT_DROPDOWN_HEIGHT)) changed.add('terminals');
   if (d.launchWait !== secondsText(base.launchTimeout)) changed.add('advanced');
   if (d.launchersChanged) changed.add('launchers');
   if (keysChanges(view, d.keys)) changed.add('keyboard');
@@ -418,12 +443,14 @@ export function resendPreview() {
 export function settingsOf(d, view) {
   const threshold = parseInt(d.compactBelow, 10);
   const size = Number.parseFloat(d.fontSize);
+  const height = parseInt(d.dropHeight, 10);
   const wait = Number.parseFloat(d.launchWait);
   const base = d.base;
   const out = { ...view.settings };
   for (const [name, value] of Object.entries(d.settings)) if (value !== base[name]) out[name] = value;
   if (d.compactBelow !== String(base.compactBelow ?? '') && threshold > 0) out.compactBelow = threshold;
   if (d.fontSize !== String(base.terminalFontSize ?? DEFAULT_FONT_SIZE) && Number.isFinite(size)) out.terminalFontSize = size;
+  if (d.dropHeight !== String(base.dropdownHeight ?? DEFAULT_DROPDOWN_HEIGHT) && height > 0) out.dropdownHeight = height;
   if (d.launchWait !== secondsText(base.launchTimeout) && wait > 0) out.launchTimeout = wait + 's';
   delete out.launchers;
   delete out.shortcuts;
@@ -570,6 +597,15 @@ function followFocusHelp(choice) {
   }
 }
 
+// coveringHelp says what happens with a choice, as Bench comes forward,
+// to windows that cover it.
+function coveringHelp(choice) {
+  if (choice === 'leave') {
+    return 'Windows that aren\'t in a tab stay where they are when you click Bench. Those over Bench sit over its own tabs, panes, and buttons, which you can\'t click until you move them.';
+  }
+  return 'When you click Bench, it hides the apps whose windows cover it, or only those windows if the app has others elsewhere, such as on another display. Bringing the app forward shows them again. Windows that a rule floats stay.';
+}
+
 // gapChoices are the spaces between panes that Settings offers, and the
 // current one if config.toml sets another.
 function gapChoices(gap) {
@@ -636,6 +672,12 @@ const TOGGLE_HELP = {
   dragToAdd: 'Drag a window by its title bar over a pane, and hold it there a moment: a guide shows where it will go. Drop it in the middle to add it to the pane, or at an edge to give it a new pane there. Windows that a rule floats are left alone.',
 };
 
+// ALLOW_SCRIPTS_HELP is the help under Settings ▸ Advanced's Allow scripts
+// to control Bench. It says all that bench list --json shows, notifications
+// too. bench:// links don't need it: they can only switch tabs, as a click
+// does, and show (docs/architecture.md, decision 77).
+const ALLOW_SCRIPTS_HELP = 'The bench command, in Bench.app, can then switch tabs, move the shown window to another tab, and start a launcher, from Terminal or a script, such as a Raycast script command. It can also list your tabs, with your windows\' and pages\' titles and the notifications waiting in them. Any program that runs as you can then do this. bench:// links work either way, because they can only switch tabs and show Jump to… or every tab.';
+
 // sectionBody returns the HTML of a section of the Settings dialog: its
 // tick boxes, choices, and fields.
 function sectionBody(view, d, id) {
@@ -694,9 +736,11 @@ function sectionBody(view, d, id) {
         : toggle(t))).join('');
       const newWindows = NEW_WINDOWS.some((c) => c.id === d.settings.newWindows) ? d.settings.newWindows : 'app-pane';
       const follow = FOLLOW_FOCUS.some((c) => c.id === d.settings.followFocus) ? d.settings.followFocus : 'switch-tab';
+      const covering = d.settings.coveringWindows === 'leave' ? 'leave' : 'hide';
       return '<div class="toggles">' + windows + '</div>'
         + choice('newWindows', 'New windows go to', NEW_WINDOWS, newWindows, newWindowsHelp(newWindows))
-        + choice('followFocus', 'When another tab\'s window comes forward', FOLLOW_FOCUS, follow, followFocusHelp(follow));
+        + choice('followFocus', 'When another tab\'s window comes forward', FOLLOW_FOCUS, follow, followFocusHelp(follow))
+        + choice('coveringWindows', 'When Bench comes forward', COVERING_WINDOWS, covering, coveringHelp(covering));
     }
     case 'keyboard': return renderKeyboardSettings(view, d);
     case 'screens':
@@ -715,13 +759,20 @@ function sectionBody(view, d, id) {
         + toggle(['notifyTerminals', 'Notify me when a terminal in another tab needs attention', d.settings.notifyTerminals !== false, 'notify-terminals-help'])
         + '<p class="settings-help toggle-help" id="notify-terminals-help">' + esc('When a terminal you can\'t see rings its bell, asks for a notification, as Claude Code and Codex can, or finishes its command. Its sub-tab and tab get a bell either way, until you look at it.') + '</p></div><div>'
         + toggle(['keepTerminalOutput', 'Keep terminal output between launches', d.settings.keepTerminalOutput !== false, 'keep-output-help'])
-        + '<p class="settings-help toggle-help" id="keep-output-help">' + esc('Each terminal shows what it last showed when Bench next opens, with its programs\' colours and the rest in grey. Bench keeps it in its support folder, where only you can read it, until you close the terminal. Output can hold secrets, such as passwords and keys: turning this off removes what Bench kept.') + '</p></div></div>';
+        + '<p class="settings-help toggle-help" id="keep-output-help">' + esc('Each terminal shows what it last showed when Bench next opens, with its programs\' colours and the rest in grey. Bench keeps it in its support folder, where only you can read it, until you close the terminal. Output can hold secrets, such as passwords and keys: turning this off removes what Bench kept.') + '</p></div></div>'
+        + '<label class="settings-label settings-after" for="dropdown-height">Drop-down height</label>'
+        + '<div class="settings-field"><input class="number-input" id="dropdown-height" data-key="dropdown-height" type="number" min="20" max="90" step="1" aria-describedby="dropdown-height-help">'
+        + '<span>percent of the screen</span></div>'
+        + '<p class="settings-help" id="dropdown-height-help">' + esc('From 20 to 90. The drop-down terminal slides down this far from the top of the screen, over any app. Make a terminal the drop-down with Use as Drop-down in its ⋯ menu, and set its shortcut in Keyboard.') + '</p>';
     case 'launchers': return renderLauncherSettings(d);
     case 'advanced':
       return '<label class="settings-label" for="launch-wait">Wait for apps to open</label>'
         + '<div class="settings-field"><input class="number-input" id="launch-wait" data-key="launch-wait" type="number" min="1" max="600" step="1" aria-describedby="launch-wait-help">'
         + '<span>seconds</span></div>'
-        + '<p class="settings-help" id="launch-wait-help">' + esc('How long Bench waits for apps to open their windows, when you switch tabs and when you add an app. A slow app may need longer.') + '</p>';
+        + '<p class="settings-help" id="launch-wait-help">' + esc('How long Bench waits for apps to open their windows, when you switch tabs and when you add an app. A slow app may need longer.') + '</p>'
+        + '<div class="toggles settings-toggles-after"><div>'
+        + toggle(['allowScripts', 'Allow scripts to control Bench', Boolean(d.settings.allowScripts), 'allow-scripts-help'])
+        + '<p class="settings-help toggle-help" id="allow-scripts-help">' + esc(ALLOW_SCRIPTS_HELP) + '</p></div></div>';
     default: return '';
   }
 }

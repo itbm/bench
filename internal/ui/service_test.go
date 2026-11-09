@@ -23,6 +23,7 @@ func TestServiceDelegates(t *testing.T) {
 	preview := workspace.SettingsPreview{Appearance: "light", Density: "compact", Gap: 8}
 	launcher := workspace.LauncherView{Name: "Claude", Kind: "terminal", Folder: "~/code/bench", Command: "claude", StartAgain: true}
 	changes := map[string]string{"jump": "ctrl+alt+j"}
+	menu := workspace.Menu{X: 40, Y: 64, Entries: []workspace.MenuEntry{{ID: "rename", Label: "Rename…"}}}
 	tests := []struct {
 		name string
 		call func(s *Service) error
@@ -74,6 +75,8 @@ func TestServiceDelegates(t *testing.T) {
 			call{"UseWebAppWhenReady", []any{"w2"}}},
 		{"PopOut", func(s *Service) error { return s.PopOut("w2") }, call{"PopOut", []any{"w2"}}},
 		{"Redock", func(s *Service) error { return s.Redock("w2") }, call{"Redock", []any{"w2"}}},
+		{"KeepOverBench", func(s *Service) error { return s.KeepOverBench("com.apple.finder") },
+			call{"KeepOverBench", []any{"com.apple.finder"}}},
 		{"AddFrontWindow", func(s *Service) error { return s.AddFrontWindow() }, call{"AddFrontWindow", nil}},
 		{"BackToBench", func(s *Service) error { return s.BackToBench("w2") }, call{"BackToBench", []any{"w2"}}},
 		{"OpenItem", func(s *Service) error { return s.OpenItem("w3") }, call{"OpenItem", []any{"w3"}}},
@@ -125,11 +128,15 @@ func TestServiceDelegates(t *testing.T) {
 		{"UndoLatest", func(s *Service) error { return s.UndoLatest() }, call{"UndoLatest", nil}},
 		{"ReopenTab", func(s *Service) error { return s.ReopenTab("Code") }, call{"ReopenTab", []any{"Code"}}},
 		{"ReopenItem", func(s *Service) error { return s.ReopenItem("w7") }, call{"ReopenItem", []any{"w7"}}},
+		{"UseAsDropdown", func(s *Service) error { return s.UseAsDropdown("w5") }, call{"UseAsDropdown", []any{"w5"}}},
+		{"ToggleDropdown", func(s *Service) error { return s.ToggleDropdown() }, call{"ToggleDropdown", nil}},
+		{"HideDropdown", func(s *Service) error { return s.HideDropdown() }, call{"HideDropdown", nil}},
 		{"TermInput", func(s *Service) error { return s.TermInput("w5", "ls\r") }, call{"TermInput", []any{"w5", "ls\r"}}},
 		{"TermResize", func(s *Service) error { return s.TermResize("w5", 120, 40) }, call{"TermResize", []any{"w5", 120, 40}}},
 		{"TermSnapshot", func(s *Service) error { _, err := s.TermSnapshot("w5"); return err },
 			call{"TermSnapshot", []any{"w5"}}},
 		{"SetOverlay", func(s *Service) error { return s.SetOverlay(true) }, call{"SetOverlay", []any{true}}},
+		{"ShowMenu", func(s *Service) error { _, err := s.ShowMenu(menu); return err }, call{"ShowMenu", []any{menu}}},
 		{"ShowPreview", func(s *Service) error { return s.ShowPreview("w2", area) }, call{"ShowPreview", []any{"w2", area}}},
 		{"HidePreview", func(s *Service) error { return s.HidePreview() }, call{"HidePreview", nil}},
 		{"RequestAccessibility", func(s *Service) error { return s.RequestAccessibility() }, call{"RequestAccessibility", nil}},
@@ -145,10 +152,18 @@ func TestServiceDelegates(t *testing.T) {
 			call{"SetDialogSize", []any{"settings", 640.0, 520.0}}},
 		{"SetDemoScreen", func(s *Service) error { return s.SetDemoScreen("fit", 1280) },
 			call{"SetDemoScreen", []any{"fit", 1280.0}}},
+		{"SetDemoMonitor", func(s *Service) error { return s.SetDemoMonitor(true) }, call{"SetDemoMonitor", []any{true}}},
 		{"DemoMinimise", func(s *Service) error { return s.DemoMinimise() }, call{"DemoMinimise", nil}},
+		{"DemoComeForward", func(s *Service) error { return s.DemoComeForward() }, call{"DemoComeForward", nil}},
+		{"DemoNotify", func(s *Service) error { return s.DemoNotify() }, call{"DemoNotify", nil}},
 		{"DemoModifiers", func(s *Service) error { return s.DemoModifiers([]string{"ctrl", "alt"}) },
 			call{"DemoModifiers", []any{[]string{"ctrl", "alt"}}}},
 		{"SetDemoVoiceOver", func(s *Service) error { return s.SetDemoVoiceOver(true) }, call{"SetDemoVoiceOver", []any{true}}},
+		{"SetDemoWindowTool", func(s *Service) error { return s.SetDemoWindowTool(true) }, call{"SetDemoWindowTool", []any{true}}},
+		{"DemoToolMoves", func(s *Service) error { return s.DemoToolMoves() }, call{"DemoToolMoves", nil}},
+		{"DemoDropFiles", func(s *Service) error {
+			return s.DemoDropFiles([]string{"/tmp/a b"}, map[string]string{"data-file-drop-target": "pane", "data-drop-pane": "p2"})
+		}, call{"DemoDropFiles", []any{[]string{"/tmp/a b"}, map[string]string{"data-file-drop-target": "pane", "data-drop-pane": "p2"}}}},
 		{"TermAck", func(s *Service) error { return s.TermAck("w5", 4096) }, call{"TermAck", []any{"w5", int64(4096)}}},
 		{"TermClear", func(s *Service) error { return s.TermClear("w5") }, call{"TermClear", []any{"w5"}}},
 		{"OpenLink", func(s *Service) error { return s.OpenLink("https://example.com/") },
@@ -165,6 +180,8 @@ func TestServiceDelegates(t *testing.T) {
 		{"MuteCapture", func(s *Service) error { return s.MuteCapture("w1", "microphone", true) },
 			call{"MuteCapture", []any{"w1", "microphone", true}}},
 		{"StopMedia", func(s *Service) error { return s.StopMedia("w1") }, call{"StopMedia", []any{"w1"}}},
+		{"SetKeepRunning", func(s *Service) error { return s.SetKeepRunning("w1", true) },
+			call{"SetKeepRunning", []any{"w1", true}}},
 		{"ReloadConfig", func(s *Service) error { return s.ReloadConfig() }, call{"ReloadConfig", nil}},
 		{"OverwriteConfig", func(s *Service) error { return s.OverwriteConfig() }, call{"OverwriteConfig", nil}},
 		{"UseConfigBackup", func(s *Service) error { return s.UseConfigBackup() }, call{"UseConfigBackup", nil}},
@@ -173,6 +190,8 @@ func TestServiceDelegates(t *testing.T) {
 		{"RestoreArrangement", func(s *Service) error { return s.RestoreArrangement() }, call{"RestoreArrangement", nil}},
 		{"DismissArrangementNotice", func(s *Service) error { return s.DismissArrangementNotice() },
 			call{"DismissArrangementNotice", nil}},
+		{"DismissWindowTool", func(s *Service) error { return s.DismissWindowTool("com.knollsoft.Rectangle") },
+			call{"DismissWindowTool", []any{"com.knollsoft.Rectangle"}}},
 		{"DismissUpdate", func(s *Service) error { return s.DismissUpdate() }, call{"DismissUpdate", nil}},
 		{"InstallUpdate", func(s *Service) error { return s.InstallUpdate() }, call{"InstallUpdate", nil}},
 		{"Quit", func(s *Service) error { return s.Quit(true) }, call{"Quit", []any{true}}},
@@ -250,6 +269,9 @@ func TestServiceResults(t *testing.T) {
 	if folder, err := s.ChooseFolder("~"); err != nil || folder != "~/code/bench" {
 		t.Errorf("ChooseFolder() = %q, %v; want the engine's folder", folder, err)
 	}
+	if id, err := s.ShowMenu(workspace.Menu{}); err != nil || id != "rename" {
+		t.Errorf("ShowMenu() = %q, %v; want the engine's choice", id, err)
+	}
 	if r, err := s.BrowseToAdd("p1"); err != nil || r != (workspace.BrowseResult{Command: "claude"}) {
 		t.Errorf("BrowseToAdd() = %+v, %v; want the engine's result", r, err)
 	}
@@ -314,6 +336,9 @@ func TestServiceWithoutEngine(t *testing.T) {
 	}
 	if _, err := s.ChooseFolder("~"); !errors.Is(err, errNotReady) {
 		t.Errorf("ChooseFolder() error = %v, want errNotReady", err)
+	}
+	if _, err := s.ShowMenu(workspace.Menu{}); !errors.Is(err, errNotReady) {
+		t.Errorf("ShowMenu() error = %v, want errNotReady", err)
 	}
 	if _, err := s.StarterTabs(); !errors.Is(err, errNotReady) {
 		t.Errorf("StarterTabs() error = %v, want errNotReady", err)

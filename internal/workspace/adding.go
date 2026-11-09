@@ -699,8 +699,10 @@ func (e *Engine) addWebLocked(t *Tab, p *layout.Node, address string) (*Item, er
 }
 
 // bringBackLocked docks a popped-out Web or Built-in item's view in Bench's
-// window again, as it comes back into a tab.
+// window again, as it comes back into a tab. The drop-down's window closes
+// as any terminal's own window does, and it's no longer the drop-down.
 func (e *Engine) bringBackLocked(it *Item) {
+	e.leaveDropdownLocked(it)
 	if !it.OwnWindow {
 		return
 	}
@@ -766,7 +768,7 @@ func (e *Engine) PopOut(itemID string) error {
 // the manager keeps it as parked, so that RestoreAll puts it back on quit,
 // and releaseWindowLocked reports false.
 func (e *Engine) releaseWindowLocked(it *Item) bool {
-	it.Undocked = false
+	it.Undocked, it.keptMoving = false, false
 	it.minimised, it.restore = false, false
 	it.Status, it.StatusText = StatusReady, ""
 	if err := e.win.Unpark(it.WindowID); err != nil {

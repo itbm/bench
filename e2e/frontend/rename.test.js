@@ -75,7 +75,7 @@ test('double-clicking a tab renames it in place, and Go numbers a name another t
   // small-screen setting, and the name Go gives it shows.
   await page.keyboard.type('e');
   await page.keyboard.press('Enter');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'code', preset: 'custom', smallScreens: 'tabs' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'code', preset: 'custom', smallScreens: 'tabs', colour: '' }]);
   await page.waitForSelector('#rename-input', { state: 'detached' });
   await page.waitForFunction(() => document.querySelector('.tab[data-index="2"] .tab-name').textContent === 'code (1)');
   assert.deepEqual(await tabNames(page), ['Comms', 'Code', 'code (1)']);
@@ -314,8 +314,9 @@ test('a window\'s menu offers a new tab when there\'s only one tab', async (t) =
   await page.waitForSelector('#window-menu');
   const entries = await page.$$eval('#window-menu > *', (els) => els.map((el) => el.className + ':' + el.textContent));
   const at = entries.indexOf('menu-item has-sub:Move to Tab');
-  assert.ok(at > 0, JSON.stringify(entries));
-  assert.deepEqual(entries.slice(at - 1, at + 3), ['menu-sep:', 'menu-item has-sub:Move to Tab', 'menu-item has-sub:Also Show In', 'menu-sep:']);
+  assert.ok(at > 1, JSON.stringify(entries));
+  // Move to Pane, Move to Tab, and Also Show In are one group.
+  assert.deepEqual(entries.slice(at - 2, at + 3), ['menu-sep:', 'menu-item has-sub:Move to Pane', 'menu-item has-sub:Move to Tab', 'menu-item has-sub:Also Show In', 'menu-sep:']);
   // A web page can be renamed too.
   assert.ok(entries.includes('menu-item:Rename…'));
   // The submenu has the one tab, off, and New Tab.

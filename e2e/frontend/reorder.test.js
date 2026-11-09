@@ -361,14 +361,14 @@ test('Tab properties\' Position moves the tab, naming each place\'s shortcut', a
   assert.deepEqual(await options(), ['1st (⌃⌥1) *', '2nd (⌃⌥2)', '3rd (⌃⌥3)']);
   assert.equal(await page.textContent('#tab-shortcut-text'), '⌃⌥1, which follows the tab\'s position. Settings ▸ Keyboard changes the keys.');
   await page.click('[data-action="save-tab"]');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [1, { name: 'Code', preset: 'main-side', smallScreens: 'stack', place: 1 }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [1, { name: 'Code', preset: 'main-side', smallScreens: 'stack', colour: '', place: 1 }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   // A tab left where it is saves with no place.
   fake.clearCalls();
   await openTabProperties(page, 2);
   await page.click('[data-action="save-tab"]');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Research', preset: 'side', smallScreens: 'tabs' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Research', preset: 'side', smallScreens: 'tabs', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   // A new tab goes last, unless another place is chosen.

@@ -29,9 +29,11 @@ type fakeEngine struct {
 	cfg     workspace.ConfigInfo
 	// reports holds what ReportShortcuts was told, in turn.
 	reports []workspace.ShortcutReport
-	start   workspace.WindowStart
-	started bool
-	closed  int
+	// toolKeys is what WindowToolKeys answers.
+	toolKeys []workspace.ToolKeys
+	start    workspace.WindowStart
+	started  bool
+	closed   int
 	// mayQuit is what AskToQuit, AskToQuitNow, and AskToCloseTerminal
 	// answer, and busyEngine has AskToQuitNow not answer, as an engine
 	// whose lock is held doesn't.
@@ -84,6 +86,12 @@ func (f *fakeEngine) Close() error {
 
 func (f *fakeEngine) ConfigCopy() workspace.ConfigInfo { return f.cfg }
 
+func (f *fakeEngine) WindowToolKeys() []workspace.ToolKeys {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.toolKeys
+}
+
 func (f *fakeEngine) ReportShortcuts(r workspace.ShortcutReport) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -102,6 +110,9 @@ func (f *fakeEngine) lastReport() (workspace.ShortcutReport, bool) {
 }
 
 func (f *fakeEngine) Shortcut(action, arg string) { _ = f.record("Shortcut", action, arg) }
+
+func (f *fakeEngine) FollowLink(link string) error  { return f.record("FollowLink", link) }
+func (f *fakeEngine) RunScript(args []string) error { return f.record("RunScript", args) }
 
 func (f *fakeEngine) MoveCurrentTab(step int) error { return f.record("MoveCurrentTab", step) }
 func (f *fakeEngine) ToggleZoom() error             { return f.record("ToggleZoom") }
@@ -230,6 +241,9 @@ func (f *fakeEngine) UseWebAppWhenReady(itemID string) (bool, error) {
 func (f *fakeEngine) PopOut(itemID string) error { return f.record("PopOut", itemID) }
 func (f *fakeEngine) Redock(itemID string) error { return f.record("Redock", itemID) }
 func (f *fakeEngine) AddFrontWindow() error      { return f.record("AddFrontWindow") }
+func (f *fakeEngine) KeepOverBench(bundleID string) error {
+	return f.record("KeepOverBench", bundleID)
+}
 func (f *fakeEngine) BackToBench(itemID string) error {
 	return f.record("BackToBench", itemID)
 }
@@ -307,6 +321,13 @@ func (f *fakeEngine) ChooseFolder(start string) (string, error) {
 	}
 	return "~/code/bench", nil
 }
+func (f *fakeEngine) ShowMenu(menu workspace.Menu) (string, error) {
+	err := f.record("ShowMenu", menu)
+	if err != nil {
+		return "", err
+	}
+	return "rename", nil
+}
 func (f *fakeEngine) BrowseToAdd(paneID string) (workspace.BrowseResult, error) {
 	err := f.record("BrowseToAdd", paneID)
 	if err != nil {
@@ -333,6 +354,11 @@ func (f *fakeEngine) Undo(step int) error         { return f.record("Undo", step
 func (f *fakeEngine) UndoLatest() error           { return f.record("UndoLatest") }
 func (f *fakeEngine) ReopenTab(name string) error { return f.record("ReopenTab", name) }
 func (f *fakeEngine) ReopenItem(id string) error  { return f.record("ReopenItem", id) }
+func (f *fakeEngine) UseAsDropdown(id string) error {
+	return f.record("UseAsDropdown", id)
+}
+func (f *fakeEngine) ToggleDropdown() error { return f.record("ToggleDropdown") }
+func (f *fakeEngine) HideDropdown() error   { return f.record("HideDropdown") }
 func (f *fakeEngine) TermInput(itemID, data string) error {
 	return f.record("TermInput", itemID, data)
 }
@@ -372,16 +398,39 @@ func (f *fakeEngine) SetDialogSize(kind string, w, h float64) error {
 func (f *fakeEngine) SetDemoScreen(screen string, fitWidth float64) error {
 	return f.record("SetDemoScreen", screen, fitWidth)
 }
+func (f *fakeEngine) SetDemoMonitor(plugged bool) error {
+	return f.record("SetDemoMonitor", plugged)
+}
+
+func (f *fakeEngine) DropFiles(target workspace.DropTarget, paths []string) error {
+	return f.record("DropFiles", target, paths)
+}
+
+func (f *fakeEngine) DemoDropFiles(paths []string, attrs map[string]string) error {
+	return f.record("DemoDropFiles", paths, attrs)
+}
 
 func (f *fakeEngine) DemoMinimise() error {
 	return f.record("DemoMinimise")
 }
+func (f *fakeEngine) DemoComeForward() error {
+	return f.record("DemoComeForward")
+}
+func (f *fakeEngine) DemoNotify() error { return f.record("DemoNotify") }
 func (f *fakeEngine) DemoModifiers(held []string) error {
 	return f.record("DemoModifiers", held)
 }
 
 func (f *fakeEngine) SetDemoVoiceOver(on bool) error {
 	return f.record("SetDemoVoiceOver", on)
+}
+
+func (f *fakeEngine) SetDemoWindowTool(on bool) error {
+	return f.record("SetDemoWindowTool", on)
+}
+
+func (f *fakeEngine) DemoToolMoves() error {
+	return f.record("DemoToolMoves")
 }
 func (f *fakeEngine) TermAck(itemID string, offset int64) error {
 	return f.record("TermAck", itemID, offset)
@@ -419,14 +468,21 @@ func (f *fakeEngine) MuteCapture(itemID, device string, mute bool) error {
 	return f.record("MuteCapture", itemID, device, mute)
 }
 func (f *fakeEngine) StopMedia(itemID string) error { return f.record("StopMedia", itemID) }
-func (f *fakeEngine) ReloadConfig() error           { return f.record("ReloadConfig") }
-func (f *fakeEngine) OverwriteConfig() error        { return f.record("OverwriteConfig") }
-func (f *fakeEngine) UseConfigBackup() error        { return f.record("UseConfigBackup") }
-func (f *fakeEngine) OpenConfig() error             { return f.record("OpenConfig") }
-func (f *fakeEngine) ShowConfigInFinder() error     { return f.record("ShowConfigInFinder") }
-func (f *fakeEngine) RestoreArrangement() error     { return f.record("RestoreArrangement") }
+func (f *fakeEngine) SetKeepRunning(itemID string, on bool) error {
+	return f.record("SetKeepRunning", itemID, on)
+}
+func (f *fakeEngine) ReloadConfig() error       { return f.record("ReloadConfig") }
+func (f *fakeEngine) OverwriteConfig() error    { return f.record("OverwriteConfig") }
+func (f *fakeEngine) UseConfigBackup() error    { return f.record("UseConfigBackup") }
+func (f *fakeEngine) OpenConfig() error         { return f.record("OpenConfig") }
+func (f *fakeEngine) ShowConfigInFinder() error { return f.record("ShowConfigInFinder") }
+func (f *fakeEngine) RestoreArrangement() error { return f.record("RestoreArrangement") }
 func (f *fakeEngine) DismissArrangementNotice() error {
 	return f.record("DismissArrangementNotice")
+}
+
+func (f *fakeEngine) DismissWindowTool(bundleID string) error {
+	return f.record("DismissWindowTool", bundleID)
 }
 func (f *fakeEngine) DismissUpdate() error   { return f.record("DismissUpdate") }
 func (f *fakeEngine) InstallUpdate() error   { return f.record("InstallUpdate") }

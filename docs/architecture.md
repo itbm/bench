@@ -21,12 +21,12 @@ one is listed in [Decisions](#decisions).
 
 | Package | What it does | cgo |
 | --- | --- | --- |
-| `cmd/bench` | Entry point: the app, and the `check-config`, `layout`, `arrange`, `restore`, and `watchdog` subcommands. | No |
+| `cmd/bench` | Entry point: the app, and the `check-config`, `layout`, `arrange`, `restore`, and `watchdog` subcommands, and the script subcommands, `tab`, `next`, `previous`, `last`, `move-to-tab`, `launch`, and `list`, which control the Bench that's running (`scripts.go`, decision 77). | No |
 | `internal/layout` | Trees, presets, unit rectangles, frames, dividers, size class, small-screen changes, neighbours, where a drop on a pane lands (`DropAt`, decision 38), and the divider beside a pane's edge, with the sizes that put it at a place (`DividerBeside` and `SizesAt`, decision 62). Pure Go. | No |
 | `internal/config` | `config.toml` and `state.json`: load, validate, format, save, defaults. | No |
 | `internal/platform` | The `Platform` interface, `ParkPlace` and `ParkFrame`, `Fake` for tests, `NewDemo` for the browser preview, and `Logged`, which logs calls and events when `BENCH_DEBUG` is set, and gives a `DebugLogger`, such as the macOS platform, the log for decisions of its own. | No |
-| `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`. | No |
-| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen Closed Tab** (decision 37), **Reopen Closed Page or Terminal** (decision 65), and the `View` sent to the frontend. | No |
+| `internal/windows` | Docking, stacking, parking, hiding, and restoring other apps' windows, through `Platform`, parking an app's windows that are to stay out of sight before it shows the app (decision 67). | No |
+| `internal/workspace` | The model (tabs, items, moves, rules) and the engine that runs it: platform events, switching, arranging, persistence, **Undo** and **Reopen Closed Tab** (decision 37), **Reopen Closed Page or Terminal** (decision 65), how long each arrangement takes, for **Report a Problem…** and the log (`timing.go`, decision 67), the drop-down terminal (`dropdown.go`, decision 72), files, folders, and apps dropped from the Finder (`drops.go`, decision 73), and the `View` sent to the frontend. | No |
 | `internal/term` | Terminal sessions in pseudo-terminals (`creack/pty`). A session lasts until the engine removes its item, which closes it. `Busy` says whether a session is running something that ending it would stop, and what (decision 35). A session can type a command into its shell once the shell's line editor is ready, for launchers (`Options.Input`, decision 41), and `Host.LookPath` asks the user's interactive login shell which program a name runs, for **Browse…** (decision 41). A session reports the bell and the notifications its program asks for with OSC 9 and OSC 777 (`Callbacks.Alert`), and the folder its shell moves to (`Callbacks.Folder`), and can start with output to show first (`Options.Preface`), which `Restorable` makes safe to draw again (decisions 43 and 44). When Bench runs with SIGHUP ignored, as under `nohup`, it starts each shell through its own binary, run as a helper that puts SIGHUP back to its default action and then becomes the shell, so that closing a session still ends its programs. | No |
 | `internal/vscode` | `code serve-web` for VS Code for the Web. | No |
 | `internal/icons` | The small PNGs that tiles show in place of monograms: a web page's icon, chosen from its `<link>` elements or `/favicon.ico`, fetched without cookies, and decoded and scaled in Go (`Fit`, `Candidates`, and `Pages`, decision 51). Pure Go. | No |
@@ -34,9 +34,10 @@ one is listed in [Decisions](#decisions).
 | `internal/shortcuts` | The `[shortcuts]` config as global shortcut bindings, with what each field does, how macOS shows a shortcut, suggestions for one that's taken, and the clashes macOS doesn't report: VoiceOver's keys and the shortcuts macOS keeps (decision 45). | No |
 | `internal/clock` | A clock that tests can move by hand. | No |
 | `internal/update` | Bench's version against its latest release on GitHub, for the `check_for_updates` setting in a Bench without Sparkle, and the releases page that **Bench ▸ Check for Updates…** opens there. It only looks: Sparkle downloads and installs new versions (decision 48). | No |
-| `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, and Acknowledgements), with the appearance setting's look (decision 52), the bound `Service`, events, global shortcuts, the menu bar item, the app menu and **Report a Problem…** (decision 46), the log file (decision 47), whether Bench may quit (`ShouldQuit`, decision 35), opening Bench again after it quits, for **Quit and Reopen Bench** (`reopenAfterQuit`, decision 48), and the folder picker (decision 41), and the icons the tiles show, which the asset server serves (`iconHandler`, decision 51). | Through Wails |
-| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `HeldModifiers`, the modifier keys held down now (`keys_darwin.m` and `hotkeys.go`, decision 60), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and `MouseHeld`, whether the left mouse button is held now, for the end of a drag of a docked window's edge (`drag_darwin.m`, decision 62), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `WatchDockBadges` and `DockBadges`, the badges on apps' Dock icons, which it reads from the Dock's Accessibility items, with `DockBadgesChanged` (`ax_darwin.m` and `badges.go`, decision 61), and the events for the Mac waking, the user coming back to their session, and the user going to Bench's desktop (`Woke`, `ScreensWoke`, `SessionActive`, `ScreenUnlocked`, and `DesktopChanged`, decision 56), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
-| `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `styles.css` has the dark colours and `light.css` the light ones, which `js/theme.js` chooses (decision 52). `js/tiles.js` draws apps' and pages' icons in place of monograms (decision 51). `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
+| `internal/control` | What `bench://` links and the script subcommands can ask of the Bench that's running (decision 77): reading and refusing them (`ParseLink` and `ParseCommand`), finding a tab by its name or number (`FindTab`), the JSON of `bench list --json` (`List`), and the socket in the support folder that answers it (`Serve` and `Query`), with the other end's user checked (`peerUID`). Pure Go. | No |
+| `internal/ui` | The Wails app: Bench's windows (the main window, popped-out terminals' windows, the drop-down terminal's panel, decision 72, and Acknowledgements), with the appearance setting's look (decision 52), the bound `Service`, events, global shortcuts, the menu bar item, the app menu, with the dots of tabs' colours in its Tab menu and **Pane ▸ Move to Tab** (decision 74), and **Report a Problem…** (decision 46), the log file (decision 47), whether Bench may quit (`ShouldQuit`, decision 35), opening Bench again after it quits, for **Quit and Reopen Bench** (`reopenAfterQuit`, decision 48), and the folder picker (decision 41), and the icons the tiles show, which the asset server serves (`iconHandler`, decision 51), the drops from the Finder that Bench's windows get (`watchDrops`, decision 73), and the `bench://` links that macOS hands Bench and the script subcommands that a second Bench forwards (`secondInstance` and `Forward`, decision 77). | Through Wails |
+| `internal/mac` | macOS only: Objective-C for the Accessibility API, NSWorkspace, screens, window levels, web views, ScreenCaptureKit, and notifications. It implements `platform.Platform`, including `PressClose`, which closes another app's window as its close button does (decision 36), and `NewWindow`, which presses an app's **New Window** menu item, both finding the item by its title, in English or 17 other languages, and its key equivalent (`menus.go`, decision 75), and `ChooseToAdd`, the open panel of the add dialog's **Browse…** (decision 41), and `SetBadge`, the count on Bench's Dock icon (decision 43), and `SystemKeys`, the input sources' shortcuts and whether VoiceOver is on (decision 45), and `HeldModifiers`, the modifier keys held down now (`keys_darwin.m` and `hotkeys.go`, decision 60), and `OpenSettings` and `LoginItemNeedsApproval`, System Settings' panes for permissions and whether macOS needs the user to allow Bench's login item (decision 48), and `TrackDrags`, `ShowDropGuide`, and `HideDropGuide`, which follow windows dragged by their title bars and show where a drop on a pane goes (`drag_darwin.m`, `guide_darwin.m`, and `guide.go`, decision 13), and `MouseHeld`, whether the left mouse button is held now, for the end of a drag of a docked window's edge (`drag_darwin.m`, decision 62), and a web page's controls, `ReloadWebView`, `NavigateWebView`, `ZoomWebView`, `FindInWebView`, `SetCaptureState`, and `PauseWebViewMedia`, with `WebStateChanged` for what the page can do and how it uses the camera and microphone (`web_darwin.m` and `pagecontrols.go`, decision 50), and `LoadWebView`, which loads a page kept running in the background, hidden (`benchWebLoad`, decision 76), and `KeepWebViewRunning`, which has a hidden page loaded again after its process ends, or its first load fails, without waiting to be shown (`benchWebKeepRunning`, decision 76), and `StageManager`, whether Stage Manager is on, with `StageManagerChanged` (decision 53), and `WatchDockBadges` and `DockBadges`, the badges on apps' Dock icons, which it reads from the Dock's Accessibility items, with `DockBadgesChanged` (`ax_darwin.m` and `badges.go`, decision 61), and the events for the Mac waking, the user coming back to their session, and the user going to Bench's desktop (`Woke`, `ScreensWoke`, `SessionActive`, `ScreenUnlocked`, and `DesktopChanged`, decision 56), and `AppIcon` and `PageIcon`, an app's icon, which NSWorkspace draws, and a Web item's page's, with `PageIconChanged` (`apps_darwin.m`, `web_darwin.m`, and `icons.go`, decision 51), and `ToolPreferences`, a window tool's preferences that say which shortcuts it has, which it reads with `CFPreferencesCopyMultiple` (`keys_darwin.m` and `toolprefs.go`, decision 69). Outside the interface, `Updater` loads Sparkle at run time, if `Bench.app` has it, and implements `workspace.Updater` (`updater_darwin.m`, decision 48), `ShowDropdown` and `HideDropdown` slide the drop-down terminal's panel down from the top of the screen and back up, without making Bench active (`window_darwin.m`, decision 72), `SetWindowAppearance` gives Bench's own windows and panels the appearance setting, `SystemDark` says whether macOS is dark, before the app runs too, and Web items' web views follow macOS's appearance (`appearance.go`, decision 52). Its pure-Go helpers build everywhere, among them the Web items' navigation policy (decision 24), and the browser preview uses one, `PageInfo`, for its web pages' hosts. | Yes |
+| `frontend` | The UI, from the prototype. Plain HTML, CSS, and ES modules, with no build step. `styles.css` has the dark colours and `light.css` the light ones, which `js/theme.js` chooses (decision 52). `js/tiles.js` draws apps' and pages' icons in place of monograms (decision 51). `js/drops.js` marks what takes drops from the Finder, and keeps other drops from loading in place of the page (decision 73). `acknowledgements.html` is the Acknowledgements window's page, which `build/acknowledgements` writes. | — |
 | `build/acknowledgements` | A command, not part of the app: `make acknowledgements` runs it to write `frontend/acknowledgements.html` from what `Bench.app` links and includes, and its tests check that the page is current (decision 27). | No |
 
 Only `internal/mac` contains cgo, but `internal/ui` needs cgo too on macOS,
@@ -82,13 +83,28 @@ Build constraints:
   timers all take it, so the model changes on one thread at a time.
 - The engine never calls the frontend or blocks on it while holding the lock.
   It marks the view dirty, and a separate goroutine sends at most one
-  `bench:state` per 16 ms.
+  `bench:state` per 16 ms. A tab's shortcut, a hold after `last_tab`'s
+  as its keys are let go of, and a `bench://` link's or a script's switch
+  (`carryOut`, decision 77) each send their `switching` command between
+  two holds of the lock: after the one that finds the tab, before the one
+  that switches, which notes the current tab as it ends, for
+  `switch-refused` after it (`switchShowing`, decision 67).
+- Timing an arrangement takes no lock of its own and no hold more
+  (`timing.go`, decision 67). What takes the lock reads the clock first,
+  so that the wait for the lock counts, and notes the time and the reason
+  in `Engine.held`; the arrangement notes its end there; and `unlock`
+  keeps one time for the hold, in one of two rings of 50 that never grow,
+  for the tab switches and for the rest, and logs it with `BENCH_DEBUG`,
+  before it lets the lock go.
 - Terminal output has a queue and lock of its own, and is sent without the
   engine's lock, at most once per 16 ms for each terminal, so an arrange
   that waits for a slow app doesn't hold it up. Typing doesn't take the
   engine's lock either, except in a terminal whose command has finished,
-  where Return runs it again. Only titles and ends of sessions are applied
-  under it.
+  where Return runs it again, and for a second Escape in the drop-down
+  terminal, which hides it. An atomic tells the drop-down's typing apart
+  (`dropKeys`), and an Escape that waits there has a small mutex of its
+  own (`escMu`, decision 72). Only titles and ends of sessions are
+  applied under it.
 - `internal/mac` runs AppKit work on the main thread. Native callbacks into Go
   (AX notifications, web view delegates, NSNotifications) never take Go locks
   or block: they make an `Event` and hand it to a queue. An event goes
@@ -107,7 +123,8 @@ Build constraints:
   the lock at once (`AskToQuitNow`, with `TryLock`), and otherwise the shell
   refuses the quit and asks on another goroutine, quitting again if it may
   (decision 35).
-- Go never waits for the main thread. It sends AppKit work there with
+- Go never waits for the main thread, except for a native menu (see
+  `ShowMenu` below). It sends AppKit work there with
   `dispatch_async`, and what it needs to read, such as the screens,
   Bench's content frame, and whether macOS shows scroll bars all the time,
   is cached as the main thread changes it. Alerts
@@ -130,9 +147,36 @@ Build constraints:
   answers a waiting call with nothing. The engine holds no lock meanwhile.
   `FindInWebView` waits for WebKit's answer the same way, numbering each
   request so that a late answer can't reach the next, for up to 3 seconds.
+- `ShowMenu` waits for the user too, without the engine's lock, which it
+  takes only to note the menu as open before, and as closed after
+  (`openMenuLocked`, `closeMenuLocked`). Wails' `OpenContextMenu` runs the
+  native menu on the main thread and waits there until it closes
+  (`InvokeSync`): the one call that waits for the main thread. The bound
+  method's goroutine holds no lock but the shell's `contextMenu.mu`, which
+  keeps one menu open at a time and which the main thread never takes, so
+  nothing can wait in a circle. AppKit runs the main run loop while the menu
+  is open, so the work that Go sends there, with `dispatch_async` or
+  `CFRunLoopPerformBlock`, goes on: the View, the docked windows, and the
+  web views keep up meanwhile. A click on an item comes to Go through Wails'
+  channel, a moment after the menu closes, so the shell waits up to 250 ms
+  for it (`choiceWait`), on a channel of the menu's own, so that a late
+  choice can't reach the next menu (decision 71).
 - Between processes, a lock on `bench.lock` in the support folder makes
   the app, `bench arrange`, `bench restore`, and the watchdog take turns
   with `parked.json` (see [Crash safety](#crash-safety)).
+- The socket that answers `bench list` (decision 77) answers each
+  connection on a goroutine of its own, which takes the engine's lock to
+  make the list. The engine starts and stops the socket after `flushState`
+  unlocks, under the socket's own lock, which is never taken with the
+  engine's: closing the socket waits for the answers on their way.
+  The socket's state is read under the engine's lock with the socket's
+  held (the order is always the socket's lock, then the engine's), so
+  that whichever start or stop comes last, from `flushState` or the timer
+  that tries again after a failure, leaves it as the setting says.
+  `bench://` links and forwarded scripts reach the engine on goroutines of
+  their own, as Wails hands them over from its main thread or its one
+  goroutine for second instances, which mustn't wait for the engine's
+  lock.
 - `bench arrange` has no Wails app to run the main thread's run loop, and
   macOS updates its list of running apps, and reports their windows, only
   while that runs. So its main goroutine runs the loop
@@ -155,16 +199,30 @@ Bench uses approach A from the spec, with one addition.
   menu, or in a message that clicking shows.
 - Web items are `WKWebView`s added to Bench's window above the UI's web view,
   positioned at their pane bodies. Terminals are drawn by the UI itself.
-- **Raised mode.** Menus, dialogs, live previews, and drags would be hidden
-  behind docked windows and web views, and a drag can't reach a pane body
-  that another app's window covers. So while any of them is open, the
-  frontend calls `SetOverlay(true)`: Bench raises its window above the docked
-  windows (`Platform.SetRaised`) and hides its web views. `SetOverlay(false)`
-  puts Bench back below normal level, raises the docked windows again, and
-  shows the web views. The docked windows are behind the dialog's scrim
-  anyway, so nothing visible is lost. While Bench isn't the active app, its
-  window goes back below normal windows even in raised mode, so that it
-  doesn't float over other apps.
+- **Raised mode.** Dialogs, live previews, drags, and the menus that the
+  UI draws in HTML would be hidden behind docked windows and web views, and
+  a drag can't reach a pane body that another app's window covers. So while
+  any of them is open, the frontend calls `SetOverlay(true)`: Bench raises
+  its window above the docked windows (`Platform.SetRaised`) and hides its
+  web views. `SetOverlay(false)` puts Bench back below normal level, raises
+  the docked windows again, and shows the web views. The docked windows are
+  behind the dialog's scrim anyway, so nothing visible is lost. While Bench
+  isn't the active app, its window goes back below normal windows even in
+  raised mode, so that it doesn't float over other apps.
+- **Native menus.** In the app, Bench's own menus (a tab's, a sub-tab's and
+  the **⋯** window menu, an empty pane's, a terminal's, and the slim title
+  bar's layout menu) are native macOS menus, which AppKit draws above every
+  window. They need no raised mode, so the web pages and the docked windows
+  stay in view while one is open (`ShowMenu`, decision 71). But a native
+  menu closes as soon as another app becomes active, so while one is open
+  the engine counts it as open, as it does raised mode
+  (`menuOrDialogLocked`): nothing that would focus another app's window
+  happens then, and Bench's window doesn't move back to the display that
+  the user chose until it closes (decision 70). The browser preview draws
+  the same menus in HTML, raised.
+  So does the app for the status bar's lists of the windows that need
+  attention and of notices and recent messages, and for a popped-out
+  terminal's menu, in its own window.
 - **Keyboard focus** follows the focused pane: its App window is focused, a
   Web item's view gets the keyboard, or the frontend focuses its terminal
   (decision 15).
@@ -204,17 +262,25 @@ Bench uses approach A from the spec, with one addition.
   Acknowledgements (decision 27). Raised mode floats only Bench's main
   window, and only while none of them has the keyboard, so that one that
   the user opens or clicks stays in front of it. Bench becoming active
-  hides apps over its main window only while that window is shown, since
-  the user may have clicked one of these instead. Windows that a
-  `float = true` rule matches, such as picture-in-picture, don't count:
-  they're meant to stay over Bench, which fills the screen by default
-  (decision 30). A popped-out web page's or terminal's window has the
+  puts out of sight what covers its main window only while that window is
+  shown, since the user may have clicked one of these instead: the app,
+  hidden, or only the windows over Bench, parked, if the app has other
+  windows to keep showing, unless `covering_windows` is `leave`
+  (`covering.go`, decision 68). Windows that a `float = true` rule
+  matches, such as picture-in-picture, don't count: they're meant to stay
+  over Bench, which fills the screen by default (decision 30). A popped-out web page's or terminal's window has the
   identifier `bench.item:` and its item's ID, for `internal/mac` to report
   it getting and losing the keyboard (`PopOutFocused`, `PopOutUnfocused`)
   and the user dragging it (`WindowDragged`, `WindowDropped`), and has a
   **Back to Bench** control: a title bar button on a web page's window,
   which sends `DockRequested`, and a bar and a menu entry in a terminal's
   page, which call `BackToBench` (decision 13).
+- The drop-down terminal is a panel of its own, which floats over every app,
+  on every desktop and beside full-screen apps, and doesn't make Bench
+  active as it takes the keyboard. It isn't tagged `bench.item:`, so it
+  doesn't count as a popped-out window for **Add Front Window** or
+  **Window ▸ Back to Bench**. Its level is one above the floating level,
+  so it stays over Bench's main window in raised mode too (decision 72).
 - Live previews are a native panel (`Platform.ShowPreview`) above everything,
   and so is the drop guide (`Platform.ShowDropGuide`), which lets the mouse
   through to the window being dragged under it.
@@ -272,8 +338,12 @@ by its only window). After any change, Go sends `bench:state`.
 | `UseWebApp(itemID string)` | Put the installed web app of a Web item's site in the item's place, in every tab that shows it, and close the item's web view. If the item came from `config.toml`, its entries there become `app` entries for the web app, and the file is saved, as **Tab properties** saves it. |
 | `MakeWebApp(itemID string) (WebsiteResult, error)` | Open a Web item's site in the default browser, for the user to make a web app there, and return the browser's steps, as `AddWebsite` does for a site with none. |
 | `UseWebAppWhenReady(itemID string) (bool, error)` | Put the web app that the browser has made in the Web item's place, as `UseWebApp` does, once it's installed, and report whether it did. The dialog that `MakeWebApp` opens calls it every 1.5 seconds while it waits. |
-| `PopOut(itemID string)` and `Redock(itemID string)` | **Pop Out of Bench**; dock an undocked window again (**Dock Again**). An App item with no window has nothing to pop out, so `PopOut` removes it from every tab instead: the frontend calls that **Remove from Bench**, for an item whose view has `noWindow`. |
+| `PopOut(itemID string)` and `Redock(itemID string)` | **Pop Out of Bench**; dock an undocked window again (**Dock Again**), one that the user dragged out or that its app or a window tool kept moving out (status `moving`, decision 69), with its three tries again. An App item with no window has nothing to pop out, so `PopOut` removes it from every tab instead: the frontend calls that **Remove from Bench**, for an item whose view has `noWindow`. |
+| `KeepOverBench(bundleID string)` | **Keep over Bench**, on the toast that says Bench hid an app, or a window of it, because it covered Bench, or on its recent message: add a `[[rule]]` with `app` and `float = true` to `config.toml`, which Bench saves, so that the app's windows stay over Bench and its new ones stay out of the tabs, and show again what Bench put out of sight. Its toast has **Undo**, which takes the rule back and puts the windows out of sight again while Bench is in front. Refused for an app that Bench hasn't said that of, and for one with items or a `[[rule]]` that sends its windows to a tab. The recent messages offer it again while the View's `keepOver` lists the app. See decision 68. |
 | `AddFrontWindow()` | Add the window in front to the current tab's focused pane, if it's out of the tabs: a popped-out item, a window not in a tab, or one dragged out of its pane, which the View's `front` names. The window in front is the one the user last gave the keyboard to outside Bench's main window, not one that Bench focused itself. It says so with **Pop out**, or with **Undo** for a window dragged out of another pane, and brings back a hidden Bench. The `add_front_window` shortcut, **Add Front Window** in the jump palette, and **Pane ▸ Add Front Window** call it (decision 13). |
+| `UseAsDropdown(itemID string)` | Make a terminal the drop-down, from its **⋯** menu: it leaves its pane, or its own window closes, and it shows at the top of the screen. The terminal that was the drop-down goes back into the pane that the new one leaves, or the current tab's focused pane. Its toast says how to show it again. Refused for anything but a terminal (decision 72). |
+| `ToggleDropdown()` | Show the drop-down, or hide it while it shows, without bringing Bench forward: the `dropdown` shortcut, **View ▸ Show Drop-down**, the menu bar item's **Show Drop-down**, and the jump palette's. With no drop-down, a new terminal in the home folder becomes it (decision 72). |
+| `HideDropdown()` | Hide the drop-down, if it shows: its bar's **Hide** and its menu's **Hide Drop-down**. Its session goes on (decision 72). |
 | `BackToBench(itemID string)` | Put a popped-out item back in the current tab's focused pane, and bring Bench forward on it, saying so with **Pop out**: the **Back to Bench** button in a popped-out terminal's window. `""` means the popped-out window that has the keyboard, for **Window ▸ Back to Bench**. An item in a tab already stays where it is (decision 13). |
 | `OpenItem(itemID string)` | **Open** on a pane that's waiting for an app: open the app of an App item without a window, or ask the running app for a new window, and put its next window in the item's place. The item shows, saying that Bench is opening its app, until the window comes or Bench gives up. Without Accessibility permission, it opens the app, for an item whose view has `canOpen`, which the item's pane offers then. |
 | `RemoveRemembered(paneID, bundleID string)` | **Remove from this pane**: forget the places of an app in a pane that its windows would go back to, the hidden App items without a window. An item that's in other tabs too stays there. |
@@ -286,9 +356,9 @@ by its only window). After any change, Go sends `bench:state`.
 | `Rearrange()` | Arrange the current tab again. A tab's menu switches to another tab first. |
 | `FillScreen()` | The jump palette's **Fill the screen**, as **View ▸ Fill the Screen** does: zoom Bench's window to fill its screen's visible area, unless it fills it already (decision 30). The browser preview refuses, and its palette leaves the row out. |
 | `PreviewTree(index int, preset string) (*layout.Node, error)` | The tree that **Tab properties** would make for tab `index` (or a new tab, -1) with a preset, for its preview. |
-| `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, small-screen setting, and place among the tabs (`place`, from 1, which gives it its shortcut; 0 leaves it where it is, or puts a new tab last), which moves it as `MoveTab` does. `index` -1 adds a tab. A name that another tab has, ignoring case, is numbered (`uniqueTabName`): "Code" becomes "Code (1)", then "Code (2)", replacing a number in brackets that it ends with. Tab properties says so under the name first, working it out the same way. Renaming a tab in place, by double-clicking it or with **Rename…** in its menu, saves through `SaveTab` too, with the name typed, preset `custom`, which keeps the tab's panes and its `config.toml` layout, and the tab's own small-screen setting (decision 39). |
+| `SaveTab(index int, draft TabDraft)` | Save **Tab properties**: a tab's name, layout, small-screen setting, colour (`colour`, one of `config.TabColours`, or "" for none; another is refused, decision 74), and place among the tabs (`place`, from 1, which gives it its shortcut; 0 leaves it where it is, or puts a new tab last), which moves it as `MoveTab` does. `index` -1 adds a tab. A name that another tab has, ignoring case, is numbered (`uniqueTabName`): "Code" becomes "Code (1)", then "Code (2)", replacing a number in brackets that it ends with. Tab properties says so under the name first, working it out the same way. Renaming a tab in place, by double-clicking it or with **Rename…** in its menu, saves through `SaveTab` too, with the name typed, preset `custom`, which keeps the tab's panes and its `config.toml` layout, and the tab's own small-screen setting and colour (decision 39). The toast after a change to a tab that was there has **Undo**, named **Rename Tab** when only the name changed and **Change Tab Properties** otherwise; a new tab puts the changes before it out of Undo's reach (decisions 37 and 74). |
 | `PreviewTabFromWindows(preset string, windows []string) (WindowsPreview, error)` | The **New tab** dialog's preview with **Windows that are open** chosen, for the windows ticked, by their IDs in `floating` and `items`: `{suggested, apps, root}`, the layout suggested by the number of apps (one app, `single`; two, `side`; three, `three`; four or more, `grid`), that number, and the tree that `NewTabFromWindows` would make with `preset` ("" for the suggested one), each app's windows in a pane of their own and the apps after the last pane in it. Windows that have gone, and hidden sub-tabs, are left out. See decision 54. |
-| `NewTabFromWindows(draft TabDraft, windows []string)` | Make a tab of windows that are open, from the **New tab** dialog with **Windows that are open** chosen (**Tab ▸ New Tab from Open Windows…**, Jump to…'s **New Tab from Open Windows…**, and the welcome guide's **Choose windows…** open it so): the draft's name, or the first window's app's, numbered as `SaveTab` numbers it; the draft's layout, or the suggested one; and its small-screen setting and place. The windows fill the panes as the preview shows: those not in a tab move there, and those of other tabs show there as well, as **Also Show In** does. Then switch to the tab, and save `config.toml` with it as **Tab properties** saves a new tab. Its toast has **Undo**, which takes the tab away again, from `config.toml` too, and puts each window back where it was. See decision 54. |
+| `NewTabFromWindows(draft TabDraft, windows []string)` | Make a tab of windows that are open, from the **New tab** dialog with **Windows that are open** chosen (**Tab ▸ New Tab from Open Windows…**, Jump to…'s **New Tab from Open Windows…**, and the welcome guide's **Choose windows…** open it so): the draft's name, or the first window's app's, numbered as `SaveTab` numbers it; the draft's layout, or the suggested one; and its small-screen setting, colour, and place. The windows fill the panes as the preview shows: those not in a tab move there, and those of other tabs show there as well, as **Also Show In** does. Then switch to the tab, and save `config.toml` with it as **Tab properties** saves a new tab. Its toast has **Undo**, which takes the tab away again, from `config.toml` too, and puts each window back where it was. See decision 54. |
 | `SaveSettings(settings SettingsView)` | Save **Settings**: the `[settings]` that apply to every tab, such as `compact_below`, `density`, `pane_headers`, `live_previews`, `notify_terminals`, and `keep_terminal_output`, and the launchers, from **Settings ▸ Launchers**, which replace the `[[launcher]]` entries unless `launchers` is missing. One without a name is named as `SaveLauncher` names one, or an app launcher after its app. Turning live previews on asks for Screen Recording permission. Turning `keep_terminal_output` off removes the terminals' saved output (decision 44). Its `shortcuts` are the fields of the `[shortcuts]` table that **Settings ▸ Keyboard** changed, by their names in `config.toml`, such as `jump`, each a shortcut in config form or `""` for off; the others stay as they are. A change that gives the table a problem it didn't have, such as a shortcut that another field has, is refused, saying so. Changed shortcuts are registered again straight away, with no restart (`Emitter.ShortcutsChanged`, decision 45). |
 | `PreviewSettings(preview SettingsPreview)` | Show what **Settings** has chosen and not saved yet: its `appearance`, `density`, and `gap`, each left out (`""`, or a gap below 0) to keep the setting. The View's `appearance`, `density`, `titleBar` (where it isn't the native title bar's), and `display` follow it, and the shell gives Bench's windows the appearance, but nothing is saved or arranged, so the docked windows stay where they are behind the raised Bench. A preview with none stops it, as do `SaveSettings`, `SetOverlay(false)`, and `Ready` (decision 66). |
 | `CheckShortcuts(changes map[string]string) ([]ShortcutView, error)` | **Settings ▸ Keyboard**, as the user records a shortcut, turns one off, or uses a suggestion: whether each field of the `[shortcuts]` table would work with its changes, by the fields' names, without saving them. The engine asks the shell (`Emitter.CheckShortcuts`), which tries to register each binding that Bench doesn't hold already, releasing it again, and checks it against the shortcuts macOS keeps for itself and VoiceOver's, as it does when it registers them (decision 45). Each row has its `problem`, if any, and a `suggestion` that Bench checked it can register. A name that isn't a field is refused. |
@@ -299,8 +369,8 @@ by its only window). After any change, Go sends `bench:state`.
 | `BrowseToAdd(paneID string) (BrowseResult, error)` | The add dialog's **Browse…**, once the dialog has closed: lower Bench, show macOS's open panel as a window of its own (`Platform.ChooseToAdd`), and wait for the user, without the engine's lock. An app chosen is added to the pane, as the **Apps** rows add one (`added`, its name), if the tab is still the one it was chosen from. A program or script comes back for the **New terminal…** form to fill in (`command`, `name`, its file name, and `folder` for one run by its path): by its name when the user's shell finds that program by it (`term.Host.LookPath`), or else by its path, with what runs a script that can't run itself. A cancel returns nothing, and the dialog opens again. Anything else is refused, and so is a second panel while one is open. The browser preview refuses. See decision 41. |
 | `DeleteTab(index int)` and `ResetLayout(index int)` | From **Tab properties** (**Delete tab** and **Reset layout**), and a tab's menu (**Delete Tab (Keep Windows)** and **Reset Layout**). Each says what it did in a toast, with **Undo**, since the tab may not be the current one. The last tab can't be deleted. A deleted tab joins the closed tabs that `ReopenTab` brings back. |
 | `MoveTab(from, to int)` | Move tab `from` to index `to`, where it ends up: a drag along the tab strip, and **Move Tab Left** and **Move Tab Right** in a tab's menu, and the jump palette's **Move Tab Left** and **Move Tab Right**. (**Tab ▸ Move Tab Left** and **Move Tab Right** move the current tab in Go, without the frontend.) The tab takes the shortcut of its new place. The current tab stays current, each window stays in its tabs, and each tab keeps its arrangement. `config.toml`'s tabs take the same order, saved as **Tab properties** saves them, with `state.json` straight after. It says so in a toast, with **Undo**. Refused past either end. See decision 38. |
-| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close Tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), a move to another tab with the `send_to_tab_modifiers` keys (`SendToTab` and `SendToLastTab`), **Also Show In** (`AddItemToTab`), **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), **Remove from This Tab** (`RemoveItemFromTab`), **Show Side by Side (Wide Layout)** (`ShowSideBySide`), equal sizes from a divider (`EvenSizes`), the keys that arrange the panes (`GrowPane`, `ShrinkPane`, `EqualPanes`, and `StepLayout`, a run of which is one change), a drag of a docked window's edge that resizes the panes (decision 62), and closing a web page or terminal (`CloseItem`), or a recent message's **Undo** while its change is the latest: put back the arrangement from before change `step`, and the layout's mode from before `ShowSideBySide`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, and a tab that `MoveItemToNewTab` or `NewTabFromWindows` added goes, from `config.toml` too; the windows that `NewTabFromWindows` took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties** or renamed, or `config.toml` is reloaded. See decision 37. |
-| `UndoLatest()` | Take back the latest change that `Undo` can, as `Undo` does with its step, and say "Undid: *what it did*." (`undoName`): the jump palette's **Undo** row. **Tab ▸ Undo** and the `undo` shortcut call it in Go. Refused with "There's nothing to undo." when there's none. The View's `undo` names it. See decision 65. |
+| `Undo(step int)` | A toast's **Undo**, after **Delete tab**, **Close Tab…**, **Reset layout**, **Close this pane**, a move by dragging or from a menu (`MoveItem`, `MoveItemAt`, `MoveItemToTab`, `MoveTab`), a move to another tab with the `send_to_tab_modifiers` keys (`SendToTab` and `SendToLastTab`), **Also Show In** (`AddItemToTab`), **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab** (`MoveItemToNewTab`), a tab made of open windows (`NewTabFromWindows`), a tab made of folders and apps dropped on the tabs' **+** (`Engine.DropFiles`, decision 73), **Remove from This Tab** (`RemoveItemFromTab`), **Show Side by Side (Wide Layout)** (`ShowSideBySide`), equal sizes from a divider (`EvenSizes`), the keys that arrange the panes (`GrowPane`, `ShrinkPane`, `EqualPanes`, and `StepLayout`, a run of which is one change), a drag of a docked window's edge that resizes the panes (decision 62), closing a web page or terminal (`CloseItem`), **Keep over Bench** (`KeepOverBench`, whose rule goes from `config.toml` again, leaving the arrangement as it is, decision 68), Bench turning **Keep Running in the Background** on for a web page at its first notification (`keepOn`, which turns it off again as the user's choice, with `keep_running = false` in `config.toml` for a page that the file lists, and leaves the arrangement as it is, decision 76), and **Save** in **Tab properties** for a tab that was there, or its rename in place (`SaveTab`), or a recent message's **Undo** while its change is the latest: put back the arrangement from before change `step`, and the layout's mode from before `ShowSideBySide`, taking back the changes since too, latest first. A deleted tab comes back with its `config.toml` entry and rules, which Bench saves, and its windows, pages, and terminals that are still open dock in it again; what has closed since stays closed, and what has come since stays where it is. A moved tab goes back to its place, in `config.toml` too, a tab that `SaveTab` changed gets its name, layout, small-screen setting, colour, and place back, in `config.toml` too, and a tab that `MoveItemToNewTab`, `NewTabFromWindows`, or a drop on the + added goes, from `config.toml` too, with the terminals that the drop made; the windows that `NewTabFromWindows` or the drop took from "Not in a tab" go back where they were. Refused once the change is out of reach: Bench keeps the last 10, and forgets them all when the tabs change otherwise, as when a tab is added in **Tab properties**, or `config.toml` is reloaded. See decisions 37 and 74. The toast of Bench's move back to the display that the user chose, and its recent message while the View's `wentBack` names it, call it too, with a number from the same count: that moves only the window back, and makes the display it was on the one chosen, leaving the changes and the arrangement as they are; refused with "Built-in Retina Display isn't connected, so Bench can't move back to it." once that display has gone (decision 70). |
+| `UndoLatest()` | Take back the latest change that `Undo` can, as `Undo` does with its step, and say "Undid: *what it did*." (`undoName`): the jump palette's **Undo** row. **Tab ▸ Undo** and the `undo` shortcut call it in Go. Refused with "There's nothing to undo." when there's none. The View's `undo` names it. Bench's move back to the display that the user chose isn't one of these changes (decision 70). See decision 65. |
 | `ReopenTab(name string)` | **Reopen Closed Tab**, from a tab's menu and the jump palette: bring back the tab of that name that was deleted or closed most recently, of the last 5, which `state.json` keeps, where it was among the tabs, and switch to it. Its `config.toml` entry and rules come back, which Bench saves, numbered if another tab has its name now (`uniqueTabName`). Its arrangement comes back as `RestoreArrangement` brings one back: its windows that are "Not in a tab" dock in it, its pages and terminals that closed open again, and what another tab has now stays there. The View's `closedTabs` names the tabs it can bring back. |
 | `ReopenItem(itemID string)` | **Reopen Closed Page or Terminal**, from a tab's menu and the jump palette: open a web page or terminal that `CloseItem` closed again, with its ID, where it was, in each tab that had it and still does, in a pane of its own again if it had one, and switch to its tab. A terminal's session starts with the output it had, while `keep_terminal_output` is on. The View's `closedItems` lists the last 10, which Bench keeps in memory only. **Tab ▸ Reopen Closed Page or Terminal** calls it in Go. See decision 65. |
 | `CloseTab(index int, sure, dontAsk bool) (CloseQuestion, error)` | A tab's **Close Tab…**, its ×, and a middle-click on it: close the tab's App windows, web pages, and terminals, other than those in other tabs too, which stay there, and delete the tab as `DeleteTab` does, with the rules that name it. The only tab stays, empty (**Close All Windows…**). Unless `sure`, it closes nothing, and returns the question instead (`ask`), when `confirm_close` is on and it would close two or more things, or a terminal that's running something, and, with `confirm_close` off, when it would end a terminal that's running something and `confirm_quit_busy_terminals` is on (`busyOnly`). The question has what it would close and what stays, how many of them the tab's `config.toml` entry lists, how many rules go, and the busy terminals; its **Close** calls again, `sure`. With `dontAsk` (**Don't ask again**), it turns `confirm_close` off, or for a `busyOnly` question, `confirm_quit_busy_terminals`, in the same save. See decision 36. |
@@ -311,17 +381,19 @@ by its only window). After any change, Go sends `bench:state`.
 | `TermClear(itemID string)` | A terminal view's **Clear** (⌘K): forget the session's recent output, so that `TermSnapshot` has none of it, nor does the output Bench keeps as it quits. Offsets carry on. See decision 42. |
 | `OpenLink(address string)` | Open an `http` or `https` link that a terminal program printed, and the user Command-clicked, in the default browser. The browser preview refuses. |
 | `OpenInBrowser(itemID string)` | Open the page that a Web item shows in the default browser: the one its web view last reported, or until it reports one, after a restart too, the address the item was given. For a page that isn't `http` or `https`, it opens a `blob:` page's inner origin if that is one, or else the item's own address. Only `http` and `https` addresses open, and not VS Code for the Web. The browser preview refuses. See decision 23. |
-| `ReloadPage(itemID string)`, `GoBack(itemID string)`, and `GoForward(itemID string)` | A web page's **Reload Page**, first in its **⋯** and sub-tab menus, and **Back** and **Forward**, from their **Page** group, the jump palette's **This window**, and **Pane ▸ Page** (decision 50). `ReloadPage` loads the page in view again, or the item's own address if no page has come into view (`Platform.ReloadWebView`). `GoBack` and `GoForward` go back and forward in its history (`Platform.NavigateWebView`), and are refused while its web view says it can't (`WebStateChanged`), which the item's view has as `canGoBack` and `canGoForward`. Each is refused for a window that isn't a Web item, and until its web view has been made, as for VS Code for the Web while its server starts. |
+| `ReloadPage(itemID string)`, `GoBack(itemID string)`, and `GoForward(itemID string)` | A web page's **Reload Page**, first in its **⋯** and sub-tab menus, and **Back** and **Forward**, from their **Page** submenu, the jump palette's **This window**, and **Pane ▸ Page** (decision 50). `ReloadPage` loads the page in view again, or the item's own address if no page has come into view (`Platform.ReloadWebView`). `GoBack` and `GoForward` go back and forward in its history (`Platform.NavigateWebView`), and are refused while its web view says it can't (`WebStateChanged`), which the item's view has as `canGoBack` and `canGoForward`. Each is refused for a window that isn't a Web item, and until its web view has been made, as for VS Code for the Web while its server starts. |
 | `ZoomPage(itemID string, step int)` | **Zoom In** (1), **Zoom Out** (-1), and **Actual Size** (0) for a Web item's page: to the next of 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, and 300%, through `WKWebView.pageZoom` (`Platform.ZoomWebView`), saying so in a toast. Refused past either end. The item keeps it, as its view's `zoom` in percent, left out at 100%, and `state.json` saves it, for its web view to take whenever it's made (`WebView.Zoom`). |
 | `PageLink(itemID string) (string, error)` | **Copy Page Link**: the address that `OpenInBrowser` would open, which the frontend puts on the clipboard. Refused for VS Code for the Web, whose address holds the server's connection token, and for a page with no web address. |
 | `SetFindBar(itemID string, open bool)` and `FindInPage(itemID, text string, backwards bool) (bool, error)` | **Find in page**, from a page's menus, the jump palette, and **Pane ▸ Page ▸ Find in Page…** (the `find-in-page` command): `SetFindBar` opens or closes a Web item's find bar, which the frontend draws at the top of its pane's body while its view has `finding`, `layout.FindBarHeight` (36 pt) tall, as Go moves its web view down by as much, since the web view is drawn over Bench's UI. Opening it gives Bench's own UI the keyboard, for the bar's field; closing it gives the page the keyboard back, if its pane is focused. A page in a window of its own has no bar. `FindInPage` finds text in the page, ignoring case, after the match that's selected, or before it if `backwards`, going round at the end, and WebKit selects the match and scrolls to it (`Platform.FindInWebView`, `findString:withConfiguration:completionHandler:`). It reports whether there's a match, waiting for the page's answer, up to 3 seconds, without the engine's lock. |
 | `MuteCapture(itemID, device string, mute bool)` and `StopMedia(itemID string)` | **Mute Microphone** and **Turn Off Camera**, and with `mute` false, **Unmute Microphone** and **Turn On Camera**, for a page that uses them (`device` is `camera` or `microphone`): `Platform.SetCaptureState`, through `setMicrophoneCaptureState:` and `setCameraCaptureState:`, on the item's page and its popups' pages that use it. The page stays in its call, and can't undo it itself. Refused for a device the page isn't using. **Stop Sound and Video** pauses every sound and video the page and its popups play (`Platform.PauseWebViewMedia`, `pauseAllMediaPlaybackWithCompletionHandler:`), which a page can play again; Bench can't tell whether a page plays sound, so it's always offered. Each says what it did in a toast. See decision 50. |
+| `SetKeepRunning(itemID string, on bool)` | **Keep Running in the Background**, a checkbox at the end of a web page's page group, after its **Page** submenu, in its **⋯** and sub-tab menus, native or not (decision 71), the jump palette's **This window**, and **Pane ▸ Page**: turn it on or off for the page, as the user's choice, which a notification then leaves alone, and which ends the undo step of the page's first notification. On, a page that has no web view yet loads soon, hidden (`Platform.LoadWebView`), and every page with it on loads that way after Bench opens. Off, the page stays loaded until Bench quits, and loads only when it's shown from the next start. Either way, the platform hears whether its web view keeps running while it's hidden (`Platform.KeepWebViewRunning`). It saves `keep_running` in the page's entries in `config.toml`, and in `state.json`, and says what it did in a toast. Refused for VS Code for the Web, whose page needs its server, for a window that isn't a Web item, and for a page in no tab. See decision 76. |
 | `ReloadConfig()` | **Reload config.toml**, from the Bench menu, the jump palette, and the config notices' **Reload**: read `config.toml` again and apply it as startup applies it to `state.json`, keeping the arrangement (decision 7). If the file has problems, or can't be read, Bench keeps the config it runs with and reports them; if it isn't there, Bench writes its config there. Changes that Bench couldn't save over the file give way to it. |
 | `OverwriteConfig()` | The notice's **Overwrite**, after a save found `config.toml` changed outside Bench: write Bench's config over it, keeping that version as `config.toml.bak`. Refused while the file has problems. |
 | `UseConfigBackup()` | The problems notice's **Use backup**: put `config.toml.bak` in place of a `config.toml` that has problems, if the backup loads without any, keeping the file with problems as `config.toml.bak`, and apply it as `ReloadConfig` does. |
 | `OpenConfig()` and `ShowConfigInFinder()` | The problems notice's **Open config.toml**, in the default app for plain text (or TextEdit), and **Show in Finder**, through `Platform.OpenTextFile` and `Platform.ShowInFinder`. The browser preview refuses. |
 | `RestoreArrangement()` and `DismissArrangementNotice()` | The arrangement notice's **Restore previous arrangement** and **Dismiss** (see [Files](#files)). `RestoreArrangement` gives each tab whose arrangement Bench couldn't keep, because `config.toml` had no tab of its name at startup or at a reload, that arrangement back, once a tab has its name again: its tree, with new pane and split IDs, and its items, which take the entry edits since, as at startup. A window that the tab's own items have goes back to the arrangement's item; one that another tab has now stays there. A page or terminal that only the tab has, for the same entry as one of the arrangement's, takes that one's place, so that its page or session goes on; the tab's other pages and terminals move to "Not in a tab", and so do its other windows. Items that a reload moved to "Not in a tab" as it deleted the tab come back. Refused when there's nothing to restore, or no tab has the name yet. `DismissArrangementNotice` takes the notices away; `state.json.bad` stays. |
 | `SetOverlay(open bool)` | Raised mode on or off (see [The window model](#the-window-model)). Raising it also checks whether `config.toml` has changed outside Bench (decision 7). Lowering Bench after the jump shortcut opened the palette gives the keyboard back to the App window that had it (decision 15). |
+| `ShowMenu(menu Menu) (string, error)` | Show one of Bench's own menus as a native macOS menu, without raised mode, so that the web pages and docked windows stay in view (decision 71): a tab's menu, a sub-tab's or the **⋯** window menu, an empty pane's, a terminal's, or the slim title bar's layout menu. `menu` is `{entries, x, y}`: the entries that the frontend's HTML menus draw, as data (`workspace.MenuEntry`, each one of an entry with its `id`, `label`, `keys`, `detail`, `dot` (the colour of a tab's dot, which the item shows as its image, or `none` for a blank one, decision 74), `disabled`, `checked`, and `submenu`; a separator, `sep`; a `heading`; a `note`; or a `status` line), and the point for the menu's top left corner, in the points of the UI's web view, from its top left, as the page's `clientX` and `clientY` count them. It waits until the menu closes, without the engine's lock, and returns the `id` of the entry chosen, or `""` if none was. Meanwhile the engine counts the menu as open, as it does raised mode: nothing focuses another app's window, which would close the menu, a tab switch's put-off focus is dropped, the hold after `last_tab` doesn't start, Bench's move back to the display that the user chose waits (decision 70), and the App window that the jump palette took the keyboard from gets it back only once the menu closes. Only an entry that's on, has no submenu, and isn't in a submenu that's off counts. A menu of no lines shows nothing, and one of more than 1,000 is refused. The View's `nativeMenus` says that Bench has native menus. The browser preview hasn't, and refuses: its frontend draws the menus in HTML. |
 | `ShowPreview(itemID string, anchor layout.Rect)` and `HidePreview()` | Live previews, with the sub-tab's rectangle in content coordinates. |
 | `RequestAccessibility()` and `RequestScreenRecording()` | Ask macOS for permission, and, while Bench doesn't have it, open System Settings at the permission's list too (`Platform.OpenSettings`), since macOS asks only once (decision 48). Once Bench has asked for Screen Recording, the View's `permissions.screenRecordingReopen` offers **Quit and Reopen Bench**, as macOS applies it only as Bench opens. |
 | `SetOpenAtLogin(on bool)` and `OpenLoginItems()` | Open Bench at login. If macOS needs the user to allow Bench's login item (`Platform.LoginItemNeedsApproval`), turning it on opens System Settings ▸ General ▸ Login Items, sets the View's `loginApproval`, and returns an error that says so; `OpenLoginItems` opens Login Items again. While the View has `loginApproval`, Bench reads the login item again each time it comes forward. Refused where there's no Open at login, as in the browser preview. |
@@ -330,20 +402,26 @@ by its only window). After any change, Go sends `bench:state`.
 | `SetDialogSize(kind string, w, h float64)` | Remember the size the user gave a dialog by resizing it from its corner, for it to open at that size next time: `palette` (Jump to…), `add` (the add dialog), `editor` (Tab properties), `settings`, or `guide` (the welcome guide). The View's `dialogs` has the sizes, and `state.json` saves them. Where the dialog was isn't saved. |
 | `Quit(dontAsk bool)` and `CloseTerminal(itemID string, dontAsk bool)` | The **Quit** of the question that Bench asks before quitting while a terminal is running something, and the **Close** of the one it asks, in the terminal's own window, before closing a popped-out terminal's window while the terminal is running something (decision 35). `Quit` quits Bench without asking again. `CloseTerminal` ends the terminal and closes its window, as closing the window does when Bench doesn't ask. With `dontAsk` (**Don't ask again**), each first turns `confirm_quit_busy_terminals` off and saves `config.toml`, as **Settings** does; Bench quits even if it can't save it. The browser preview never asks, and its `Quit` does nothing. |
 | `QuitAndReopen(sure, dontAsk bool)` | **Quit and Reopen Bench**, which the welcome guide and **Settings** offer once Bench has asked for Screen Recording (decision 48). It quits as `Quit` does, and the shell opens Bench again once it has quit (`Emitter.Relaunch`). Unless `sure`, it first asks, as quitting does, while a terminal is running something: `confirm-quit` has `reopen` set, and its button, **Quit and Reopen**, calls it again, sure, with `dontAsk` as `Quit` has it. The browser preview refuses. |
+| `DismissWindowTool(bundleID string)` | The **Dismiss** of the notice about a window tool that's running, such as Rectangle: the notice goes, and `state.json` keeps the tool, so that its notice doesn't come back when the tool runs again (decision 69). |
 | `DismissUpdate()` | The **Dismiss** of the update notice in a Bench without Sparkle: the notice of a newer version goes, and Bench doesn't announce that version again; `state.json` keeps that (decision 48). |
 | `InstallUpdate()` | The update notice's **Install…**, in a `Bench.app` with Sparkle: Sparkle's window for the newer version, which offers to install it, opens (`Updater.Check`, decision 48). Refused without an updater, whose notice has **Download** instead. |
-| `SetDemoScreen(screen string, fitWidth float64)` | Browser preview only: simulate `fit`, `monitor`, or `laptop`. |
+| `SetDemoScreen(screen string, fitWidth float64)` | Browser preview only: simulate `fit`, `monitor`, or `laptop`. Choosing a screen chooses it for Bench's window (decision 70). |
+| `SetDemoMonitor(plugged bool)` | Browser preview only: the demo bar's **Simulate ▸ Unplug monitor** and **Plug in monitor**. Unplugging needs the monitor, as **Monitor** gives it: the laptop's screen is then the only one, and Bench's window goes to it. Plugging in puts the monitor back to the laptop's right, and once the screens settle, Bench goes back to it, with the toast and its Undo (decision 70). The View's `demo.unplugged` follows. Refused when there's no monitor to unplug or it's plugged in already. |
 | `DemoModifiers(held []string)` | Browser preview only: the modifier keys held down in the page, by the names `shortcuts.Modifiers` gives them (`ctrl`, `alt`, `shift`, and `cmd`), which the preview's platform reports as `Platform.HeldModifiers`, so that the hold after the `last_tab` shortcut works there (decision 60). The page sends them before the shortcut's `LastTab`, and again as they change. |
 | `DemoMinimise()` | Browser preview only: the demo bar's **Minimise window**. Minimise the App window that the focused pane shows, as Command-M does in the app, for the platform to report as macOS would (decision 55). Refused for a pane that shows no App window. |
+| `DemoNotify()` | Browser preview only: the **Post notification** of the demo bar's **Simulate** menu. Have the web page that the focused pane shows, or else the first that the current tab shows, post a notification, as Slack's would for a new message, for the platform to report as WebKit would (`platform.Event` `WebNotification`), so that the first one turns **Keep Running in the Background** on (decision 76). Refused when the tab shows no web page. |
+| `DemoComeForward()` | Browser preview only: the demo bar's **Bring Bench forward**. Do what Bench does as it becomes the active app on a Mac, which a page can't make it: hide the apps whose windows cover Bench, or park only those windows, and say so the first time for each app (decision 68). |
+| `SetDemoWindowTool(on bool)` and `DemoToolMoves()` | Browser preview only: the **Rectangle** and **Keep moving window** of the demo bar's **Simulate** menu. `SetDemoWindowTool` starts or stops the demo's Rectangle, an app with no Dock icon, as `Platform.RunningApps` would list it on a Mac, so that the View's `windowTools` and the notice about it follow. `DemoToolMoves` moves the window that the focused pane shows to the left half of the screen, as a window tool's shortcut would, once more than Bench puts it back, a second apart, so that its status becomes `moving`; while the screens settle, it waits. Refused for a pane that shows no App window in its pane (decision 69). |
 | `SetDemoVoiceOver(on bool)` | Browser preview only: the demo bar's **VoiceOver**. Pretend that VoiceOver is on or off, as `Platform.SystemKeys` would report it on a Mac: the View's `voiceOver` follows, so the terminals are read out, and the shortcuts with ⌃⌥ are checked again (decisions 45 and 64). It works with `BENCH_DEBUG` set too, as `platform.Logged` passes `SetSystemKeys` on to the demo platform. |
+| `DemoDropFiles(paths []string, attrs map[string]string)` | Browser preview only: a drop of files from the Finder, which the preview's browser can't give the paths of, so its tests and screenshots call `window._wails.handlePlatformFileDrop` as Wails' native code does, and the page sends the paths and the attributes of the element under the point to this, as Wails' runtime sends them to the shell in the app. It does what the app does with them (`Engine.DropFiles`, decision 73). Refused outside the preview. |
 
 ### Events
 
 | Event | Payload |
 | --- | --- |
-| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52): it's `settings.appearance`, or while Settings previews another, that one, as are its `density`, `titleBar`, and `display` (decision 66). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New Terminal in *folder*** in its menu, and ⌘T in it (decisions 44 and 64). Its `voiceOver` is set while VoiceOver is on, as `Platform.SystemKeys` reports it: the terminals are then in screen reader mode, and the bells and finished commands are announced, a terminal's `failed`, set with its `ended`, saying whether its command ended with an error (decision 64). Its `notices` are the status bar's notices, each with its `text` and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add Front Window** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). |
+| `bench:state` | `workspace.View`. Each of its `items` has the `title` its sub-tab shows: the `label` the user gave a terminal or web page, if any, or else the title its window, page, or shell gives it, which `autoTitle` then has (decision 39). Its `density` (`standard` or `compact`) sizes the panes' chrome and its `titleBar` the title bar's, and each of `display.panes` has its `header` height, which Go docks the pane's window below (decision 33). Its `appearance`, `system`, `light`, or `dark`, chooses the frontend's colours (`theme.js`, decision 52): it's `settings.appearance`, or while Settings previews another, that one, as are its `density`, `titleBar`, and `display` (decision 66). Its `display.zoomed` names the pane that `ZoomPane` shows alone, which is then `display.root` and the only one of `display.panes`, with no dividers (decision 40). Its `display.arrange` says what the keys that arrange the panes would do now: `grow`, `shrink`, and `equal` are set when `GrowPane`, `ShrinkPane`, and `EqualPanes` would act, and `nextLayout` and `previousLayout` name the layouts that `StepLayout` would give the tab, for the jump palette and the menus (decision 59). Its `settings.launchers` are the `[[launcher]]` entries, each with the `mono` and `hint` the lists show (decision 41). An item's `attention` says why it needs the user, for the bell on its sub-tab, and a tab's `attention` counts its items that have one, for the bell on the tab (decision 43). A terminal's `here` is the folder its shell is in, for **New Terminal in *folder*** in its menu, and ⌘T in it (decisions 44 and 64). Its `voiceOver` is set while VoiceOver is on, as `Platform.SystemKeys` reports it: the terminals are then in screen reader mode, and the bells and finished commands are announced, a terminal's `failed`, set with its `ended`, saying whether its command ended with an error (decision 64). Its `notices` are the status bar's notices, each with its `text`, for some a `key` that stays the same while the text changes, which the recent messages keep one copy for (decision 69), and, for some, `actions`: buttons, each with a `label` and either the `method` it calls, a bound method that takes nothing, such as `ReloadConfig`, or with its `arg`, one string, as **Use this instead** calls `UseSuggestedShortcuts` with the fields to change, or else a `command` that the frontend runs as if Go had sent it as a `bench:command`, as **Keyboard settings** runs `keyboard-settings`. Its `shortcuts` are the fields of the `[shortcuts]` table, in config order, for **Settings ▸ Keyboard**: each with its `field` name, `label`, the `keys` Bench adds to a field of modifiers (such as "the arrow keys"), its `value` in config form and `display` as macOS shows it, its `default`, and, from what the shell found as it registered them, a `problem` if its shortcuts don't work, or may not, and a `suggestion` (with its `suggestionDisplay`) to use instead (decision 45). Its `lastTab` is the tab that `LastTab` goes back to, or -1, and each item's `used` says how lately it was used, for the jump palette's order (decision 49). Its `hold`, while a hold after the `last_tab` shortcut shows the tabs, has the hold's `id`, which counts holds, its `tabs` by index, most recently used first, and the `selected` one, or is `null` (decision 60). Its `front` is the window in front before Bench, if it's out of the tabs, as an item ID or a window not in a tab's `f` ID, for **Add Front Window** (decision 13). A Web item has its `zoom` in percent, left out at 100; `canGoBack` and `canGoForward`; `camera` and `microphone`, `active` or `muted` while its page uses them; and `finding` while its find bar is open, which Go leaves `layout.FindBarHeight` for at the top of its pane's body. A tab's `camera` and `microphone` count its pages that use them, and `cameraLive` and `microphoneLive` are set while any of them has that one live (decision 50). An item's `icon`, and the `icon` of each window not in a tab, remembered app, launcher, and add-dialog row, is the address of the icon its tile shows in place of its `mono`, if it has one (decision 51). An item's `unread` is its unread count, with `count`, `more` for a count with a "+", `dot` for a badge with no number, and `wholeApp` for an app's Dock badge that the app's other items share, and a tab's `unread` is the total of its items'; both are left out when there's nothing unread, and while `settings.unreadCounts` is off (decision 61). Its `keepOver` lists, by lower-case bundle ID, the apps that `KeepOverBench` can still keep over Bench, for the recent messages to offer **Keep over Bench** again (decision 68): the frontend compares a toast's app, which has the case macOS gives it, such as `com.apple.Preview`, in lower case. Its `wentBack`, in the form of `undo`, is Bench's move back to the display that the user chose, while its toast's **Undo** can still take it back, for the recent messages to keep that **Undo** (decision 70). Its `windowTools` names the window tools that Bench knows and that are running, such as Rectangle, for the demo bar's **Rectangle** to show as pressed, and an item's status is `moving` while its app or a window tool kept moving its window out of its pane, with a `statusText` that names the app and those tools (decision 69). Its `nativeMenus` is set in the app, where `ShowMenu` shows Bench's menus as native macOS menus, and left out in the browser preview, which draws them in HTML (decision 71). Its `dropdown`, while a terminal is the drop-down, has the terminal's `id`, `shown` while it shows, and `inPage` in the browser preview, where the page draws it; the terminal is among the `floating` items, and its `attention` marks it while it's hidden. Its `settings.dropdownHeight` is the drop-down's height in percent of the screen's (decision 72). A tab's `colour` is one of `config.TabColours`, or "" for none, for its underline, the band along its pane headers, and the dot beside its name in the overview, the jump palette, and the **Move to Tab** and **Also Show In** menus (decision 74). A web page's `keepRunning` says that **Keep Running in the Background** is on, and its `notLoaded` that it has no web view and won't get one until the user shows it, for the sub-tab's tooltip and VoiceOver name (decision 76). |
 | `bench:toast` | A short message, as a string, or, for one with a button, `workspace.Toast`: its `text`, and an `action` with the button's `label`, the bound `method` it calls, and the `arg` it passes, as **Undo** calls `Undo` with its change's number (decision 37), or instead the `item` it passes, as **Pop out** calls `PopOut` with the ID of the item that came into a pane (decision 13). A toast can have a `second` button of the same form after it, as **Go there** calls `SwitchTab` with the tab that a window moved to (decision 57). The frontend shows it over the status bar, which docked windows never cover, or, while the status bar is hidden, in the title bar's empty space (decision 31), and keeps it in the notices' **Recent Messages** (decision 47). |
-| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "keyboard-settings"}` (Settings, at its **Keyboard** section), `{"name": "edit-tab"}` (the current tab's properties) from **Tab ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35); a `confirm-quit` from `QuitAndReopen` has `reopen` set (decision 48). **Tab ▸ Close Tab…** and **Pane ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). The app menu's other items that the frontend does send `new-tab` (**Tab ▸ New Tab…**), `new-tab-from-windows` (**Tab ▸ New Tab from Open Windows…**, the **New tab** dialog with **Windows that are open** chosen, decision 54), `rename-tab` (**Tab ▸ Rename…**, which renames the current tab in place), `open-palette` (**Pane ▸ Jump to…**), `add-to-pane` (**Pane ▸ Add to Pane…**, the add dialog for the focused pane), `keyboard-shortcuts` (**Help ▸ Keyboard Shortcuts**, which opens the **Keyboard Shortcuts** sheet, decision 48), `first-run` (**Help ▸ Show Welcome Guide**, which opens the welcome guide even if it was dismissed), `recent-messages` (**Help ▸ Recent Messages**, decision 47), `show-all-tabs` (**View ▸ Show All Tabs**, the overview of every tab, decision 60), and, with the focused pane's shown item as `itemId`, `find-in-page` and `copy-page-link` (**Pane ▸ Page ▸ Find in Page…** and **Copy Page Link**, which open the page's find bar and put its link on the clipboard, as its menu's entries do, decision 50). The `show_all_tabs` shortcut sends `toggle-all-tabs`, which closes the overview if it's open, and a hold after the `last_tab` shortcut sends `hold-tabs` once it shows the tabs, and `hold-up` and `hold-down` for the `focus_pane_modifiers` shortcuts with Up and Down while it shows them, which the frontend answers with `StepHold` and a row's length (decision 60). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
+| `bench:command` | `workspace.Command`, such as `{"name": "toggle-palette"}` when the jump shortcut is pressed, `{"name": "settings"}` from **Bench ▸ Settings…**, `{"name": "keyboard-settings"}` (Settings, at its **Keyboard** section), `{"name": "edit-tab"}` (the current tab's properties) from **Tab ▸ Tab Properties…**, or `{"name": "focus-terminal", "itemId": "w7"}` to give a terminal the keyboard. `{"name": "paste-terminal", "itemId": "w7", "text": "…"}` types `text` into terminal `itemId` as a paste, in the window whose page has its session, for files dropped on it, and `drop-refused`, from the shell, shows `text`, why Go refused a drop on terminal `itemId`'s own window, as that window's toast (decision 73). `confirm-quit` asks before quitting, and `confirm-close-terminal` asks, in the popped-out terminal `itemId`'s own window, before closing it; each has the `terminals` that are running something, each with its `id`, sub-tab `title`, `tab` (left out for one in a window of its own), and what it's `running` (decision 35); a `confirm-quit` from `QuitAndReopen` has `reopen` set (decision 48). **Tab ▸ Close Tab…** and **Pane ▸ Close Window** send `close-tab` and `close-window`, for the current tab and the focused pane's shown item, which the frontend closes as the tab's menu and the sub-tab's × do, asking first where Go says (decision 36). The app menu's other items that the frontend does send `new-tab` (**Tab ▸ New Tab…**), `new-tab-from-windows` (**Tab ▸ New Tab from Open Windows…**, the **New tab** dialog with **Windows that are open** chosen, decision 54), `rename-tab` (**Tab ▸ Rename…**, which renames the current tab in place), `open-palette` (**Pane ▸ Jump to…**, and `bench://jump` links, decision 77), `add-to-pane` (**Pane ▸ Add to Pane…**, the add dialog for the focused pane), `keyboard-shortcuts` (**Help ▸ Keyboard Shortcuts**, which opens the **Keyboard Shortcuts** sheet, decision 48), `first-run` (**Help ▸ Show Welcome Guide**, which opens the welcome guide even if it was dismissed), `recent-messages` (**Help ▸ Recent Messages**, decision 47), `show-all-tabs` (**View ▸ Show All Tabs**, the overview of every tab, decision 60), which `bench://overview` links send too (decision 77), and, with the focused pane's shown item as `itemId`, `find-in-page` and `copy-page-link` (**Pane ▸ Page ▸ Find in Page…** and **Copy Page Link**, which open the page's find bar and put its link on the clipboard, as its menu's entries do, decision 50). The `show_all_tabs` shortcut sends `toggle-all-tabs`, which closes the overview if it's open, and a hold after the `last_tab` shortcut sends `hold-tabs` once it shows the tabs, and `hold-up` and `hold-down` for the `focus_pane_modifiers` shortcuts with Up and Down while it shows them, which the frontend answers with `StepHold` and a row's length (decision 60). A tab's shortcut, `next_tab`'s, `previous_tab`'s, and `last_tab`'s, or for `last_tab` a hold as its keys are let go of, or a `bench://` link's or a script's switch (`tab`, `next`, `previous`, or `last`, decision 77), send `switching`, with the `tab` they switch to (left out for the first tab, 0), before Go arranges it, for the title bar to show that tab as current at once, and `switch-refused` if Go then refuses the switch, or it ends on another tab, to put it back as the View has it (decision 67). For the commands that need Bench's window, such as the palette, Settings, and `confirm-quit`, the shell brings Bench forward first; for `focus-terminal`, the engine already has (decision 15). |
 | `term:data` | `workspace.TermData`: an item ID, base64-encoded output of up to 4 KB, and the offset where it starts. |
 
 ### Terminal output
@@ -429,16 +507,18 @@ are private too (0600 and 0700); an existing file keeps its permissions.
 
 | File | What it is |
 | --- | --- |
-| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do **Save as launcher** (`SaveLauncher`, decision 41), and the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close Tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen Closed Tab**, which put a deleted tab's entry back (decision 37), and moving a tab, which moves its entry (`MoveTab`, decision 38), and **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab**, which add a tab entry (`MoveItemToNewTab`, decision 39), and a tab made of open windows (`NewTabFromWindows`, decision 54), and a shortcut notice's **Use this instead**, which changes `[shortcuts]` (`UseSuggestedShortcuts`, decision 45), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22), and the welcome guide's starting set-up, which adds its tabs (`UseStarterTabs`, decision 48). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
+| `config.toml` | Tabs, layouts, settings, shortcuts, launchers, and rules. Created on first run, with one tab holding the default browser (decision 28); **Settings** and **Tab properties** update it, and so do **Save as launcher** (`SaveLauncher`, decision 41), and the **Don't ask again** of the questions before quitting and before closing a terminal's window (`confirm_quit_busy_terminals`, decision 35), and before closing a tab (`confirm_close`), and **Close Tab…**, which deletes the tab as **Delete tab** does (decision 36), and **Undo** and **Reopen Closed Tab**, which put a deleted tab's entry back (decision 37), and moving a tab, which moves its entry (`MoveTab`, decision 38), and **Move to Tab ▸ New Tab** and **Also Show In ▸ New Tab**, which add a tab entry (`MoveItemToNewTab`, decision 39), and a tab made of open windows (`NewTabFromWindows`, decision 54), and a shortcut notice's **Use this instead**, which changes `[shortcuts]` (`UseSuggestedShortcuts`, decision 45), and `UseWebApp` (or `UseWebAppWhenReady`) for a web page that it lists (decision 22), and the welcome guide's starting set-up, which adds its tabs (`UseStarterTabs`, decision 48), and **Keep over Bench**, which adds a float rule (`KeepOverBench`, decision 68), and a tab made of folders and apps dropped on the tabs' **+** (`Engine.DropFiles`, decision 73), and a web page's `keep_running`, from its menu (`SetKeepRunning`) or its first notification, and **Undo** after that (decision 76). Bench records a hash of it (`config.Sum`) whenever it reads or writes it, and doesn't save over it once it has changed outside Bench (decision 7). |
 | `config.toml.bak` | The previous `config.toml`, kept by every save. **Use backup** swaps it with a `config.toml` that has problems. |
 | `config.toml.good` | The last `config.toml` that loaded without problems, or that Bench saved: what Bench runs with while `config.toml` has problems (decision 7). |
-| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command, and the command it types, if any), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time, with `window`, the window's content frame there, if it didn't fill the display, for Bench to open at (decision 30), and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). An item's `label` is the name the user gave a terminal or web page (`RenameItem`, decision 39). A terminal's `run` is the command Bench types into its shell, and `startAgain` whether it runs it again at the next start (decision 41), and a plain shell's `lastFolder` the folder it was last in, where it starts again; its `folder` stays the config entry's key (decision 44). A Web item's `zoom` is its page's zoom, such as 1.25, left out at actual size; one that isn't among Bench's zooms is taken as the nearest (decision 50). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen Closed Tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Its `updates` has, while `check_for_updates` is or was on, when Bench last asked GitHub for its latest release (`checked`), the newer version it found and its page (`latest` and `url`), and the version whose notice the user dismissed (`dismissed`, decision 48). Older builds ignore them. |
+| `state.json` | The live arrangement, saved half a second after it changes, and within 3 seconds however often it changes. New titles and addresses, the display Bench is on, and dialog sizes alone are saved within 30 seconds. Its tabs are matched with `config.toml`'s by name at startup (decision 29). Each tab records its config entries' keys (an App entry's app and title, a Web entry's address, a VS Code entry's folder, a terminal's folder and command, and the command it types, if any), so that at startup the entries edited, removed, or added in `config.toml` since can be applied to the arrangement. Its `apps` holds, for each app with items, by lower-case bundle ID, whether the user quit it (`quit`, decision 28) and when Bench last saw it running (`seen`, decision 10), and `ran` when Bench last ran. Its `screen` is the display Bench's window was on, by ID, name, and frame, for Bench to open on next time, with `window`, the window's content frame there, if it didn't fill the display, for Bench to open at (decision 30); its `preferredScreen` is the display that the user last chose for the window, in the same way, which Bench goes back to when it comes back, and opens on when it's connected (decision 70); and its `dialogs` the sizes the user gave dialogs, by kind (`SetDialogSize`, decision 34). An item's `label` is the name the user gave a terminal or web page (`RenameItem`, decision 39). A terminal's `run` is the command Bench types into its shell, and `startAgain` whether it runs it again at the next start (decision 41), and a plain shell's `lastFolder` the folder it was last in, where it starts again; its `folder` stays the config entry's key (decision 44). A Web item's `zoom` is its page's zoom, such as 1.25, left out at actual size; one that isn't among Bench's zooms is taken as the nearest (decision 50). Its `closed` holds the last 5 tabs deleted or closed, latest first, each with its arrangement and items, its `config.toml` entry and rules, where it was among the tabs, and when it went, for **Reopen Closed Tab** (decision 37); one that couldn't come back is dropped at load, not the whole file. Its `updates` has, while `check_for_updates` is or was on, when Bench last asked GitHub for its latest release (`checked`), the newer version it found and its page (`latest` and `url`), and the version whose notice the user dismissed (`dismissed`, decision 48). Its `covering` lists the apps, by lower-case bundle ID, that Bench has said it hid, or moved windows of out of sight, because they covered it, so that it says so once for each (decision 68). `windowTools` lists the window tools, by lower-case bundle ID, whose notice the user dismissed, so that it doesn't come back (decision 69). Its `dropdown` is the item ID of the terminal that is the drop-down, which is among the items out of the tabs (decision 72). A Web item's `keepRunning` is its page's `keep_running`, left out until Bench or the user sets it, which keeps the setting of a page that `config.toml` doesn't list, such as one added in Bench (decision 76). Older builds ignore them. |
 | `state.json.bad` | A `state.json` that Bench set aside (decision 29): one it couldn't use, such as one that doesn't parse, or a copy of one with tabs that `config.toml` no longer has, whose arrangement it dropped at startup or at a reload. The two before are `state.json.bad.1` and `state.json.bad.2`; older ones go. |
 | `terms/` | Each terminal's output from when Bench last quit, at most 256 KB, as `<item ID>.out` (0600, in a 0700 folder), while `keep_terminal_output` is on. Written as Bench closes, before it ends the sessions, only when it saves `state.json`; removed as the terminal closes, or leaves `config.toml`, and all of it when the setting goes off (decision 44). |
 | `parked.json` | Windows that are parked right now, with where they were, and apps that Bench hid, so they can be put back after a crash. Set aside as `parked.json.bad` if it doesn't parse. |
 | `vscode.json` | The running `code serve-web`, so that it can be stopped after a crash. |
 | `vscode-token-*` | The running `code serve-web`'s connection token, readable only by the user. It's here, not in `$TMPDIR`, which macOS clears of old files, because the server rereads it whenever it starts VS Code. |
 | `bench.lock` | The support folder's lock, which every process that acts on `parked.json` and `vscode.json` holds while it does (see [Crash safety](#crash-safety)). |
+| `bench.sock` | The Unix socket that answers `bench list`, 0600, there only while Bench runs with `allow_scripts` on. Bench makes it as `bench.new`, sets its mode, and renames it; it removes it as the setting goes off and as Bench quits, and replaces one that nothing answers, as a Bench that crashed leaves (decision 77). |
+| `forward.key` | 32 random bytes, 0600, that encrypt what a second Bench and the script subcommands send the running Bench through Wails' single-instance lock (`SingleInstanceOptions.EncryptionKey`, decision 77). Bench makes it before `application.New` if there's none, or replaces one of the wrong size; Benches that start at once agree on one, as each links its own to the name and only the first link takes it. |
 | `first-run-done` | Present once the welcome guide has been dismissed, with its last page's **Done**. |
 | `accessibility-version` | The version of Bench that last had Accessibility permission, for the notice that says an update needs the user to allow Bench again (decision 48). |
 | `view.json` | Only with `BENCH_DEBUG` set: the latest `View`, as the frontend gets it, for scripts such as the macOS demo. |
@@ -571,7 +651,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
    popped-out page, is open.
 4. **Raised mode** (see [The window model](#the-window-model)) answers the
    milestone 4 question of how menus, dialogs, and drags appear above docked
-   windows. It needs checking on a Mac.
+   windows. It needs checking on a Mac. For menus, decision 71 replaces it
+   in the app: Bench's own menus are native macOS menus, which need no
+   raised mode. Dialogs, drags, live previews, and the menus drawn in HTML
+   keep it.
 5. **The frontend has no build step.** It's plain ES modules, with xterm.js,
    its fit, search, and web-links add-ons, and the IBM Plex fonts vendored
    in `frontend/vendor`, so the app works offline.
@@ -736,9 +819,13 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     of Bench's dividers. A drag of the window's edges that face other panes
     resizes the panes instead (decision 62). It puts back any other move
     or resize of a docked window 300 ms later, but at most three times in
-    ten seconds for one window: after that, it leaves the window where its
-    app put it until the tab is next arranged, so that Bench and the app
-    don't fight. While the screens settle, as after the Mac wakes, it's
+    ten seconds for one window and one pane body: after that, it leaves the
+    window where its app put it, so that Bench and the app don't fight, and
+    its pane says so, with **Dock again** (decision 69). A try to put the
+    window back into another body, as after a resize of the panes, starts
+    the count again, so that an app that nudges its window after each of
+    Bench's resizes isn't taken as fighting Bench. While the screens
+    settle, as after the Mac wakes, it's
     macOS moving the windows: the settle puts them back, and its moves
     don't count (decision 56).
 
@@ -826,7 +913,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     the engine focuses it once the window arrives, but only while the pane
     still shows the same item, no menu or dialog is open, nothing else has
     been focused, and no other app has been activated, other than by
-    Bench. While Bench's window is hidden, focusing waits until
+    Bench. A native menu that opens meanwhile drops it for good (decision
+    71). While Bench's window is hidden, focusing waits until
     `BenchShown`. Arranging raises the focused pane's windows last, since
     raising a window of the frontmost app can make it the app's focused
     window. When the jump shortcut brings Bench forward for the palette
@@ -837,7 +925,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     that focuses something, such as a tab, come first: the palette lowers
     Bench as it closes, before it runs the row, which reaches Go as a call
     of its own. A dialog that the palette opens, such as Settings, raises
-    Bench again, and the note waits until that closes. Web items and
+    Bench again, and the note waits until that closes; so does a native
+    menu that the palette opens, as **Window Options…** does, which the
+    window's app, made active, would close (decision 71). Web items and
     terminals need none of this: Bench's window gives a web view the
     keyboard back when it's lowered, and the frontend a terminal.
 16. **Bench hides the current tab's apps with its own window.** When
@@ -1173,8 +1263,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     ordinary window of its own (see [The window model](#the-window-model)),
     not in a dialog in Bench's window, which would need raised mode, bring
     back a hidden Bench, and close any open dialog. The window shows a
-    static page, `frontend/acknowledgements.html`, with no scripts and no
-    links out of it, since it has no address bar. Wails holds the events
+    static page, `frontend/acknowledgements.html`, with no links out of
+    it, since it has no address bar, and no scripts but one, which keeps
+    a link or file dropped on the page from loading in its place
+    (decision 73). Wails holds the events
     that it sends every window until the page's runtime says it's ready,
     and this page has none, so the shell says so on its behalf. Choosing
     the item again brings the window forward, and Command+W, which the app
@@ -1287,12 +1379,14 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       `BenchMoved` records the display Bench's window is on
       (`noteBenchPlaceLocked`), and `state.json` saves it as `screen`: its
       ID, and its name and frame too, since macOS can give a display a new
-      ID. At launch the shell asks the engine (`WindowStart`), which finds
-      that display by ID, then by name and frame together, since two
-      displays of the same model have the same name, then by name, then by
-      frame, or else takes the primary one (`findScreen`), and opens the
-      window in the middle of its visible area (`mainWindowOptions`, with
-      Wails' `WindowXY`).
+      ID. At launch the shell asks the engine (`WindowStart`), which looks
+      first for the display that the user chose, `preferredScreen`, if
+      it's connected and isn't the one Bench was last on (decision 70).
+      Otherwise it finds the display Bench was last on by ID, then by name
+      and frame together, since two displays of the same model have the
+      same name, then by name, then by frame, or else takes the primary one
+      (`findScreen`). It opens the window in the middle of that display's
+      visible area (`mainWindowOptions`, with Wails' `WindowXY`).
     - **Where the user left it.** A window that doesn't fill its screen,
       as when the user tiles it into half the screen, is recorded too, as
       `screen.window`: its content frame, in global coordinates. At launch,
@@ -1350,7 +1444,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       its screen, so it doesn't start another wait. A window the user made
       smaller is left as it is. While the window is hidden or minimised,
       when moves aren't the user's either, filling waits until it's shown,
-      since zooming it could bring it back.
+      since zooming it could bring it back. If the display that the user
+      chose has come back, the window goes back to it instead (decision
+      70).
     - The menu, the palette, and filling again zoom with Wails' `Zoom`,
       which animates, and only when `IsMaximised` (AppKit's `isZoomed`)
       says the window isn't zoomed already: `zoom:` on a zoomed window
@@ -1639,11 +1735,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     would, so that the app can ask about unsaved changes:
     `Platform.PressClose` presses the window's `AXCloseButton`, or, for a
     window without one, focuses it and presses its app's **Close Window**
-    menu item, or failing that **Close** (`closeWindowRank`, in English
-    only), never **Close Tab** or **Close All**. Web pages and terminals
-    close at once, in the engine, without the page's `beforeunload`. The
-    engine's `CloseItem` and `CloseTab` (`internal/workspace/close.go`) mark
-    the App items they close (`Item.closing`) and press later:
+    menu item, or failing that **Close** (`closeWindowRank`, in English and
+    the languages of decision 75), never **Close Tab** or **Close All**.
+    Web pages and terminals close at once, in the engine, without the
+    page's `beforeunload`. The engine's `CloseItem` and `CloseTab`
+    (`internal/workspace/close.go`) mark the App items they close
+    (`Item.closing`) and press later:
     `pressCloseSoonLocked` queues the presses while Bench is raised, as it
     is while the question or menu that asked is open, and
     `setOverlayLocked(false)` presses them once Bench is back below the
@@ -1732,8 +1829,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     so a deleted tab comes back as itself, with its entry keys. A change
     that deleted a tab also keeps `config.toml`'s tabs and rules
     (`beginDeleteLocked`), and so does one that added a tab for a window
-    (`MoveItemToNewTab`) or for open windows (`NewTabFromWindows`), which
-    Undo puts back and saves, keeping the settings saved since. A step of
+    (`MoveItemToNewTab`) or for open windows (`NewTabFromWindows`), or
+    that **Tab properties** or a rename in place made to a tab that was
+    there (`SaveTab`, decision 74), which Undo puts back and saves, keeping
+    the settings saved since. A step of
     `NewTabFromWindows` also notes the windows it took from "Not in a tab"
     as they were (`outsideWindow`), which Undo puts back
     (`putBackOutsideLocked`, decision 54). A window that comes back to a tab from "Not in a
@@ -1741,9 +1840,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     queued to close stays open. A change that moved a tab marks its step
     (`reordered`), and Undo puts `config.toml`'s tabs back in the order of
     the step's tabs, by name (`inTabOrder`), and saves them. Any other
-    change to the tabs, such as a tab added in **Tab properties** or
-    renamed, a reloaded `config.toml`, **Restore previous arrangement**,
-    or **Reopen Closed Tab**, forgets the history (`forgetUndoLocked`),
+    change to the tabs, such as a tab added in **Tab properties**, a
+    reloaded `config.toml`, **Restore previous arrangement**, or **Reopen
+    Closed Tab**, forgets the history (`forgetUndoLocked`),
     and Undo refuses a step whose tabs don't match
     the config's by name, so it never brings back a tab that `config.toml`
     no longer agrees with. Command-Z belongs to the pages and terminals,
@@ -2209,7 +2308,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     every Mac app uses for a command of its own, such as ⌘Z for Undo, or
     ⌘, and ⌘T, which open Settings and New tab in Bench's window too
     (`shortcuts.AppKey`, decision 64), which Bench would take from every
-    app, in that order. For each, it suggests a shortcut that it checked
+    app, or one that a window tool that's running uses too, such as
+    Rectangle (`WindowToolKeys`, decision 69), in that order. For each, it suggests a shortcut that it checked
     it can register, that clashes with nothing it knows of, and that
     leaves the other fields' problems no worse, field by field, so that
     taking them all at once makes no new clash. For VoiceOver, ⌘ takes
@@ -2295,9 +2395,11 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       expected, then Bench's version, the macOS version, the displays,
       the layout in use, the permissions, and up to 8 notices of up to 300
       characters each, from the engine (`ProblemReport`, which the shell
-      calls; it isn't bound), and where the log is, written from `~`. The
-      body asks the user to check it. Bench sends nothing itself: the
-      user reads the issue, changes it, and submits it, or doesn't.
+      calls; it isn't bound), how long the latest tab switches and other
+      arrangements took, for up to 12 reasons each (decision 67), and where
+      the log is, written from `~`. The body asks the user to check it.
+      Bench sends nothing itself: the user reads the issue, changes it, and
+      submits it, or doesn't.
 47. **Bench keeps a log file, and the frontend keeps the recent
     messages.** Bench opened from the Finder or at login has no terminal, so
     its standard error goes nowhere a user can find. So the app also writes
@@ -2501,9 +2603,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       pane, and switching to its tab update. It isn't saved either.
     - **This window.** The group is what the ⋯ menu has for the focused
       pane's shown item, built by the same `windowMenuEntries`, so that
-      the palette can't offer less or other than the menu. Entries under a
-      heading or in a submenu (`under`) are named with it, as "Move to Pane
-      ▸ Pane with Slack" and "Move to Tab ▸ Research" (decision 63).
+      the palette can't offer less or other than the menu. Entries in a
+      submenu, or with `under`, are named with it, as "Move to Pane ▸ Pane
+      with Slack" and "Move to Tab ▸ Research" (decisions 63 and 71).
       Disabled entries are left out, and so is Zoom Pane (`pane`), which
       acts on the pane and is in Actions, where an empty pane has it too.
       The group ends with **Window Options…**, which opens the menu itself
@@ -2521,24 +2623,27 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     item has no toolbar, and pages such as Slack's replace WebKit's own
     right-click menu, so the only ways to reload a stuck page or go back
     were a swipe, or **Open in Browser**. Its window menu now has a **Page**
-    group (`pageEntries` in `pages.js`), which the jump palette's **This
+    submenu (`pageEntries` in `pages.js`), which the jump palette's **This
     window** lists as **Page ▸** *entry* and the app menu as **Pane ▸
     Page**, with no key equivalents: ⌘R, ⌘F, ⌘L, ⌘+, and ⌘− stay the
     page's, as decision 46 keeps the app menu off them.
-    - **One row.** Back, Forward, Zoom Out, Actual Size, which shows the
-      zoom, and Zoom In are buttons in one row, labelled Page, as in a
-      browser's menu, and Find in Page…, Copy Page Link, the camera and
-      microphone entries, and Stop Sound and Video are entries after it.
-      **Reload Page** was in the row too; it is now the first of the menu's
-      common actions, at its top (decision 63). A web page's menu already
-      had about 20 entries, and as one entry each the group took a third of
-      a 900-point window, pushing the web app entry (decision 22) out of
-      sight. For the same reason, menus
-      may now take the window's height less 16 points before they scroll,
-      not 80% of it, and `fitMenu` leaves room for a web app entry of two
-      lines, as its names often wrap. The row's buttons are menu items like
-      the others: the up and down arrows go through them, and left and
-      right move along the row.
+    - **A submenu.** Back, Forward, Zoom In, Zoom Out, and Actual Size,
+      which says the zoom ("Actual Size (now 125%)"), are the **Page**
+      submenu, with the names, the order, and the separator of **Pane ▸
+      Page**. They were a row of buttons, labelled Page, as in a browser's
+      menu, with entries after it: a web page's menu already had about 20
+      entries, and as one entry each the group took a third of a
+      900-point window, pushing the web app entry (decision 22) out of
+      sight. A native menu has no rows of buttons, and a submenu takes one
+      line, so decision 71 made the row a submenu, in the HTML menus too.
+      Find in Page…, Copy Page Link, the microphone and camera entries,
+      Stop Sound and Video, and the **Keep Running in the Background**
+      checkbox follow it in the menu itself, one click each (decisions 71
+      and 76). Only the menu bar's **Pane ▸ Page** has them all. **Reload
+      Page** is the first of the menu's common actions, at its top
+      (decision 63). Menus may take the window's height less 16 points
+      before they scroll, not 80% of it, and `fitMenu` leaves room for a
+      web app entry of two lines, as its names often wrap.
     - **Navigation.** The web view observes its `canGoBack` and
       `canGoForward` with key-value observing and reports them with its
       capture states in one `WebStateChanged` event, which the event queue
@@ -2909,8 +3014,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       (`redockSoonLocked`): the settle arranges once it's over. Then the
       engine reads Bench's screen again, fills it again if Bench filled it
       before (decision 30), forgets every window's tries (`redocks`),
-      looks again for the current tab's windows that it said were on
-      another desktop (`recheckUnavailableLocked`), and arranges the tab,
+      docks again the windows that kept moving out of their panes
+      (decision 69), looks again for the current tab's windows that it
+      said were on another desktop (`recheckUnavailableLocked`), and
+      arranges the tab,
       without moving the focus. A wake alone doesn't change the screens,
       so a move of Bench's window while it waits is the user's, as when
       they tile Bench just after switching back to their session: the
@@ -2994,7 +3101,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       another app on a real Mac takes ⌃⌥⇧ with a digit is a release
       check.
     - **Old configs.** `Bindings` binds the field last, after
-      `add_front_window` and `undo` (decision 65), so a clash is its own.
+      `add_front_window`, `undo` (decision 65), and `dropdown` (decision
+      72), so a clash is its own.
       As with `last_tab` (decision 49), `config.Parse` turns it off in a
       `config.toml` that leaves it out and gives one of its shortcuts to
       another field (`offClashingNewDefaults`), such as
@@ -3210,7 +3318,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       in Settings ▸ Keyboard, and in `Bindings`, before `last_tab`, so that
       the rule in the user guide still holds: the first in the table keeps
       a shortcut, except `last_tab`, `add_front_window`, `undo` (decision
-      65), and `send_to_tab_modifiers`, which give way to the others. They're off
+      65), `dropdown` (decision 72), and `send_to_tab_modifiers`, which
+      give way to the others. They're off
       by default: window tools such as Rectangle use ⌃⌥- and ⌃⌥= to resize
       windows, and the owner asked for them off. Being off, they need no
       `offClashingNewDefaults` entry for old configs. In the browser
@@ -3272,7 +3381,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       modifiers are still held as its shortcut arrives
       (`Platform.HeldModifiers`). A Carbon hot key reports its press only,
       and not the modifiers being let go of, so the engine asks every
-      `holdPoll`, 20 ms, with its timer (`Engine.after`). The macOS
+      `holdPoll`, 20 ms, with its timer (`pollHold`, which switches as
+      decision 67 says). The macOS
       platform asks `+[NSEvent modifierFlags]` (`benchHeldModifiers` in
       `keys_darwin.m`), which needs no Input Monitoring, unlike an event
       tap. Let go before `holdDelay`, 300 ms, the hold switches to the
@@ -3331,25 +3441,25 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       switch, or after its toast when there's no last used tab; a hold that
       shows the tabs brings it forward with `hold-tabs` already.
     - **When there's no hold.** The shortcut switches at once, as before,
-      while a menu or dialog is open (`Engine.overlay`), as the overview
-      can't open over it and the keys go to it; when `last_tab` has no
-      modifiers, such as F6; and while Bench is hidden and
-      `show_on_tab_shortcut` is off (decision 16), as Bench won't come
-      forward to show the tabs. A dialog that opens during a hold before it
-      shows the tabs keeps them hidden, and letting go still switches. A
-      hold ends without switching after `holdLimit`, a minute, as Bench may
-      have missed the modifiers being let go of, and when the engine stops
-      (`stopTimersLocked`). It ends without switching once the Mac has
-      slept, too: the keys were let go of meanwhile, and the first poll
-      after waking would otherwise see that and switch, behind the lock
-      screen. The monotonic clock that timers and `Time.Sub` use stops
-      while the Mac sleeps, so `holdLimit` alone wouldn't catch it; the
-      poll compares the wall clock, which doesn't stop, with it
-      (`holdSlept`), and `Woke`, `ScreensWoke`, `SessionActive`, and
-      `ScreenUnlocked` end it too. When Go ends a hold without switching,
-      the frontend gives the control or terminal that had the keyboard
-      its focus back (`followHold`), as Escape does, and Go gives an App
-      window its own (`refocusAfterJumpLocked`).
+      while a menu or dialog is open (`Engine.overlay`, or a native menu,
+      `Engine.menus`), as the overview can't open over it and the keys go to
+      it; when `last_tab` has no modifiers, such as F6; and while Bench is
+      hidden and `show_on_tab_shortcut` is off (decision 16), as Bench won't
+      come forward to show the tabs. A dialog that opens during a hold
+      before it shows the tabs keeps them hidden, and letting go still
+      switches. A hold ends without switching after `holdLimit`, a minute,
+      as Bench may have missed the modifiers being let go of, and when the
+      engine stops (`stopTimersLocked`). It ends without switching once the
+      Mac has slept, too: the keys were let go of meanwhile, and the first
+      poll after waking would otherwise see that and switch, behind the lock
+      screen. The monotonic clock that timers and `Time.Sub` use stops while
+      the Mac sleeps, so `holdLimit` alone wouldn't catch it; the poll
+      compares the wall clock, which doesn't stop, with it (`holdSlept`),
+      and `Woke`, `ScreensWoke`, `SessionActive`, and `ScreenUnlocked` end
+      it too. When Go ends a hold without switching, the frontend gives the
+      control or terminal that had the keyboard its focus back
+      (`followHold`), as Escape does, and Go gives an App window its own
+      (`refocusAfterJumpLocked`).
     - **The browser preview.** The demo platform can't read the keyboard,
       so `keyboard.js` tells Go the modifiers the page holds
       (`DemoModifiers`, refused outside the preview), in one chain of calls
@@ -3437,9 +3547,11 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       that too, while the setting is on. Bench makes a page's web view the
       first time it shows the page, so a page in a tab that hasn't been
       shown since Bench started, or that isn't its pane's shown sub-tab,
-      has no count until then: the user guide says so. **Not** loading
-      every tab's pages at launch: that would load pages, and use memory
-      and the network, that the user hasn't asked for. The count is taken
+      has no count until then, unless it keeps running in the background
+      (decision 76): the user guide says so, and so does its sub-tab.
+      **Not** loading every tab's pages at launch: that would load pages,
+      and use memory and the network, that the user hasn't asked for.
+      Decision 76 loads only the pages kept running. The count is taken
       out wherever Bench shows the title: the View (`unreadTitleLocked`),
       and the add dialog and the toasts (`shownTitleLocked` and
       `labelOfLocked`). A title that's the count alone gives the app's
@@ -3678,12 +3790,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       at once. A pointer that leaves the menus before the 200 ms are up
       cancels the open, so a submenu it only grazed doesn't open later.
     - **Groups.** The **⋯** menu opens with the common actions: **Reload
-      Page** for a web page (it was in the Page row), **Rename…** and
+      Page** for a web page (it was in the Page group), **Rename…** and
       **Use Automatic Title**, then **Close Window**, **Close Page**,
       **Close Terminal**, or, for a window in other tabs too, **Remove
       from This Tab** and **Close Everywhere**. Then splitting and Zoom
       Pane, Move Left and Move Right, **Move to Pane**, the two submenus,
-      **Closed Windows**, the Page group, and the rest. The focus doesn't
+      **Closed Windows**, the **Page** submenu, and the rest. The focus doesn't
       start on the first entry any more, which for an App window is
       **Close Window**: a second Return from habit would close the window
       at once, as Bench doesn't ask first and **Undo** can't bring back
@@ -3751,7 +3863,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       themselves, but the web view asks macOS to look them up, which
       doesn't promise to, so a hostile network could answer for them.
       **Not** a submenu for **Move to Pane**: it lists only the tab's
-      other panes, few, under a heading.
+      other panes, few, under a heading. (Decision 71 makes it a submenu:
+      a native menu has no headings.)
       **Not** title case for buttons and toasts: macOS keeps sentence case
       there, and the owner asked for it.
 64. **Bench's window works from the keyboard and with VoiceOver: strips
@@ -4139,3 +4252,1797 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       the row is chosen again, would surprise more than the question does.
       **Not** the jump palette: its search is only a search. **Not** commands queued while the question is open: the user
       answers it first.
+67. **Bench times each arrangement, parks before it shows an app, and shows
+    the new tab at once.** A switch felt slow, and nothing said how slow:
+    Bench didn't measure it. A switch to a tab with a window of an app that
+    Bench hid showed the app's windows of other tabs over the tab for a
+    moment (the flash): `Apply` showed the app, then parked them. And the
+    title bar showed the new tab only once Go had arranged it.
+    - **The times.** `timing.go`. An arrangement is timed from what asked
+      for it, as the engine got it, to the last frame set: the end of
+      `arrangeLocked` that applied a plan, after the web views. Each bound
+      method, event, and timer that takes the lock reads the clock first,
+      with `lockFor` or `lockAt`, so that the wait for the lock counts, and
+      gives its reason: `tab` for `SwitchTab`, `StepTab`, and `LastTab` (a
+      click on a tab, a palette row, an overview card, a key in the browser
+      preview, the Tab menu, the menu bar item); `tab-shortcut` for a tab's
+      shortcut, `next_tab`'s, `previous_tab`'s, and `last_tab`'s, and the
+      end of a hold after `last_tab`'s, timed from the poll that saw its
+      keys let go of (decision 60); `link` and `script` for a
+      `bench://` link's switch and a script's (`bench tab`, `next`,
+      `previous`, and `last`, decision 77), timed from when Bench got
+      them; the event's kind for an event, such as
+      `bench-moved`; `pane-area` for a new pane area; `rearrange` for
+      **Rearrange**; `settle` for the end of the wait after a wake or a
+      change of displays (decision 56); `apps-opened` for a switch's wait
+      for the apps it opened; `timer` for another wait; `switch` for
+      another switch, such as one that **New Tab…** or **Undo** makes; and
+      `other` for the rest, such as a change in a menu. The bound methods
+      keep their arguments: the frontend's calls don't say where they came
+      from. The clock is the engine's: `clock.Real` is `time.Now`, whose
+      times carry the monotonic clock, which `Time.Sub` uses, so a change
+      of the wall clock doesn't count. A hold of the lock that arranges
+      more than once keeps one time, to its last end, with the most windows
+      that one of its plans asked the platform to change
+      (`windows.Result.Touched`: moved, parked, minimised, restored, or
+      raised, each window once). `unlock` keeps it in an `arrangeTimes`, a
+      ring of the latest 50, in memory only: `Engine.switches` for the tab
+      switches (`tab`, `tab-shortcut`, `link`, `script`, and `switch`),
+      and `Engine.arranges`
+      for the rest, so that dragging Bench's window, which arranges once a
+      frame, doesn't push the switches out. It logs it at debug level as
+      one line: `msg=arranged reason=tab ms=41.2 windows=6`. The cost is a
+      clock read as the lock is taken, another as an arrangement ends, and
+      a copy of a small struct as the lock is let go, with no allocation;
+      the log line is built only with `BENCH_DEBUG`. `ProblemReport` sums
+      each ring up by reason (`ArrangeTiming`: how many, the median, the
+      worst, and the most windows that one arrangement changed), as
+      `Switching` and `Arranging`, and **Report a Problem…** writes a part
+      for each, with each reason's line, the most frequent first, up to 12.
+      The macOS demo workflow sums up the log's lines in
+      `arrange-times.txt` and its steps log, and never fails on a slow
+      time: a runner is slower than a Mac, and `BENCH_DEBUG` logs every
+      platform call too.
+    - **Parking first.** `parkBeforeShowing`, the first pass of `Apply`:
+      for each app in `Plan.Unhide` that is hidden now, or that the manager
+      hid, it parks the app's windows that are to go out of sight (those in
+      `Plan.Park`, and those in a pane that shows a Web or Built-in item),
+      reading each first and leaving out one in full screen or minimised,
+      as `park` does, and one with no place to park clear of other
+      displays, which `park` would minimise. It's quiet: what it doesn't
+      park, the passes after showing the app read again and park as before,
+      with the errors that they report. A window that has closed, or is on
+      another desktop (`ErrNoWindow`, `ErrOtherDesktop`), is passed over;
+      any other error, which may be a slow app's, ends the pass for that
+      app, so as not to wait for it again. So an app whose hidden windows
+      don't move, which macOS may not allow for some apps, still has them
+      parked, as before, with the flash. `parked.json` lists a window
+      before it moves, as for any park (see [Crash safety](#crash-safety)).
+      The fake platform's `FixHiddenWindows` stands for such an app in the
+      tests.
+    - **The title bar at once.** The frontend's `switchTab` (`state.js`)
+      shows the tab as current (`ui.switching`, which `renderTitlebar`
+      draws with `shownCurrent`) and then calls `SwitchTab`, or `StepTab`,
+      with a target counted from the tab shown. The View that has the tab
+      current ends it (`settleSwitch`, in `setView`); a View that doesn't,
+      sent before Go switched, keeps it. A refusal puts the title bar back
+      at once (`dropSwitch`), and so does the end of a wait for the View: a
+      second after Go answers, or 5 seconds in all. A click on the tab that
+      Go has current, while the title bar shows another, is a click on
+      another tab: `clickTab` compares with `shownCurrent`, so it switches
+      back at once, with no wait for a double-click. In the app, Go handles
+      the tab shortcuts, even in Bench's window, so `switchShowing` sends
+      the `switching` command, with the tab, before it switches, and
+      `switch-refused` after it if the switch was refused or ended on
+      another tab, as when a click comes in between its holds of the lock.
+      It sends none for the current tab, a tab that isn't there, or
+      `last_tab`'s shortcut that starts a hold: the hold sends it as its
+      keys are let go of, before it switches, from `pollHold`, which takes
+      the lock again for the switch. A switch that a hold makes as another
+      shortcut ends it (decision 60) shows with the View only. Only the
+      title bar changes at once: the panes, their sub-tabs, and the windows
+      are the View's, and change as Go arranges them.
+    - **Not** a speed in the README or the user guide: a Mac with many
+      windows, or a slow app, takes longer, and a number would read as a
+      promise. **Not** times kept on disk, or sent anywhere: the report's
+      text has them for the user to read and send. **Not** a reason
+      argument for `SwitchTab`: its signature is the frontend's and the
+      tests', and the reasons from the frontend are all `tab`. **Not**
+      minimising, or moving, a hidden app's windows another way first:
+      parking is what the windows get anyway, and minimising animates, and
+      may show the app. **Not** one ring for every reason: a drag of
+      Bench's window would fill it in under a second. **Not** a change to
+      how Bench follows its own window as it's dragged or resized live:
+      those arrangements are timed, as `bench-moved` and `pane-area`, but
+      done as before. **Not** showing the new tab's panes before Go has
+      arranged them: Go's View is what the windows follow, and drawn panes
+      that the windows didn't match yet would look broken.
+68. **Bench hides only what covers it, and says why.** Bench's window sits
+    below normal windows (approach A), so a window that isn't in a tab can
+    cover its tabs, panes, and status bar, and a click on Bench can't bring
+    Bench in front of it. As Bench became active, it hid every app with
+    such a window over its content area. That also hid the app's other
+    windows, such as one on another display, and nothing said why, so the
+    windows seemed to go away.
+    - **The test.** As before: a standard window that isn't in a tab and
+      isn't minimised, whose frame overlaps `ContentFrame`, while Bench's
+      main window shows (`onAppActivated` and `onBenchShown`). An app with
+      a window docked in the current tab or popped out is left alone, as
+      is the browser that the add dialog waits for a web app from, and a
+      window that a `float = true` rule matches (decision 30). Bench
+      coming forward for a drop from the Finder, to give a new terminal
+      the keyboard, isn't the user going to Bench, so it puts nothing
+      away (`droppedForwardLocked`, decision 73).
+    - **Hide or park.** `hideCoveringLocked` (`covering.go`) reads each
+      such app's windows (`coveringLocked`). If the app has another window
+      to keep showing (a standard window on screen and clear of the
+      content area, one in native full screen, or one that a float rule
+      keeps over Bench), Bench parks only the windows over Bench, with the
+      new `windows.Manager.Park`, which parks one window outside a plan as
+      `Apply` parks another tab's: below the bottom of Bench's screen
+      (`parkScreenLocked`), or minimised if no place there is clear of
+      the other displays, recorded in `parked.json` first. Otherwise it
+      hides the app with `Manager.Hide`, as before. Minimised windows,
+      and windows that the manager has parked, such as other tabs', while
+      they're clear of the content area, aren't on screen, so they don't
+      count as others to keep. A parked window that something else has
+      put back over the content area, as macOS can as displays come back,
+      covers Bench again, and `Park` parks it again.
+    - **Coming back.** macOS shows a hidden app when the user brings it
+      forward. The engine keeps the windows it parked, with their apps,
+      in `covered`, in memory, and `Unpark`s them when their app becomes
+      active (`unparkCoveredLocked`), however the user brought it
+      forward: its Dock icon, Command-Tab, or a click on its window on
+      another display. Quitting puts them back with `RestoreAll`, and a
+      crash with `RestoreCrashed`, the watchdog, or `bench restore`, as
+      for any parked window. One that closes, or whose app quits, is
+      forgotten, with `Manager.Forget`; one that a tab has taken since is
+      the tab's, as docking drops the manager's record of it. A hidden app
+      always shows when it comes forward, but `Unpark` can fail: for a
+      window on a desktop that isn't shown, in native full screen, of an
+      app that doesn't answer, or without Accessibility permission. The
+      manager then keeps its record, and so does `covered`, which drops a
+      window only once the manager no longer has it parked. Bench tries
+      again the next time the app becomes active, and, while the app is
+      in front, as the desktop changes (`onDesktopChanged`), the screens
+      settle, and the permission comes back (`becameTrustedLocked`), all
+      through `retryCoveredLocked`. As the screens settle, it also parks
+      again, with `Park`, the windows in `covered` whose apps aren't in
+      front (`reparkCoveredLocked`), as the arrangement parks other tabs'
+      windows again: `Park` leaves alone one that's still where it parked
+      it. Once `covering_windows` is `leave`, it doesn't, so that a
+      window that macOS puts back stays where it is.
+    - **Saying so.** The first time Bench puts an app's windows out of
+      sight this way, a toast says so: "Hid Calculator because it covered
+      Bench.", "Hid the Finder window “Downloads” because it covered
+      Bench.", or "Hid 2 Finder windows because they covered Bench.". The
+      engine keeps the apps it has told about, by lower-case bundle ID,
+      in `told`, which `state.json` saves as `covering`, so that the toast
+      comes once for each app, even after a restart. Only one app's toast
+      comes at a time: when two apps are new at once, the second app is
+      told about the next time, with its own button.
+    - **Keep over Bench.** For an app with no items, and no rule that
+      sends its windows to a tab (`canFloatLocked`), the toast's button
+      calls `KeepOverBench(bundleID)`. It adds `[[rule]]` with `app` and
+      `float = true` to `config.toml`, through `saveEdit` as Settings
+      saves, then shows the app with the new `Manager.Unhide`, or
+      unparks its windows. Its toast has **Undo**: the step keeps
+      `config.toml`'s rules and `covering`, which marks a change to the
+      rules alone. `takeBack` restores the rules, leaves `config.toml`'s
+      tabs as they are, and puts back the arrangement from before the
+      first step in its range that isn't such a change: with none, the
+      arrangement stays as it is, so that tab switches and divider drags
+      since stay. Then, while Bench is active and shown, it puts what
+      covers Bench out of sight again, for the tab now shown. It's
+      refused for an app that Bench hasn't told about, and for one with
+      items or a tab rule (`errKeepOverInTabs`), and with an app-wide
+      float rule for the app already, it only shows the windows again.
+      The toast shows for a few seconds, and another can replace it, so
+      the recent messages keep its button, as they keep **Undo**: the
+      View's `keepOver` lists the apps that Bench has told about, that no
+      app-wide float rule floats, and that can float, by lower-case bundle
+      ID, and a message whose toast had **Keep over Bench** for one of
+      them, in any case, shows it again.
+    - **The setting.** `covering_windows`, `hide` by default, or `leave`,
+      which turns all of this off. Settings ▸ Windows has it as **When
+      Bench comes forward**: **Hide windows that cover Bench** or **Leave
+      them**, whose line says that windows left in place sit over Bench's
+      own tabs, panes, and buttons.
+    - **The browser preview.** A page can't make Bench the active app, so
+      the demo bar's **Bring Bench forward** calls `DemoComeForward`,
+      which does what becoming active does. The demo's Finder window,
+      Downloads, is in no tab and covers Bench.
+    - **Not** raising Bench to the normal level and raising the docked
+      windows again, the spike's other way: it would show Bench over its
+      own docked windows for a moment each time, and race with apps that
+      raise their own windows. **Not** parking the windows of an app that
+      has no others: hiding is one call, the app's Dock icon says it's
+      hidden, and it's what Bench did before. **Not** a toast every time:
+      once the user knows why, it's noise. **Not** the button for an app
+      with items or a tab rule: a float rule keeps the app's new windows,
+      and windows that open again, out of those items, and wins over
+      every tab rule (`matchRule`). **Not** a rule for the one
+      window, by title: the app's other windows would still go, and
+      titles change. **Not** showing parked windows again when the
+      setting changes to `leave`: they come back as a hidden app does,
+      when the app comes forward. **Not** `told` in `config.toml`: it
+      records what Bench said, which isn't a setting.
+
+69. **A pane says what keeps moving its window, and the status bar says
+    what a window tool can do to Bench.** Bench puts back a docked
+    window that its app moves, three times in ten seconds (decision 13),
+    then left it where it was, with no word, until the tab was next
+    arranged: the window seemed to come loose for no reason. Window tools,
+    such as Rectangle, Magnet, and Moom, move docked windows too, with
+    their shortcuts and automatic rules, and their shortcuts can use
+    Bench's keys with no warning. Their snapping acts only on the user's
+    own drag, which undocks the window first ("Moved out of its pane").
+    - **The mark.** When a window uses up its tries
+      (`redockSoonLocked`), `keptMovingLocked` (`events.go`) marks its
+      item as undocked, with `keptMoving` set, and the status `moving`, as
+      if the user had dragged it out: it isn't docked, a tab switch parks
+      it on other tabs, and **Dock again** and a drop onto a pane dock it.
+      The manager forgets it (`Manager.Forget`), as for a window the user
+      drags out. Its pane says "*App* or another tool keeps moving this
+      window", or, with window tools that Bench knows running, names them
+      instead of "another tool", as in "Zed or Rectangle keeps moving this
+      window" (`keepsMovingText`), and its sub-tab has the warning marker.
+      The status bar counts it among the windows that need attention.
+      The mark stays across tab switches and arrangements, so that it
+      doesn't come and go. It goes with **Dock again** (`Redock`) and
+      **Rearrange**, which give the window its tries again; with a drop
+      onto a pane; with the settle after the screens change, as macOS may
+      have made the moves (decision 56); and with the user's own drag of
+      the window (`MouseDown`), after which it's plainly undocked:
+      "Moved out of its pane". `keptMoving` isn't saved: after a restart,
+      Bench docks the window again, with its tries. The tries count only
+      while Bench puts the window back into the same pane body
+      (`redockTries`): an app that nudges its window after each resize of
+      the panes, as **Grow Pane** pressed again and again gives, isn't
+      fighting Bench, and a try at a new body starts the count again.
+    - **The tools.** `windowtools.go` keeps one table of the window tools
+      that Bench knows, by bundle ID, with their names. A bundle ID that
+      nobody has checked on a Mac with the tool installed is marked
+      `unsure`, and `TestWindowToolsTable` checks that
+      [development.md](development.md) lists each one, to check. A tool is
+      running when `Platform.RunningApps` lists it, which includes apps
+      with no Dock icon, as most window tools are. macOS doesn't post
+      `NSWorkspaceDidLaunchApplicationNotification` for those, so Bench
+      looks at start, at each arrangement, as it becomes active, and as
+      apps open and quit (`noteWindowToolsLocked`), and keeps those
+      running in `toolsOn`. A pane names the tools running, other than the
+      window's own app.
+    - **Why macOS gives no error.** Wails registers Bench's global
+      shortcuts with `RegisterEventHotKey` and no options, so not
+      exclusively, and the only clash it names is `eventHotKeyExistsErr`
+      (-9878), which macOS gives when another app holds the shortcut
+      exclusively. Rectangle, and the other tools that use MASShortcut,
+      register theirs without options too, so both registrations work:
+      Bench gets no error, so the registration alone shows no problem
+      (decision 45), and both apps may act on the key.
+    - **The notice.** While a tool runs, the status bar has a notice
+      about it, in short sentences that end with what to do, so that the
+      first two still make sense when the status bar cuts it short:
+      "Rectangle is running. It can move docked windows out of their
+      panes. It uses the same keys as Bench for Focus a pane (⌃⌥←, ⌃⌥→,
+      ⌃⌥↑, ⌃⌥↓), Move a window (⌃⌥⇧↑), and Zoom pane (⌃⌥↩). macOS doesn't
+      warn about this, and both apps may act on these keys. Change the
+      keys in Rectangle or in Keyboard settings." It has **Keyboard
+      settings**, which runs `keyboard-settings`, and **Dismiss**
+      (`DismissWindowTool`). It goes when the tool quits, and comes back
+      when the tool runs again, so that a tool that quits before the user
+      reads the notice gets it again. **Dismiss** adds the tool, by
+      lower-case bundle ID, to `toolsTold`, which `state.json` saves as
+      `windowTools`, and then the notice never comes back. The keys the
+      tool shares with Bench are read as it starts, and again each time
+      Bench becomes the active app, as the user may have changed them in
+      the tool, and matched with Bench's shortcuts as each View is built,
+      so the notice follows changes in both apps: a field with no shared
+      key isn't named, and with none at all, the notice says only that the
+      tool's shortcuts "can use the same keys as Bench's", never that
+      there's no clash. The notice has a `key`, `window-tool:` and the
+      lower-case bundle ID, which stays the same as its text changes, so
+      that the recent messages keep one copy of it, the latest
+      (`noteNotices` in `state.js`).
+    - **Settings ▸ Keyboard.** `WindowToolKeys` gives the shell the keys of
+      the tools running whose shortcuts Bench could read, and when they
+      change, the engine emits `ShortcutsChanged`, so that the shell
+      checks Bench's shortcuts again (`assess` in `internal/ui`). A field
+      that has some of them has the problem `problemTool`, "Rectangle uses
+      ⌃⌥↩ too. Both apps may act on this key.", in place of "Works.", and
+      a suggestion that avoids them, as it avoids the other apps' keys
+      (decision 45). It comes after the shell's other problems, as macOS
+      doesn't refuse the key, and adds no notice of its own: the tool's
+      notice says it already, until it's dismissed, and the field says it
+      after.
+    - **Reading Rectangle's shortcuts.** Only Rectangle's can be read
+      reliably. `Platform.ToolPreferences` reads a tool's preferences
+      domain with `CFPreferencesCopyMultiple`, after
+      `CFPreferencesAppSynchronize`, for the current user and any host
+      (`benchCopyToolPreferences` in `keys_darwin.m`): numbers, strings,
+      and MASShortcut's dictionaries, `keyCode` and `modifierFlags` (Cocoa
+      modifier flags), each read with `integerValue`, as MASShortcut reads
+      them, or any other dictionary, such as an empty one, for a shortcut
+      set to none. A value of another kind, such as data, comes as
+      `BENCH_PREF_OTHER`, and `toolprefs.go` records it as set, with no
+      shortcut, so that Bench doesn't take the action's default for it.
+      `toolprefs.go` turns them into canonical shortcuts, as
+      `SystemKeys`'s symbolic hot keys (decision 45). Rectangle keeps a
+      shortcut only once the user changes it. For the others, it uses one
+      of two sets, which the user chooses as it first opens, and records
+      in `alternateDefaultShortcuts`: 1 for its recommended set, with
+      ⌃⌥ and the arrow keys, 0 for Spectacle's. `rectangleActions` has
+      both sets, from Rectangle's `WindowAction.swift`, with the names
+      that some actions had before, which Rectangle still reads, and
+      `centerTwoThirds`'s ⌃⌥R, which only a Rectangle first installed
+      after version 94 has (`installVersion`). Without
+      `alternateDefaultShortcuts`, as before Rectangle first opened, or
+      when Bench can't read the domain, Bench doesn't guess, and says only
+      that the shortcuts can use Bench's keys. Other tools keep their
+      shortcuts in formats of their own, or in an App Store app's
+      container, so Bench names no keys for them.
+    - **The browser preview.** The demo has Rectangle installed, as an app
+      with no Dock icon, with the recommended set chosen, not running. The
+      demo bar's **Simulate** menu holds the buttons that act as macOS or
+      another app would (`simulate.js`), so that the bar's hint still fits
+      beside them. Its **Rectangle** starts and stops the demo's Rectangle
+      (`SetDemoWindowTool`, with `StartAgent` and `StopAgent` on the fake
+      platform), and is pressed while the View's `windowTools` has it.
+      **Keep moving window** (`DemoToolMoves`) moves the focused pane's
+      window to the left half of the screen, once more than Bench puts it
+      back, a second apart (`demoToolGap`), well past the redock and the
+      time in which a move is taken as Bench's own (`ownRecent`), and
+      waits while the screens settle, as their settle docks the window
+      again. `platform.Logged` passes `AppMoveWindow`, `StartAgent`, and
+      `StopAgent` on to the demo platform, so both work with `BENCH_DEBUG`
+      set.
+    - **Not** registering Bench's shortcuts exclusively: Wails doesn't
+      offer it, and it would depend on which app started first, so that
+      Bench would either fail to register or silently take the keys from
+      the tool. **Not** checking the tools' snapping, edge tiling, or
+      Spaces settings, or macOS's own tiling: what they do changes between
+      versions, and the mark says when it matters. **Not** counting tries
+      across pane bodies: a resize of the panes isn't a fight. **Not** a set of keys
+      in the welcome guide that avoids every tool's. **Not** guessing the
+      shortcuts of tools whose preferences Bench can't read, nor saying
+      "no clash" when it finds none. **Not** recording the tool as told
+      when its notice first shows: a tool that quits at once would take
+      its notice with it, unread. **Not** a notice of its own for
+      `problemTool`: it would say again what the tool's notice says, and
+      come back after **Dismiss**. **Not** `windowTools` in `config.toml`:
+      it records what the user dismissed, which isn't a setting.
+70. **Bench goes back to the display that the user chose when it comes
+    back.** When a display goes away, because the user unplugs it or macOS
+    turns it off while it sleeps, macOS moves its windows to another
+    display. Bench filled that display (decision 30), and recorded it as
+    the display it was on after each settle, so when the monitor came back,
+    Bench stayed on the laptop's screen.
+    - **The display chosen.** The engine keeps a second display apart
+      from `lastScreen`: `preferred`, which `state.json` saves as
+      `preferredScreen`, with the same fields. It's the display that the
+      user last chose for the window: the one Bench's window is on when the
+      user moves or resizes it within a display, or fills the screen on it,
+      while the screens are settled (`onBenchMoved`), and the one the user
+      moved it to from another display, at the end of the settle that the
+      move starts (`screensSettledLocked`). That holds while the display
+      chosen before is away too: a user who closes the lid and works on the
+      monitor, moving Bench there, keeps it there when the lid opens. A
+      settle that the displays changed in (`displaysChanged`, set by
+      `ScreensChanged`) doesn't choose, because macOS moved the window
+      then; neither does a settle after Bench's own move (`ownMove`), nor
+      the zoom with which Bench fills the screen again after the displays
+      change (`refillLocked`): its moves animate after the settle has
+      ended, so until the window fills the screen, or for 2 seconds at
+      most (`ownFill`), a move within the screen is the zoom's
+      (`noteUserMoveLocked`). Until the user chooses, the display Bench
+      first opens on is the one chosen (`WindowStart`), and a `state.json`
+      from before this decision takes its `screen`. Choosing a screen in
+      the browser preview's screen picker chooses it.
+    - **Away and back.** At each `ScreensChanged`, if the display chosen
+      isn't connected, it's away. It's connected when a display has its
+      ID, or else its name and frame together (`connectedScreen`), as
+      `findScreen` finds them: macOS can give a display a new ID, and two
+      displays of the same model have the same name, so the name alone
+      doesn't do, nor the frame alone, which another display can have. At
+      the end of a settle that the displays changed in, the display chosen
+      is back (`returnDue`) if it's connected and was away, or if the
+      window was on it before the settle and isn't now. The second is for
+      a display that goes and comes back before the engine reads the
+      displays without it, so that it never sees it away: as when both
+      `ScreensChanged` events wait while the engine is busy, or macOS
+      sends one for both, as it can across a wake.
+    - **Going back.** `refillLocked` then calls `goBackLocked` before it
+      fills the screen again. If the window is on that display already,
+      as when macOS has put it back, as macOS 27 can, there's nothing more
+      to do, and no toast. Otherwise the engine asks the shell to move the
+      window (`Emitter.MoveToScreen`): to where it was on that display, if
+      it didn't fill it and that's still inside the display's visible area
+      (`openFrame`), or else to the usual size in the middle, then filling
+      the display if it filled it. It records the move as
+      `noteBenchPlaceLocked` would, and the display's ID, which may be new,
+      and waits for the screens to settle again (`moveBenchLocked`), so
+      that the moves macOS makes meanwhile aren't the user's, and Auto
+      chooses the layout again for the display (decision 58). The toast
+      says "Back on DELL U2723QE.", with the display's name, as macOS
+      gives it, and **Undo**.
+    - **The shell's move.** `appShell.moveToScreen` gives the main
+      window's frame, from `mainPlace`, as at launch, to
+      `mac.Platform.PlaceWindow` (`Options.Place`), which sets it on the
+      main thread in one step, without animation, then, to fill, zooms the
+      window at once with NSWindow's own `zoom:`, as `FillWindow` does at
+      launch. So the window jumps to the other display once. Wails'
+      `SetSize` would change its size first on the display it's leaving,
+      then `SetPosition` would move it, and Wails' `Zoom` would animate.
+      Without `PlaceWindow`, the shell still uses those, size first, since
+      `SetSize` keeps the window's bottom-left corner where it is.
+      `moveToScreen` and `fillScreen` run one at a time, in the order the
+      engine asks for them (`appShell.moves`): each waits for the main
+      thread more than once, and an Undo straight after the move back
+      would otherwise put its frame in between the move's frame and its
+      zoom, and `zoom:` goes back and forth.
+    - **What waits.** While a hold after `last_tab`'s shortcut (decision
+      60) or a tab switch that waits for an app to open is running, or one
+      of Bench's menus or dialogs is open (`menuOrDialogLocked`), the move
+      waits, and looks again every 250 ms (`returnRetry`), so that the
+      tabs don't move from under the user, nor a dialog, nor a native
+      menu, which stays where it opened (decision 71). While the window is hidden
+      or minimised, it waits until it's shown (`refillOnShow`), as filling
+      does. A settle that starts meanwhile takes over.
+    - **Undo.** The toast's **Undo** takes the move back
+      (`undoWentBackLocked`): the window goes back to the display and place
+      it was on, filling it if it filled it, the toast says "Back on
+      Built-in Retina Display.", and that display is the one chosen, as
+      the user has chosen it by undoing. While the window is hidden or
+      minimised, the move waits until it's shown (`placeOnShow`), as the
+      move back does. The move isn't one of the changes in Undo's history
+      (decision 37): the engine keeps it apart (`wentBack`), with a number
+      from the same count, so Tab ▸ Undo, the jump palette, and the `undo`
+      shortcut (`UndoLatest`, decision 65) don't take it back, and the
+      View's `undo` stays the user's latest change. The user didn't make
+      the move, and taking it back by mistake would move the window and
+      change the display chosen. Undo of an earlier change leaves the
+      window where it is. The View's `wentBack` names the move, **Move to
+      Display**, "moved Bench back to DELL U2723QE", for the recent
+      messages to keep its **Undo** (decision 65). It goes once the user
+      chooses another display, or the display chosen goes again. If the
+      display the window came from has gone, as when the lid has closed,
+      Undo says "Built-in Retina Display isn't connected, so Bench can't
+      move back to it.", and forgets the move.
+    - **The browser preview.** The demo bar's **Simulate ▸ Unplug
+      monitor** (`SetDemoMonitor`) needs the monitor, as **Monitor**
+      gives it. It takes it away: the laptop's screen is the only one, and
+      Bench's window goes to it. It then reads **Plug in monitor**, which
+      puts the monitor back to the right of the laptop's screen. Once the
+      screens settle, Bench goes back to it (`MoveDemoBench`), with the
+      toast and its **Undo**. The View's `demo.unplugged` says which the
+      button shows. The fake platform has `UnplugScreen` and `PlugScreen`
+      for the engine's tests, and `platform.Logged` passes the demo's
+      methods on.
+    - **Not** a menu item, palette row, or setting: going back is what
+      the user expects, and the toast's Undo takes it back. **Not** an
+      Undo in Tab ▸ Undo or the jump palette: see **Undo**. **Not**
+      ignoring the user's moves while the display chosen is away: a move
+      the user makes is a choice, whichever displays are connected; only
+      macOS's moves and Bench's own aren't. **Not** recording the
+      display chosen on every settle, which was the problem. **Not**
+      going back to a display that's only like the one chosen, with the
+      same name somewhere else: it may be another of the same model.
+      **Not** keeping a place for each display: one display chosen, with
+      the place on it, is enough to go back. **Not** telling the user's drag
+      from macOS's move while the screens settle after the displays
+      change: Bench can't, so a drag to another display then counts as
+      macOS's, and Bench still goes back if the display chosen is back;
+      Undo puts it right.
+71. **Bench's own menus are native macOS menus in the app, so web pages
+    and docked windows stay in view.** Each menu that Bench drew in HTML
+    raised Bench over the docked windows and hid every web view (decision
+    4), so a right-click on a web page's sub-tab blanked the page, and the
+    docked windows went behind Bench, until the menu closed. Menus open
+    often, and that was the most visible cost of raised mode. AppKit draws
+    a native menu above every window, so it needs neither. This decision
+    replaces the part of decision 4 that is about menus.
+    - **Which menus.** A tab's menu, a sub-tab's and the **⋯** window
+      menu, an empty pane's menu, a terminal's right-click menu, and the
+      slim title bar's layout menu. The status bar's lists of the windows
+      that need attention and of notices and recent messages have buttons
+      and text that wraps, and are lists more than menus: they stay in
+      HTML, raised. So does a popped-out terminal's menu: the shell opens
+      native menus in the main window, and the terminal's own window has
+      no web views or docked windows to hide. Dialogs, drags, and live
+      previews keep raised mode.
+    - **One model of entries.** `menu.js` builds each menu's entries as
+      data, the same for the HTML menus (`renderEntries`), the jump
+      palette's **This window** (`windowRows`), and the native menus
+      (`plainEntries`), from one function for each menu (`menuEntriesOf`),
+      so that their names and submenus can't differ. An entry has an `id`,
+      a `label`, and can have `keys`, a `detail`, a `dot` (a tab's colour,
+      decision 74), `disabled`, `checked` (one of a choice, ticked if
+      true), and a `submenu`; or it's a
+      separator (`sep`), a `heading`, a `note`, or a `status` line. The
+      frontend keeps what each entry does (`run`) to itself. Each `id` is
+      unique in its menu: a fixed name, such as `split-right` or
+      `page-find`, or a name with what the entry acts on, such as
+      `move-to-tab:2`, `move-to-pane:p4`, or `layout:wide`.
+    - **Showing a menu.** `ShowMenu` takes the entries without their
+      `run`, and the point for the menu's top left corner, in the points
+      of the UI's web view. The engine refuses where it has no
+      `Options.ShowMenu`, as in the browser preview, shows nothing for a
+      menu of no lines, refuses one of more than 1,000, and calls the
+      hook without its lock, with the menu counted as open (see **Focus
+      while a menu is open**). It returns the `id` that comes back only for
+      an entry that's on, has no submenu, and isn't in a submenu that's
+      off. The shell (`internal/ui/contextmenu.go`) makes the entries into
+      a native menu's items (`nativeItems`). An item's label has the
+      entry's detail in brackets, as "Reopen Closed Tab (Research)", and
+      its keys after it, as the app menu shows Bench's global shortcuts
+      (decision 46): no item has a key equivalent, so a page's ⌘ keys stay
+      its own. The frontend sends only Bench's global shortcuts: keys that
+      work only where the menu is, such as a terminal's ⌘C (`localKeys`),
+      are left out, as Mac context menus show no keys, and the HTML menus
+      show them. A long label is cut at 60 characters, and a detail at 40,
+      with an ellipsis, as the HTML menus cut them with CSS. A native menu
+      has no headings, notes, or status lines, so they are items that are
+      off, which VoiceOver reads as dimmed; a note or status line longer
+      than 60 characters is on more than one item, broken between words,
+      as the HTML menus wrap it. Separators go only between items. A
+      submenu none of whose items is on is off. `buildNativeMenu` makes
+      the items into Wails' menu items, each of which reports its `id`
+      when it's clicked, and has the image of its entry's `dot`, if it has
+      one.
+    - **Wails' context menus, not a bridge in `internal/mac`.** Wails v3
+      beta.27's context menus can show a menu built as the user opens it,
+      at a point, and report the item chosen. `application.NewContextMenu`
+      registers one menu, `bench-menu`, whose items the shell builds again
+      for each menu, and `WebviewWindow.OpenContextMenu` pops it up in the
+      main window's web view (`popUpMenuPositioningItem:atLocation:inView:`),
+      whose coordinates start at its top left, as the page's do, and
+      returns when it has closed. AppKit keeps the menu on the screen near
+      its edges, and opens a submenu on the side that has room. The items
+      of the menu shown before are destroyed (`Menu.Destroy`) as the next
+      one opens, long after that menu's choice has come. A bridge would
+      need its own menu delegate, item lifetime, and way back to Go, for
+      nothing more.
+    - **The choice.** AppKit calls the item's action before the menu's
+      call returns, but Wails gives the click to Go through a channel and
+      two goroutines, so it can arrive a moment after `OpenContextMenu`
+      returns. `contextMenu.show` waits up to 250 ms for it
+      (`choiceWait`): a menu closed with nothing chosen answers after that
+      wait. Each menu has a channel of its own, so a late choice can't
+      reach the next menu, and one menu shows at a time
+      (`contextMenu.mu`). See [Threads and locking](#threads-and-locking).
+    - **Focus while a menu is open.** A native menu doesn't raise Bench,
+      but AppKit closes it as soon as another app becomes active, and the
+      engine read raised mode (`Engine.overlay`) as "a menu or dialog is
+      open" to hold back what would focus another app's window. So the
+      engine counts the native menus open (`Engine.menus`, from
+      `openMenuLocked` to `closeMenuLocked`), and `menuOrDialogLocked`
+      reads either. While one is open, a tab switch's focus that waits
+      for a window to open isn't made (`waitFocusDueLocked`), and opening
+      the menu drops it for good, as the user has turned to the menu. The
+      App window that the jump palette took the keyboard from gets it back
+      (`refocusAfterJumpLocked`) only once the menu closes: closing it
+      arms the 150 ms wait again, as lowering Bench does, so that
+      **Window Options…** from the palette, over a docked app, stays open,
+      and Escape then gives the app the keyboard back. The hold after
+      `last_tab` doesn't start, and the jump shortcut keeps its note.
+    - **The frontend.** The View's `nativeMenus` says that the shell has
+      native menus. Each menu's opener goes through `openMenu`, which
+      shows the menu natively (`showNative`) or draws it in HTML. A
+      right-click opens a native menu at the pointer; a click, or the
+      keyboard (Shift-F10, Control-Return, or the menu key), opens it
+      below its control, at the control's left, as a pop-up button's menu
+      opens. `ui.nativeMenu` holds the menu while it's open: it isn't
+      drawn, and `overlayOpen` leaves it out, so the frontend doesn't send
+      `SetOverlay(true)`, the web views stay shown, and Bench stays below
+      the docked windows. The control that opened it is marked as
+      expanded meanwhile (`syncExpanded`). When it closes, the frontend
+      builds the menu's entries again, from the View as it is then, and
+      runs the entry with the `id` that came back, if the menu's subject
+      is still there (`staleMenu`, which follows a tab's menu to its tab)
+      and the entry has the label that it had when the menu opened. The
+      focus goes back to the control that opened the menu, and with
+      nothing chosen, the click that opened it does what it would have
+      done in its pane, as `closeMenu` does for an HTML menu. One native
+      menu shows at a time (`ui.nativeMenu`), and a web page's can wait a
+      moment before it opens: a click that would open another meanwhile
+      does nothing, in its pane too. So each opener hands `openMenu` what
+      its click does in its pane (`later`), which a native menu keeps with
+      itself (`m.later`), not in `ui.paneLater`, where a refused click
+      could replace it. If `ShowMenu` fails, the menu opens in HTML
+      instead. Bench can't close a native menu, so the commands that open
+      or close Jump to… and every tab wait until it has closed, and its
+      entry has run (`whenNoNativeMenu`, decision 77).
+    - **The web app entry.** A web page's HTML menu takes its web app
+      entry when Go answers `WebAppChoice` (decision 22). A native menu
+      can't take an entry once it's open. Go scans the installed apps for
+      each answer, which can take longer than a menu may wait to open. So
+      once Go has answered for the page, the menu opens at once with that
+      answer (`webAppAnswers`), and asks again, keeping the new answer
+      for the next time. Before Go has answered once, as with the first
+      menu after Bench opens, the menu waits for the answer, for 300 ms
+      at most (`WEB_APP_WAIT_MS`), and then opens without the entry; the
+      user guide says to open the menu again. An answer kept from before
+      can be out of date, as when the web app was made since: the entry
+      then does what Go does with it now. Keeping a web page's menu in
+      HTML was considered and not chosen: it's the menu where hiding the
+      web views matters most.
+    - **The Page submenu.** The row of buttons of a web page's Page group
+      (decision 50), **Back**, **Forward**, and the zooms, has no native
+      form, so it's a **Page** submenu, in the HTML menus too, with
+      **Pane ▸ Page**'s names and order. **Find in Page…**, **Copy Page
+      Link**, and the microphone, camera, and sound entries stay in the
+      menu itself, after it, as before: muting a call can't wait for a
+      submenu. Decision 76 puts **Keep Running in the Background** last
+      among them, an entry with `checked`, which the native item shows as a
+      checkmark. The jump palette names them all **Page ▸** *entry*, as the
+      menu bar's **Pane ▸ Page** has them (`under`).
+    - **Move to Pane is a submenu.** Decision 63 kept **Move to Pane** a
+      heading over the panes, named **Pane with** *window*. A native menu
+      has no headings: the heading became an item that's off, which read
+      as a command that can't be used, and the panes' items, which have
+      no verb, as going to a pane. So **Move to Pane** is a submenu, as
+      **Move to Tab** is, in the HTML menus too, and the jump palette
+      names its items as before ("Move to Pane ▸ Pane with Slack").
+    - **Accessibility.** macOS's menus work with the keyboard (the arrow
+      keys, typing an item's first letters, Return, and Escape) and with
+      VoiceOver, which reads each item, says which are dimmed, and says
+      which have a submenu. They follow light and dark, Increase contrast,
+      and Reduce transparency, as every Mac menu does. In the smallest
+      window, 640 by 480 points, a native menu can go past the window's
+      edges, onto the screen, where the HTML menu has to scroll.
+    - **With decisions 67 to 70.** A native menu's choice runs the entry
+      of the same model as an HTML menu's, so what it does is the same: a
+      tab's **Rearrange** for a tab that isn't current switches with
+      `switchTab`, which shows the tab as current at once (decision 67),
+      and its arrangement is timed with the same reasons, `tab` and then
+      `rearrange`, as `ShowMenu` arranges nothing and the bound methods
+      don't say where a call came from. **Dock Again** for a window that
+      keeps moving out of its pane (decision 69) is an entry of the model,
+      `dock-again`, in the native menu and the palette too, after the
+      menu's status line, which says why. Bench puts away the windows that
+      cover it as it becomes active (decision 68), not as it's raised,
+      and a native menu does neither: opening one puts nothing away, and a
+      click on Bench, or a dialog that the shell brings Bench forward
+      for, still does. The move back to the display that the user chose
+      (decision 70) waits while a menu or dialog is open
+      (`menuOrDialogLocked`), as for a hold, so that Bench's window
+      doesn't move from under a native menu, which stays where it opened.
+      The status bar's lists, with the window tools' notice and **Keep
+      over Bench** in the recent messages, stay in HTML, raised; the
+      browser preview's **Simulate** list on the demo bar isn't one of
+      Bench's menus, and is as it was.
+    - **Raised mode now** is for what Bench draws over the docked windows
+      and web views itself: dialogs, the jump palette, drags, live
+      previews, and the menus and lists drawn in HTML.
+    - **Not** native menus in the browser preview: a browser page has
+      none, so the preview draws the same entries in HTML. **Not** key
+      equivalents on the items: the label shows them, as in the app menu,
+      and the page's ⌘ keys stay its own. **Not** changing an open native
+      menu as the View changes: the entries stay as they were when it
+      opened, as an HTML menu's don't move under the pointer (decision
+      22), and the choice is checked against the View once the menu has
+      closed.
+
+72. **One terminal can be the drop-down, which slides down from the top
+    of the screen over any app, in a panel that doesn't make Bench
+    active.** A terminal for a quick command is most useful where the
+    user is, without a switch to Bench or to the terminal's tab. So one
+    terminal at a time can leave its pane and become the drop-down: a
+    shortcut, a menu item, or the jump palette shows it over the app in
+    front, on any desktop and over a full-screen app, and the same key,
+    ⌘⎋, Escape at its prompt, or a click elsewhere hides it again and
+    gives the keyboard back.
+    - **Terminals only, not web pages.** A web page's view is a
+      `WKWebView` that `web_darwin.m` docks in Bench's main window, or in
+      the ordinary `NSWindow` that `popOutWebView` makes for it, with
+      Bench's own title bar button. A panel for it would need a second
+      native window path, with its own focus, first responder, and
+      title bar handling, which can't be built or tried without a Mac.
+      A terminal's own window is a Wails window with the popped-out
+      terminal's page (`terminalURL`, `terminal-window.js`), so the
+      drop-down reuses it, with `dropdown=1` in its address, and needs
+      only a panel's options and two native calls. **Use as Drop-down**
+      is in a terminal's menus only, and `UseAsDropdown` refuses anything
+      else: "Only a terminal can be the drop-down."
+    - **One at a time, out of the tabs.** The drop-down is a Built-in
+      item in `Model.Floating`, with a window of its own (`OwnWindow`),
+      that `Model.Dropdown` names. It counts only while it's still a
+      terminal in `Floating` (`dropdownLocked`): `Take` forgets it as it
+      leaves `Floating`, and `leaveDropdownLocked` does in
+      `bringBackLocked` and `endItemLocked`, with the note that its
+      terminal shows (`dropKeys`), so that Escape in it no longer stops
+      to look for the drop-down. So every way
+      back into a pane, **Move into This Pane** (`AddToPane` with the
+      drop-down as a floating source), **Back to Bench**, and the others
+      that bring a floating item in, ends it, with no code of its own.
+      **Use as Drop-down** on another terminal puts the drop-down that
+      was into the pane that the new one leaves, before it leaves, so
+      that the pane stays, or into the current tab's focused pane. A
+      pane that the new one leaves empty closes, as after **Pop Out of
+      Bench**. Once the drop-down is back in a pane, it isn't the
+      drop-down: the next show makes a new terminal in the home folder
+      the drop-down, and **Use as Drop-down** makes it the drop-down
+      again.
+    - **Not a window that waits for a tab.** The drop-down is in
+      `Floating`, but **New Tab from Open Windows** (`windowChoices`,
+      and `windowAppLocked`, which refuses it) and the jump palette's
+      **Not in a tab** (`outsideTabs`) leave it out, so that a new tab
+      doesn't take it without a word, and choosing a row doesn't end it.
+      The add dialog's **Windows not in a tab** still has it, as one
+      item the user chooses for one pane, as **Move into This Pane**
+      does.
+    - **The panel.** `dropdownWindowOptions` makes a Wails window of
+      class `MacWindowClassPanel`, with `FloatingPanel` and
+      `NonActivating`, frameless, not resizable, and hidden at first, on
+      every Space and beside full-screen apps (`CanJoinAllSpaces |
+      FullScreenAuxiliary`), and out of the windows that ⌘&#96; goes
+      through (`IgnoresCycle`). A non-activating panel takes the
+      keyboard without making Bench the active app, so the app in front
+      keeps its menu bar and stays in front, and gets the keyboard back
+      when the panel orders out. `benchShowDropdown` puts the panel at
+      `NSFloatingWindowLevel + 1`, above Bench's main window in raised
+      mode and below the menu bar, sets `canHide` to `NO`, so that it
+      shows while Bench is hidden, and gives the page's web view the
+      keyboard. It places the panel across the top of the visible frame
+      of Bench's screen, the one its window is on, or was on while it's
+      hidden (`benchDropScreen`), as wide as that screen: the drop-down
+      belongs with Bench's tabs, and comes in the same place each time.
+      Without Bench's window, it's the screen with the keyboard
+      (`NSScreen.mainScreen`). The panel isn't tagged `bench.item:`, so
+      it isn't a popped-out window for **Add Front Window** and **Window
+      ▸ Back to Bench**; its bar has **Back to Bench** itself. The
+      page's body is named "Drop-down terminal" for VoiceOver, and its
+      bar names the terminal ("Drop-down: *name*") and has **Back to
+      Bench** and **Hide**.
+    - **Hiding from the page.** The page hides the drop-down when its
+      window loses the keyboard (`blur`), as a click in another window
+      or app takes it: the panel, at the floating level, would go on
+      covering the top of that app, without the keyboard, which Escape
+      and a shortcut used only in the panel would then not reach. While
+      the close question shows, it stays, as the question waits for an
+      answer. The page also hides it for ⌘⎋ (`DROPDOWN_HIDE_KEYS`), in a
+      capture listener, before the terminal sees the key, so that a key
+      in the panel hides it while a program has Escape, and while the
+      `dropdown` shortcut is off. **Hide**'s tooltip and the right-click
+      menu's **Hide Drop-down** show ⌘⎋, which works in the panel only,
+      not the shortcut, which they can't keep up to date. The browser
+      preview hides its drop-down for ⌘⎋ in it and for a press outside
+      it, except while a dialog or menu is open over it.
+    - **The slide.** The panel slides down from above the top of the
+      screen in 0.18 s (`NSAnimationContext`), and up again as it hides,
+      ordering out once it's out of sight, unless it has shown again
+      meanwhile (`gDropSerial`). Where another screen is arranged above
+      Bench's, so that the frame above the top is on that screen
+      (`benchDropCanSlide`), it fades in and out over the same time
+      instead (`alphaValue`): a slide would show it on that screen
+      first. With **Reduce motion** on
+      (`accessibilityDisplayShouldReduceMotion`), it's put in place, or
+      ordered out, at once. The frame and the alpha are set before the
+      panel is ordered front, so that it never shows for a moment in the
+      wrong place. The browser preview's slide is a CSS animation, which
+      `prefers-reduced-motion` turns off.
+    - **The first show.** Wails gives a hidden window its `NSWindow`
+      only once its page has loaded the runtime, so the shell keeps the
+      height that the first show asked for (`dropdownWindow.want`) and
+      slides the panel down when it has one (`onceNative`,
+      `dropdownReady`). Hiding
+      orders the panel out and keeps it: the next show slides the same
+      panel down, with the terminal's screen as it was. The session is
+      Go's, so it runs whether the panel shows or not.
+    - **Height: a setting, not a dragged edge.** `dropdown_height`, in
+      **Settings ▸ Terminals**, is the panel's height in percent of the
+      screen's, from 20 to 90, 40 by default, kept in `config.toml`. A
+      height kept from a dragged edge would need a resize handle in a
+      frameless panel, a delegate to report the size, a `state.json`
+      field, and a height for each screen; a percentage fits every
+      screen as it is. The owner allowed either, and the setting is the
+      simpler. A new height applies the next time the drop-down shows.
+      Settings refuses one outside 20 to 90: "The drop-down's height
+      must be from 20 to 90 percent of the screen."
+    - **Escape.** Go takes it in `TermInput` (`escapeDropdown`): an
+      Escape alone (`\x1b` as one piece of input), while the drop-down
+      shows and its terminal isn't busy (`Host.Busy`, decision 35),
+      isn't typed at once. Go holds it for 0.4 s (`escapeWait`). If no
+      other key comes in that time, the drop-down hides, and the Escape
+      is never typed. A key in that time goes to the shell after the
+      Escape, so that the Escape prefix that shells read as Meta, such
+      as Escape B for a word back with Option as Meta off, still works,
+      and the drop-down stays. A second Escape hides it at once. Any
+      other show or hide forgets a held Escape. The hold has a mutex of
+      its own (`escMu`), which may be taken with the engine's lock held,
+      never the other way round, so that the first Escape and the key
+      after it don't wait for an arrange. While a program runs, such as
+      vim, less, or a coding agent, Escape is the program's. Keys that
+      send Escape with more, such as the arrows and Option as Meta, come
+      as one piece, so they're typed. The page joins what's typed while
+      a `TermInput` is on its way into the next one, but never an Escape
+      alone, which goes on its own (`send` in `terminals.js`), so that a
+      quick Escape after typing still hides the drop-down. An atomic
+      (`dropKeys`) says which terminal is the drop-down that shows, so
+      that Escape in another terminal takes no lock. In the page, Escape
+      with the focus on the bar, not in the terminal, hides it too. A
+      shell in vi mode at its prompt gets Escape only with a key that
+      follows it in the hold: Escape alone hides the drop-down.
+    - **The shortcut.** `dropdown` in `[shortcuts]` is off by default,
+      as Option+&#96;, the obvious key, is a dead key on many keyboard
+      layouts. It's bound after `undo` and before
+      `send_to_tab_modifiers` (decision 65), and checked for clashes as
+      every shortcut is (decision 45). It calls `ToggleDropdown`, which,
+      unlike the jump shortcut, never brings Bench forward. **View ▸ Show
+      Drop-down**, the menu bar item's **Show Drop-down**, and the jump
+      palette's call it too, and read **Hide Drop-down** while it shows.
+    - **Needing the user while hidden.** `seenLocked` counts the
+      drop-down as seen while it shows, over any app, even with Bench
+      hidden, and not while it's hidden, so its bell, a notification
+      that its program asks for, or its command finishing marks it as
+      a terminal out of sight is marked (decision 43), and
+      `clearSeenLocked` keeps that mark though the drop-down is out of
+      the tabs. The menu bar item has no sub-tab to mark, so a bell
+      follows its text (`dropdownMark`), and its menu's item, and **View
+      ▸ Show Drop-down**, read **Show Drop-down — Needs Attention**. The
+      notification's subtitle is "Drop-down", where a terminal in a tab
+      has its tab's name, and clicking it shows the drop-down
+      (`showAnywhereLocked`). Showing it takes the mark off.
+    - **Between launches.** `state.json` keeps the drop-down's item ID
+      (`dropdown`), with the item among the floating ones. As Bench
+      opens, `reopenOwnWindowsLocked` starts the drop-down's session,
+      out of sight (`dropdownFromStateLocked`), as it was when Bench
+      quit, and its panel is made the first time it shows.
+    - **Closing it.** ⌘W in the panel closes it, which ends the
+      terminal, asking first while it's busy, as a popped-out terminal's
+      window does (decision 35).
+    - **The browser preview** has no panel, and its shell's
+      `showDropdown` does nothing. The View's `dropdown.inPage` is set,
+      and the page draws the drop-down over the top of Bench's window,
+      `dropdown_height` percent of its height tall, with the same bar,
+      and gives the keyboard back to what had it as it hides. The
+      shortcut works only while the page has the keyboard, as every
+      shortcut does there.
+    - **With the decisions before it.** The panel is one of Bench's own
+      windows, of Bench's own process (`ownPID`), so Bench never adopts
+      it, puts it out of sight as a window that covers Bench as Bench
+      comes forward (decision 68), or parks it before it shows an app
+      (decision 67). The drop-down terminal is in no pane, so it has no
+      frame to be docked back into, and Bench never redocks it or marks
+      it as kept moving (decision 69); a window tool that moves the
+      panel moves it until it next shows, when `benchShowDropdown` puts
+      it in its place again. Showing and hiding it, from the `dropdown`
+      shortcut too, arrange nothing, so they keep no time; **Use as
+      Drop-down**, which takes the terminal out of its pane, is timed as
+      `other` (decision 67). The `dropdown` shortcut is checked against
+      a running window tool's keys as the others are (decision 69): ⌃⌥D,
+      which the Mac checks give it, is Rectangle's **First Third**, so
+      Settings ▸ Keyboard says so, and the tool's notice names it last,
+      as it binds after Bench's other shortcuts. The panel goes to the
+      display that Bench's window is on each time it shows, so after
+      Bench goes back to the display that the user chose (decision 70),
+      the next show is there. A drop-down that shows while Bench goes
+      back stays where it is, so that it doesn't move while the user
+      types in it. If the display that it shows on goes away, macOS
+      moves the panel onto another display at the size it had, so once
+      the screens settle, Bench shows it again, which puts it across the
+      top of Bench's display (`dropdownScreensLocked`, with
+      `dropScreen`, the display that Bench's window was on as it last
+      showed).
+    - **Not** web pages, as above. **Not** a height from a dragged edge,
+      as above. **Not** more than one drop-down. **Not** **Undo** for
+      **Use as Drop-down**: its toast says how to show it again, and
+      **Move into This Pane** puts it back. So Undo of another change
+      leaves the drop-down as it is (`restoreLocked`): the arrangement
+      before that change can have the drop-down in a pane, or not have
+      it at all, and bringing that back would end the drop-down without
+      a word, or close its terminal as something the change added. The
+      drop-down stays out of the tabs, and a terminal that was the
+      drop-down before that change stays where it has gone since, as
+      what has come since does. **Not** a default shortcut.
+73. **Files, folders, and apps dropped from the Finder go where they're
+    dropped: a terminal types their paths, and a pane or the tabs' +
+    opens them.** Dragging a file to a terminal to type its path is what
+    Terminal and iTerm2 users do many times a day, and dragging a folder
+    or an app to a place in Bench is the quickest way to open it there.
+    Before this, Bench's windows didn't take drops of files (Wails'
+    `EnableFileDrop` was off, so its runtime cancelled them), and a link
+    or text dragged from another app could load in place of Bench's page.
+    - **Wails' file drop, not HTML's.** WebKit gives a page the names of
+      dropped files, never their paths. Wails v3 beta.27 puts a view
+      over the web view (`WebviewDrag` in its `webview_window_darwin.m`)
+      that takes drags of files from the Finder, in a window with
+      `EnableFileDrop`: the main window, popped-out terminals' windows,
+      and the drop-down's panel (`mainWindowOptions`,
+      `terminalWindowOptions`, and `dropdownWindowOptions`), and not
+      Acknowledgements, whose page cancels every drag over it instead
+      (see **Other drops**). While a drag is over it, Wails' native code
+      calls `window._wails.handleDragOver(x, y)`, and its runtime gives
+      the element under the point that has a `data-file-drop-target`
+      attribute, the nearest, the class `file-drop-target-active`, which
+      `styles.css` draws. At the drop, it calls
+      `window._wails.handlePlatformFileDrop(paths, x, y)`, and the runtime
+      sends the paths to Go with that element's attributes. The shell's
+      `watchDrops` gets them in `WindowFilesDropped`
+      (`DroppedFiles` and `DropTargetDetails`) and calls
+      `Engine.DropFiles` with what `DropTargetOf` reads from the
+      attributes. A refusal shows in the window that got the drop, where
+      the user is looking (`dropped`): a toast in Bench's window, or, in
+      a popped-out terminal's window or the drop-down's, the
+      `drop-refused` command, with the text, which that window's page
+      shows as its own toast. Each refusal is short enough for the app's
+      toast, which is one line, in Bench's smallest window, even in the
+      title bar while the status bar is hidden, and starts with what to
+      do: `TestDropMessagesFit` keeps them to 64 characters.
+    - **What takes a drop.** The page marks the elements with
+      `dropAttrs` and `setDropTarget` (`drops.js`):
+
+      | Element | `data-file-drop-target` | Drop |
+      | --- | --- | --- |
+      | A terminal (`.term-host`, and a terminal's pane body) | `terminal`, with `data-drop-item` | Types the paths into the terminal. |
+      | A pane's header, an empty pane's body, a pane whose item isn't ready, and the `tabs` view's pane in the title bar | `pane`, with `data-drop-pane` | Adds the folders and apps to the pane. |
+      | The tabs' **+** (`.new-tab`) | `new-tab` | Makes a new tab of the folders and apps. |
+      | The body of Bench's window, anywhere else | `window` | Says where to drop. |
+      | The body of a popped-out terminal's window or the drop-down's | `terminal`, with `data-drop-item` | Types the paths into its terminal, wherever they're dropped. |
+
+      A docked app's pane body has no attribute, as the app's window is
+      over it, and the app gets the drop, as it does outside Bench. A Web
+      item's page is a `WKWebView` over Bench's web view and its drag
+      view, so the page gets the drop, as in a browser. Neither reaches
+      Bench, which needs no native code for drops.
+    - **Paths typed as Terminal types them** (`shellPath`). Each path
+      gets a backslash before every ASCII character that isn't a letter,
+      a digit, or one of `-_./+:@%,`, as Terminal does, so that a space,
+      a quote, a bracket, `$`, `*`, `!`, and `~` are read as they are,
+      and a space after it, so that the next word or path can follow.
+      Letters from other alphabets stay as they are, as zsh and bash read
+      them so. A path with a control character, such as a new line, or
+      bytes that aren't UTF-8, which a backslash can't keep, is written as
+      `$'…'`, with `\n`, `\t`, `\r`, and `\x` escapes, and `!` as `\x21`
+      so that bash's history doesn't read it; zsh, bash, and ksh read
+      that. `TestShellPathInAShell` checks each with bash. Bench never
+      presses Return: the user can check the line, and add to it.
+    - **Typed as a paste, by the page.** Go sends the text as
+      `paste-terminal` (`Command.Text`), and the page whose terminal has
+      the session open types it with xterm.js's `paste`
+      (`terminals.pasteText`), which marks it as a paste
+      (`ESC [200~` … `ESC [201~`) while the program has asked for that
+      (bracketed paste), as zsh, vim, and Claude Code do: a program that
+      reads keys one at a time, such as an agent's prompt, then doesn't
+      take a new line in a path for Return. Only xterm.js knows whether
+      the program asked, so Go doesn't write to the PTY itself. The
+      command goes to every page; the main window has sessions only for
+      the terminals in the tab and its drawn drop-down, and a popped-out
+      terminal's window only for its own (`terminal-window.js`), so the
+      one page that shows the terminal types it. Bench doesn't come
+      forward, and the keyboard stays where it was. A terminal whose
+      command has finished is refused
+      (`errDropEnded`), as typing there would do nothing.
+    - **Folders and apps on a pane** (`readDropped`, `dropOnPane`).
+      Each path is read on disk: a folder whose name ends in `.app`, with
+      a bundle ID (`apps.ReadBundle`), is an app, wherever it is; another
+      folder is a folder; anything else is a file. A folder adds a new
+      terminal in it (`addTerminalLocked`), and an app is added as the add
+      dialog's **Apps** rows add one (`addAppLocked`), after
+      `noteBrowsedLocked` lists it as installed, as **Browse…** does. A
+      package, a folder that the Finder shows as one item, such as an
+      Xcode project or a Photos library, is a file, as it is to the
+      Finder: `packageExts` lists the common ones by extension, as only
+      macOS knows them all. The pane is found as `AddToPane` finds it
+      (`targetPaneLocked`), and becomes the focused pane, as the user
+      chose it, and the first item added shows there and gets the
+      keyboard (`finishAddLocked`). The add dialog's **+** focuses its
+      pane as it's clicked; a drop has no such click, and without this,
+      an app still to open would leave the keyboard to another pane's
+      app, which would come in front of the Finder. Like the add dialog,
+      a drop on a pane has no **Undo**: each item closes as usual. Files
+      are left out, with a toast that says how many, and a drop of files
+      only is refused (`errDropFiles`), as Bench has no way to open a
+      file in a pane. Paths that have gone, and `.app` folders without a
+      bundle ID, are left out too, and the toast says why; a second copy
+      of an app is left out without a word. A drop of which nothing can
+      be added, as when no app opens, is refused with the first reason:
+      `addAppLocked` fails only before it adds a window or opens the app,
+      so a thing with an error added nothing. More than 8 folders and
+      apps (`dropLimit`) is refused, and none opens, so that a drop of a
+      whole folder's contents doesn't open dozens of terminals.
+    - **A new tab from the +** (`dropOnNewTab`), as the **New tab** dialog
+      makes a tab of windows that are open (decision 54): named after the
+      first folder or app (`uniqueTabName`), with `suggestPreset`'s
+      layout for their number, and each in a pane of its own, in order,
+      those after the last pane in the last one. Bench switches to it and
+      saves it in `config.toml`, and its toast's **Undo** deletes the
+      tab, the terminals it made with it, and puts back the windows it
+      took from **Not in a tab**, by the same snapshot and
+      `undoStep.outside` as decision 54's. If nothing went in the tab, as
+      when no app dropped opens, the tab goes again before the config or
+      Undo has it, and the drop is refused with the first reason: an empty
+      tab named after an app that never opened would stay in the user's
+      `config.toml`.
+    - **What covers Bench, a window that keeps moving, and the new tab.**
+      A drop on a pane or the + whose new terminal gets the keyboard
+      brings Bench forward (`FocusUI`) if another app, such as the
+      Finder, was in front. That isn't the user going to Bench, so it
+      doesn't put away the windows over Bench (decision 68): the Finder
+      window that the drag came from would go, with the next folder to
+      drop, and the toast that says so would push out the new tab's
+      **Undo**. `noteDropForwardLocked` notes such a drop, and Bench's
+      next activation within `dropForwardGrace`, 2 seconds, passes
+      without `hideCoveringLocked` (`droppedForwardLocked`); after that,
+      or after a drop that gave no terminal the keyboard, coming forward
+      is the user's doing again. A pane whose window its app or a window
+      tool kept moving (decision 69) is a pane whose item isn't ready, so
+      a drop on its message, or its **Dock again**, adds to the pane, as
+      on its header. The window keeps its mark, and stays where its app
+      put it: a drop from the Finder isn't a drag of the window onto a
+      pane, which `TrackDrags` follows (decision 13) and which docks it
+      again, and it never reaches `Redock`. The new tab from the + comes
+      in the View that has it current, once Go has arranged it, so the
+      title bar shows it as current from the moment it shows it at all;
+      the `switching` command (decision 67) is only for tabs that the
+      View has already, and the switch's time is kept as a `switch`'s.
+    - **Other drops** (`guard` in `drops.js`). Anything else dragged
+      onto the page, such as a link or text from a browser, comes as HTML
+      drag events, which Wails' runtime lets through, as they aren't
+      files, and which WebKit would end by loading the link in place of
+      Bench's page. So the page cancels every `dragenter`, `dragover`,
+      and `drop` that nothing in it has taken, and at a drop from another
+      app says what Bench takes (`NOT_FILES`). A field that takes text,
+      such as the jump palette's, still takes a drop of text. A drag that
+      started in the page, such as of selected text, shows that it can't
+      drop (`dropEffect` `none`), so it ends without a drop. Bench's own
+      drags of tabs and sub-tabs aren't HTML drags (decision 19), and
+      `drag.js` stops an HTML drag of their text as it starts, so the
+      guard counts a drag as the page's only once a `dragstart` that
+      nothing stopped reaches the window. A drag ends with a `dragend`
+      at its source, which a new view may have taken out of the page by
+      then, so the guard listens on the source too; and a press of the
+      pointer, which can't come during a drag, ends one whose end went
+      unheard. Otherwise the guard would take every later drag from
+      another app for the page's own, and say nothing. In the app, a drag
+      of files that comes as HTML drag events can't be from the Finder,
+      as Wails' native view takes those first: it's of files that have
+      no paths yet, such as an image from a browser, a photo from Photos,
+      or an attachment from Mail, which WebKit offers the page as files.
+      Wails' runtime would light up what it's over, and cancel the drop
+      without a word, so the guard takes it first, as it reaches the
+      window (`notFinder`), lights nothing up, and at the drop says to
+      save it as a file and drag that (`NOT_FINDER`). The browser
+      preview has no `enableFileDrop`, so there it does nothing, as
+      before. The Acknowledgements window's page has a script of one
+      loop for the same reason (`dropGuard` in `build/acknowledgements`),
+      its only one: it cancels every drag over the page, and says that it
+      can't drop.
+    - **The browser preview** gets no paths from its browser. Its tests
+      and screenshots call `window._wails.handlePlatformFileDrop` as
+      Wails' native code does, and the page's `benchDrop` finds the
+      element as Wails' runtime does, and sends the paths and its
+      attributes to `DemoDropFiles`, as Wails' runtime would send them as
+      a window event, which the preview's windows don't have. In the app,
+      where Wails sets `flags.enableFileDrop` in the windows that take
+      drops, `benchDrop` passes them to the runtime. A page without Wails'
+      runtime, as in the frontend tests, gets hover handlers like Wails'.
+      A file dragged onto the preview from the computer's own file
+      manager does nothing.
+    - **Not** links dropped to add a web page: that's for later, with
+      **Web page…**'s choice of a web app or a Web item. **Not**
+      spring-loaded tabs: a drag held over a tab doesn't switch to it.
+      **Not** files opened in a pane, as Bench has no item for a file.
+
+74. **A tab can have one of eight colours, for its underline, a band along
+    its pane headers, and a dot beside its name in lists.** With several
+    tabs of the same width and grey text, finding a tab meant reading
+    every name. A colour can be seen at a glance, but it must not be the
+    only way to tell tabs apart, and it must not hide the current tab or
+    the focused pane, which already use the accent.
+    - **Config.** `colour` on `[[tab]]` (`config.Tab.Colour`, with
+      `omitempty`, so that `Format` writes no line for a tab with none, and
+      the `json` that keeps closed tabs in `state.json` has none either).
+      `config.TabColours` lists the eight names, in the order Tab
+      properties shows them, and `IsTabColour` checks one. `Validate`
+      refuses any other value, with the list of names, and says what a
+      name in capitals should be, as `"Blue" needs to be in lower case:
+      "blue"`. For a name that's nearly right, such as the American
+      `gray`, `nearestColour` asks `did you mean "grey"?` in place of the
+      list, as `suggest` does for a field: for the American `color`, it
+      asks "did you mean "colour"?", as for any other field it doesn't
+      know. `Example` gives Comms blue and Code green, and the welcome
+      guide's suggested tabs have colours of their own (`starterTabs`). No
+      config from before has a colour, and Bench never adds one to a tab
+      it reads.
+    - **Engine.** `Tab.Colour` is in the model, so the snapshots that
+      **Undo** takes (`undoStep.saved`) and **Reopen Closed Tab**'s closed
+      tabs keep it, as they keep a tab's config entry. `state.json`
+      doesn't repeat it: the model takes it from the config, when Bench
+      starts and when `config.toml` reloads (`reload` sets it with the name
+      and small-screen setting). `SaveTab` and `NewTabFromWindows` take it
+      from `TabDraft.Colour`; `draftConfigLocked` refuses a colour that
+      `IsTabColour` doesn't know, before anything changes. Rename in place
+      sends the tab's colour back as Go sent it (`rename.js`), as it sends
+      its small-screen setting, and Tab properties starts from it, not
+      from the frontend's list, so that a save never drops a colour that
+      the page doesn't know. `TabView.Colour` and `MenuBarTab.Colour` carry
+      it to the frontend and the app menu.
+    - **Frontend.** `TAB_COLOURS` in `util.js`, and `colourAttr`, which
+      gives an element `data-colour`. `TestTabColoursMatchFrontend` checks
+      that `util.js`, the rules and tokens in `styles.css` and
+      `light.css`, and `appearance.test.js` have the colours of
+      `config.TabColours`, in its order. One rule for each colour sets
+      `--tab-colour` from the theme's `--tab-<name>` token on whatever has
+      the attribute: a tab, a pane (`renderPane` gives each pane the
+      current tab's), a dot (`tabDot`), and a swatch. A coloured tab has a
+      2 pt `::after` line, 12 pt in from each side; the current one hides
+      it and has its `inset` underline in `--tab-colour` in place of the
+      accent's, so it stays the one with the raised background and the
+      full underline. A pane header's band is a background image along
+      its top, 2 pt tall, 1 pt below the pane's border and 12 pt in from
+      each end, as the tab's short underline is: it takes no room from the
+      docked window, and as it never touches the pane's border, it can't
+      be taken for part of the focused pane's accent border. Dots
+      show only while a tab has a colour (`anyColoured`), with a hidden
+      dot for a tab with none, so that the names line up; they are
+      `aria-hidden`, and no name or label has the colour, as the name is
+      always there. Tab properties' **Colour** is a `radiogroup` of
+      buttons with `radioState`, so `roving.js` gives it the keys of every
+      other radio group; each swatch's `aria-label` and `title` name it,
+      and the name of the one chosen shows beside them (`colourText`), for
+      users who can't tell the colours apart. It is the first row of the
+      part that scrolls, so it stays in view in the smallest window.
+    - **Contrast.** Each colour has a dark value in `styles.css` and a
+      light one in `light.css`, chosen at 3:1 at least, as WCAG asks of
+      marks that aren't text, on every surface the colour sits on:
+      `--bg-chrome`, `--bg-tab-active`, `--bg-hover`, `--bg-pressed`,
+      `--bg-pane-header`, `--bg-raised`, `--bg-window`, and
+      `--bg-control-on`, and the accent's wash over the title bar, on a tab
+      that a sub-tab is dragged over, and over the pane, on a pane header
+      that files from the Finder are over (decision 73). The lowest is
+      light yellow on `--bg-pressed`, at 3.16:1. Each is also 20 apart
+      from the accent at least, as CIEDE2000, so that a tab's colour can't
+      be taken for the focus: the lowest is light red, at 21.4. Yellow is
+      a greener yellow than the accent's orange, at 25.7 in light and 30.5
+      in dark. A mustard yellow, at 19, looks like the accent: a yellow
+      tab's underline looks like the accent's, and a band against the
+      pane's border makes an unfocused pane look focused. Each is as far
+      from `--warning`, the amber of the warning sign that a window that
+      keeps moving shows on its sub-tab (decision 69), so that a yellow
+      band can't be taken for it: the lowest is yellow, at 20.2 in light
+      and 20.5 in dark. Increase contrast changes lines and text, not those
+      surfaces or the accent, so the colours need no third set. The test
+      is a rule in `appearance.test.js`'s `READABLE`, with the washes and
+      the distances from the accent and `--warning` beside it, which runs
+      in both appearances, with and without Increase contrast.
+    - **App menu.** Wails' `MenuItem.SetBitmap` takes PNG data, so the Tab
+      menu's tab items, and those of **Pane ▸ Move to Tab**, get a dot
+      with no Objective-C: `tabdots.go` draws
+      each colour once (`menuDot`), 24 pixels square with a 9-pixel
+      radius, smoothed at the edge, and adds a `pHYs` chunk of 144 pixels
+      to the inch, so that `NSImage` takes it as 12 points, sharp on a
+      Retina screen: a 9 pt dot in a 12 pt image. The dots in Bench's own
+      lists are 8 pt. A tab with no colour gets a blank image as large,
+      while another has one, so that the names line up. The menu follows
+      macOS's appearance, not Bench's, and an image can't change with it,
+      so each dot has one value, between the light and dark ones, at 3:1
+      on a light menu and a dark one (`TestMenuDotContrast`). `SetBitmap`
+      on an item that's already built doesn't run on the main thread, so
+      `set` rebuilds the menu, as it does for a new tab, when a tab's
+      colour changes (`sameColours`), and the bitmaps are set before
+      `Update`, which applies them on the main thread.
+    - **Menus.** **Move to Tab** and **Also Show In**, in a pane's ⋯ menu
+      and its sub-tabs' menus, have the dots too, while any tab has a
+      colour: `tabEntries` gives each tab's entry a `dot`, its colour or
+      `none` for a blank one as wide, in the menus' one model (decision 71).
+      Bench's own menus show it with `tabDot`. A native menu gets it in
+      `MenuEntry.Dot`, and `buildNativeMenu` gives its item the image of
+      `menuDot` before Wails builds the menu, as the app menu does. **New
+      Tab** has none. The jump palette's This window rows, such as **Move to
+      Tab ▸ Comms**, have none either: the tab's name is part of a longer
+      label there, and the palette's Tabs rows have the dots.
+    - **With the decisions before it.** A switch shows the tab that it's
+      going to as current at once (`shownCurrent`, decision 67), and the
+      rule for the full underline follows `aria-selected`, so a coloured
+      tab's underline goes at once with it. The pane headers keep the band
+      of the tab that the View has current until the switch is done, as they
+      show its panes. The warning sign on a sub-tab whose window keeps
+      moving (decision 69) starts 5 pt above the sub-tab's tile, which in
+      the compact density is where the band is, so in a coloured tab's pane
+      header it comes down to 2 pt above, clear of the band. While files
+      from the Finder are over a pane header (decision 73), the band moves
+      down by the width of the frame, to 3 pt, or 4 pt with Increase
+      contrast, so that both show. The drop-down terminal (decision 72) is
+      in no tab, so its panel has no colour. **Keep over Bench** (decision
+      68) changes `config.toml`'s rules after a **Save**: its Undo leaves
+      the saved colour, and the Undo of the **Save** takes the rule back
+      too, as it does any change after it. Toasts have no colour.
+    - **Undo.** A change of colour goes through Tab properties' **Save**,
+      and so through its **Undo**: `SaveTab` keeps an undo step for a tab
+      that was there, with `config.toml`'s tabs and rules (decision 37),
+      so the toast after **Save**, or after a rename in place, has
+      **Undo**, which puts back the tab's name, layout, small-screen
+      setting, colour, and place, and saves them. It's **Rename Tab** when
+      only the name changed, and **Change Tab Properties** otherwise
+      (`savedTabUndo`). As the step keeps `config.toml`'s tabs from before
+      the change, the changes before it stay within Undo's reach: Undo of
+      one of them takes this one back too, and the tabs' names match
+      again. A tab added by **New tab** still puts them out of reach.
+      **Undo** of a deleted or closed tab, and **Reopen Closed Tab**,
+      bring its colour back.
+    - **Not** a symbol or icon field for a tab: an emoji in the name shows
+      everywhere the name does, and the user guide says so. **Not**
+      orange, which is the accent's, for the current tab's underline
+      before this and the focused pane's border, nor more than eight, which
+      would be harder to tell apart, nor any colour value in `config.toml`.
+      **Not** colouring tabs that a config already has, or the focused
+      pane's border. **Not** the colour in the menu bar item's menu, whose
+      items are plain text. **Not** a **Save** in Tab properties that
+      Undo can't take back, as it was before this, which also put the
+      changes before it out of reach.
+
+75. **Bench finds an app's New Window and Close Window menu items in the
+    Mac's language, and uses their key equivalents only to choose between
+    titles that match.** Bench presses another app's **New Window** to open
+    a window of an app that's running (the add dialog's **New window**, an
+    app whose windows are all in tabs added from its **Apps** or dropped
+    from the Finder on a pane or the tabs' **+**, which add it the same way
+    (`addAppLocked`, decision 73), and a pane's **Open** *app*; a tab switch
+    only opens the app again, in `openMissingLocked`), and its **Close
+    Window**, or **Close**, to close a window that has no close button
+    (decision 36). It found them by their English titles, and the File menu
+    by the word File, so on a Mac set to another language, New Window
+    opened the app again instead, and a window without a close button
+    stayed open.
+    - **Titles.** `menuLanguages` (`internal/mac/menus.go`) has, for 17
+      languages, the titles that Apple's own apps give **New Window**
+      (SwiftUI's standard menu, `MainMenu.loctable`, and Safari), **Close
+      Window** (AppKit's standard menu, `MenuCommands.loctable`), and
+      **Close** (AppKit's `Document.loctable`, and Preview), with the
+      words for new and for window in New Window, and Safari's word for
+      private in New Private Window. They come from macOS 27's resources,
+      as the Apple Localization Terms Glossary (applelocalization.com)
+      lists them: Danish, Dutch, Finnish, French, German, Italian,
+      Japanese, Korean, Norwegian, Polish, Portuguese, Russian, Simplified
+      and Traditional Chinese, Spanish, Swedish, and Turkish. Portuguese is
+      the same in Brazil and Portugal but for case, and Chinese is the
+      same in Hong Kong as in Taiwan. Titles compare in lower case, without
+      an ellipsis (`menuTitle`), and otherwise as the app gives them, with
+      no Unicode normalisation. Mail titles its New Viewer Window as plain
+      New Window in French, German, Italian, Portuguese, and Spanish, so it
+      matches there too.
+    - **Key equivalents.** The native side reads each item's
+      `AXMenuItemCmdChar` and `AXMenuItemCmdModifiers`, which are public
+      (`benchCopyMenuKey`), and passes them to Go with the title; an
+      unknown modifiers value is -1. Command-N, or Command-W, with no other
+      modifier key (modifiers 0) adds one to the rank of an item whose
+      title matches: New Window with Command-N (`newWindowExactKey`) is
+      above New Window without it (`newWindowExact`), which is above New
+      Finder Window with Command-N (`newWindowOtherKey`). So a key breaks
+      ties between titles of the same rank, and never lifts a title above a
+      better one. It never counts on its own: Command-N is New Message in
+      Mail, New Note in Notes, and New File in many editors, and Command-W
+      is Close Tab in Safari and Chrome. Pressing those would make an empty
+      message or close a tab, which is worse than opening the app again.
+      The proposal had the key first, with the English title as a guard,
+      but on a Mac in another language that guard can't run.
+    - **Other New … Window items.** In English, a "New … Window" item that
+      isn't private or incognito still counts (`newWindowOther`), as
+      before. In other languages the words come in any order and in
+      compounds ("Nouvelle fenêtre Finder", "Nyt Findervindue",
+      "新規Finderウインドウ"), so an item that starts with the word for new
+      and contains the word for window counts only with Command-N, and
+      never with the word for private. That keeps Finder's New Finder
+      Window, and leaves out private and incognito windows, which don't
+      have Command-N alone (Safari and Chrome give them Shift-Command-N,
+      Firefox Shift-Command-P), without a list of each browser's own words.
+      Mail's viewer window in Swedish or Japanese, with Option-Command-N,
+      doesn't count, so Bench opens Mail again.
+    - **The File menu** is the menu bar item after the app's own menu
+      (index 2, as 0 is the Apple menu), whatever its title (Ablage,
+      Fichier, ファイル), or, wherever it is, an item titled File in
+      English, which wins as a cross-check (`fileMenuRank`).
+      `benchMenusFileFirst` moves it to the front, for both finders, which
+      each had their own copy of that loop before. An app without a File
+      menu, such as System Settings, has another menu in that place, which
+      does no harm: Bench looks in every menu, and the order only decides
+      between items of the same rank.
+    - **Native code** stays small and does no ranking: for each item, it
+      reads the title, skips an item without one, and asks Go
+      (`benchNewWindowRank`, `benchCloseWindowRank`, and
+      `benchFileMenuRank`, in `exports_darwin.go`). It keeps the first item
+      with the highest rank. A key equivalent only ever raises a title's
+      rank, and Command-N, or Command-W, raises it most. So the native side
+      first ranks the title with that key, which costs no Accessibility
+      call, and reads the item's own key only if the title could then beat
+      the best so far. Most items' titles can't, so they cost one
+      Accessibility call, the title, as before; the few that can cost one
+      more, or two with a key equivalent. The search stops at once at
+      `BENCH_NEW_WINDOW_BEST` or `BENCH_CLOSE_WINDOW_BEST`, and after the
+      menu in which it finds an exact title (`BENCH_NEW_WINDOW_EXACT` or
+      `BENCH_CLOSE_WINDOW_EXACT`), so a key breaks ties only within that
+      menu. Before, the search stopped at the exact title itself, so it now
+      reads the rest of that menu's titles too: about 20 more calls in a
+      long File menu. The search runs with the engine's lock held (in
+      `addNewWindowLocked`, `addAppLocked`, `decideLaunchLocked`,
+      `openItemLocked`, and `pressCloseLocked`). A hold of the lock is
+      timed from what asked for it (decision 67), so the search counts in
+      the time of the arrangement after it in the same hold, which **Report
+      a Problem…** and the `arranged` log lines give: under the reason
+      other for the add dialog and a drop on a pane, and under switch for a
+      drop on the tabs' **+**, which switches to its new tab. A click on a
+      tab and a tab's shortcut never search, so their times (tab and
+      tab-shortcut) don't change. `menus_test.go` covers the ranking: each
+      language's titles, Finder's New Finder Window in each, the traps
+      (Safari's New Private Window, New Tab, and Close Tab, Mail's New
+      Message, Notes' New Note, and Close All, with the keys they have), and
+      the item that wins in whole menus, and what the search reads to find
+      it (`searchMenus`, which searches as the native side does).
+      `TestMenuKeyRaises` checks that a key never lowers a rank, nor raises
+      it more than Command-N or Command-W does, which the native side counts
+      on. `TestHeaderConstants` checks the `_EXACT` and `_BEST` values.
+    - **The fallbacks stay.** With no item that ranks, `NewWindow` opens
+      the app again (`platform_darwin.go`), and `PressClose` returns
+      `errNoCloseButton`, whose message says to close the window in the
+      app. The user guide's troubleshooting says which languages Bench
+      knows and what to do in others.
+    - **Not** the key equivalent alone, nor first. **Not** a key read for
+      every item, nor a search on through every menu after New Window
+      without Command-N, as Terminal's and Visual Studio Code's are, in case
+      a later one has it: with the engine's lock held, that would cost
+      hundreds of Accessibility calls in an app with many menus, for a tie
+      that hardly ever happens. **Not** every language macOS has: Arabic,
+      Catalan, Croatian, Czech, Greek, Hebrew, Hindi, Hungarian, Indonesian,
+      Malay, Romanian, Slovak, Slovenian, Thai, Ukrainian, and Vietnamese
+      aren't in the table yet; each is a row and a test, from the same
+      source. **Not** other makers' own translations, which may differ from
+      Apple's: their apps match only where they use Apple's words. In
+      Japanese, for example, Chrome and Visual Studio Code write ウィンドウ, with
+      a small ィ, where Apple writes ウインドウ, so neither their New Window nor
+      their Close Window matches. **Not** a localised **New** (Neu, Nouveau,
+      新規), which makes a document in TextEdit and Pages, as English **New**
+      doesn't count either.
+
+76. **A web page can keep running in the background, so that its
+    notifications and its unread count arrive before it's shown, and its
+    first notification turns that on.** Bench makes a page's web view the
+    first time it shows the page (decision 61), so Slack or Outlook in a tab
+    not shown since Bench opened posted no notifications, and had no count,
+    and the user missed messages. The owner asked for the first step only:
+    a setting for each page, which the first notification turns on, and a
+    note on pages that aren't loaded. Bench doesn't put pages to sleep or
+    unload them yet (see **Not**).
+    - **The setting.** `keep_running`, a boolean in a `web` item's entry in
+      `config.toml` (`config.Item.KeepRunning`). It's a `*bool`, missing
+      until Bench or the user sets it, so it's off by default, and a
+      missing one is the only one a notification changes. `Validate`
+      refuses it on other items, and `inlineItem` writes it last. The
+      entry's key (`entryKey`) leaves it out, so that changing it keeps
+      the item's place in `state.json`. A page with an entry takes it from
+      `config.toml` at startup and at a reload (`applyEntry`), so that
+      taking it out of the file is as if Bench had never set it. A page
+      added in Bench has no entry, and `state.json` keeps it
+      (`ItemState.KeepRunning`). The engine has it as `Item.KeepRunning`,
+      with `Item.KeepChosen` set once it's set either way. VS Code for the
+      Web has none (`keepable`), as its page needs its own server.
+    - **Loading.** `Platform.LoadWebView` makes a web view, hidden, the size
+      of the pane area, and loads its address. It does nothing for a web
+      view that exists. On the Mac, `benchWebLoad` (`web_darwin.m`) makes a
+      `BenchWebItem` as `benchWebShow` does, with the page's profile, user
+      agent, name, and zoom, and adds its `WKWebView` to Bench's window,
+      hidden, as `benchWebHide` leaves one. Its page runs: it can post
+      notifications and change its title. `benchWebShow` later moves it to
+      its pane and shows it. The engine (`keeprunning.go`) loads the pages
+      with the setting on that have no web view, one at a time:
+      `preloadDelay`, 3 seconds, after the first arrangement with a pane
+      area (`arrangeWebLocked` calls `preloadSoonLocked`), so that the tab
+      the user sees comes first, then `preloadGap`, 2 seconds, after each
+      one, the current tab's first, then in tab order
+      (`nextPreloadLocked`). A page turned on while Bench runs loads the
+      same way. Bench tries each page once (`preloadTried`) until its web
+      view closes; one that fails is logged, and loads when it's shown.
+      Once loaded, a page is in `webMade`, as one that has been shown is,
+      so its title's count (decision 61) and its notifications arrive. Not
+      in `bench arrange` (`Headless`), and not for a page in a window of
+      its own, which has its web view already.
+    - **Running while hidden.** A hidden page used to need no process: one
+      whose process ended reloaded only once it was shown
+      (`reloadAfterCrash`). A page kept running has to go on running, or
+      its notifications and count stop without a word. So the platform
+      hears which web views keep running (`Platform.KeepWebViewRunning`,
+      `benchWebKeepRunning`, and `LoadWebView`, which implies it):
+      `keepWebViewsLocked` tells it, for each web view, whenever that
+      changes, after each arrangement and each change to the setting
+      (`webKept`). On the Mac, such a `BenchWebItem` (`keepRunning`)
+      reloads after a crash while hidden, with the crash's backoff, up to a
+      minute apart. And a page loaded hidden as Bench opens at login can
+      fail for want of the network, which nothing would retry, as its
+      `requestedURL` is set. So a first load that fails for want of the
+      network before any page has come into view (`benchOffline`: no
+      connection, no host, a timeout, or a TLS failure, as at a captive
+      portal; not a cancel, or a navigation the policy refused, which
+      would loop) sets `needsLoad`: `benchWebShow` loads it again, and a
+      page kept running tries again by itself after 15 seconds, doubling
+      to 5 minutes (`retryLoadSoon`). The engine doesn't hear of these
+      failures, so such a page isn't said to be not loaded.
+    - **The first notification.** When a page in a tab posts a notification
+      (`WebNotification`) and its `keep_running` isn't set,
+      `keepNotifierLocked` turns it on and says so once, as "Slack will
+      keep running in the background, so it can notify you.", with
+      **Undo**. Undo turns it off as the user's choice. Once it's set, by
+      Bench, the user, or `config.toml`, a notification leaves it as it
+      is, so Undo stays. Any page that posts a notification counts, so
+      there's no list of hosts: the user's own chat, mail, and calendar
+      sites count, and a site that never posts one never gets it. The
+      event loop mustn't wait for `cfgMu`, which `Close` holds while it
+      waits for the loop, so saving `config.toml`, and the toast, wait for
+      the clock's goroutine (`AfterFunc(0)`). `state.json` is saved at
+      once.
+    - **Undo.** A first notification most often comes while the user is in
+      another app, and the toast is often the only chance to undo it, so
+      the change is an undo step (decision 65), not a toast of its own:
+      **Undo Keep Running in the Background** in **Tab ▸ Undo**, the jump
+      palette, the recent messages, and the `undo` shortcut, "Undid: kept
+      Slack running in the background." Its step (`undoStep.keepOn`) has
+      no arrangement: `takeBack` puts back the arrangement of the first
+      other change it takes back, if there's one, so that undoing it alone
+      doesn't move the user back to the tab they were on. The toast waits
+      for Bench to be the active app (`keepToasts`, sent from
+      `onAppActivated`), as the user would miss it; its Undo goes if the
+      step has gone meanwhile. **Keep Running in the Background** in a
+      menu ends the step, so that Undo can't take back the user's own
+      choice. And a step from before the setting changed puts back
+      `config.toml`'s tabs as they were then (`cfgTabs`), which would take
+      the field away, so `takeBack` puts each page's `keep_running`, as the
+      model has it, back in the entries it saves
+      (`keepRunningInConfigLocked`): it's the page's setting, not part of
+      the arrangement.
+    - **Saving.** `keepRunningConfigLocked` puts the field in the page's
+      entry in each tab whose entries include it (`sameConfigTab`,
+      `entryPlace`, and `nthEntry`, which a web app's link uses too), and
+      `saveEdit` saves `config.toml` as **Settings** does. If it can't,
+      the toast says why. **Keep Running in the Background** in the menus
+      (`SetKeepRunning`) saves it in the same way, and says what it did.
+      Turned off, a page stays loaded until Bench quits, as Bench never
+      unloads one, so the toast says "Slack will load only when you show
+      it, from the next time Bench opens."
+    - **Not loaded yet.** A web page with no web view that won't get one
+      until it's shown (`notLoadedLocked`: it isn't kept running, or its
+      load failed) has `notLoaded` in its view. Its sub-tab's tooltip has
+      the line "Not loaded yet: no notifications or counts until you show
+      it", and its VoiceOver name the same note, in lower case, after its
+      status, so that no count doesn't pass for nothing unread. A page in a
+      tab not opened since Bench started has no sub-tab in sight, so the
+      overview of every tab (decision 60), where the user compares the
+      tabs' counts, says so too: the page's tooltip has the line, and its
+      tab's card's VoiceOver name says "1 page not loaded yet". A page
+      waiting to load soon, VS Code for the Web, a page in a window of its
+      own, and `bench arrange` don't have it.
+    - **Menus.** **Keep Running in the Background**, in title case
+      (decision 63), is one entry of the menus' shared model (decision
+      71), `page-keep-running` (`pageEntries`), with `checkbox` and
+      `checked`. It's last in a web page's page group in its **⋯** and
+      sub-tab menus, after **Stop Sound and Video**, in the menu itself,
+      not in the **Page** submenu with **Back**, **Forward**, and the
+      zooms: it's a setting that the user reads at a glance, and a tick in
+      a submenu is out of sight. **Pane ▸ Page** has it last, after a
+      separator. The HTML menus draw it as a checkbox (`menuitemcheckbox`)
+      with its tick before the label, where macOS puts it; the native
+      menus (`plainEntries` and `nativeItems`) make it an item with a
+      checkmark, as the layouts have theirs; and the jump palette's **This
+      window** (`windowRows`) lists it as **Page ▸ Keep Running in the
+      Background (now on)** or **(now off)**, after **Actual Size (now
+      125%)**, so that the row doesn't read as what Return does. As
+      `NSMenu` does, an HTML menu with a checkbox keeps the tick's column
+      before every entry (`renderEntries`' `ticks`), and its headings,
+      notes, and submenus' entries line up with the labels; other menus,
+      the **Page** submenu among them, have no column. A native menu's
+      choice runs only if the entry has the tick it had as the menu opened
+      (`chosenEntry`): a notification that turns it on while the menu is
+      open would otherwise make the user's "on" an "off". Wails ticks a
+      checkbox as it's chosen, so **Pane ▸ Page**'s goes back (`retick`)
+      if the engine refuses.
+    - **With the other items.** Loading a page in the background arranges
+      nothing (`loadWebLocked` sets no frame), so the times that **Report
+      a Problem…** keeps (decision 67) don't count it. A hidden web view is
+      Bench's own, in its window, not another app's window, so Bench
+      coming forward never puts one away as covering it (decision 68). If a
+      page's first notification came while the user was away, and Bench
+      hides an app that covers it as it comes forward, both toasts go out,
+      the notification's first: the one about the app, which has just
+      changed what's on the screen, stays in view, and the recent messages
+      keep both, with their buttons. Only a terminal can be the drop-down
+      (decision 72), so a page's menus don't offer **Use as Drop-down**.
+      `config.toml` keeps a tab's `colour` (decision 74) and its pages'
+      `keep_running` side by side, and `state.json` keeps
+      `ItemState.KeepRunning` with the fields that decisions 68, 69, 70,
+      and 72 added (`covering`, `windowTools`, `preferredScreen`, and
+      `dropdown`).
+    - **Tests and the preview.** The fake platform records each web view it
+      makes, in order (`WebViewsMade`), and its `LoadWebView` makes one
+      hidden, loaded, and kept running, which `KeepWebViewRunning` changes
+      (`FakeWebView.KeepRunning`). `engine_keeprunning_test.go` checks that
+      pages with the setting load after the first arrangement, one at a
+      time with the gap, the current tab's first; that a page without it
+      loads only when it's shown; that a load that fails isn't tried again;
+      that the first notification turns it on once, saves it, and says so,
+      once Bench is active, and that Undo, from the toast or **Tab ▸ Undo**,
+      turns it off for good, leaving the tab shown; that Undo of a rename
+      from before keeps `keep_running`, across a restart; that the menu's
+      choice ends the notification's step; which web views keep running;
+      the menus' `SetKeepRunning`; VS Code for the Web; a page added in
+      Bench, across a restart; `bench arrange`; and that loading pages in
+      the background is neither timed nor moves a window, and leaves them
+      hidden as Bench comes forward. The fake can't fail a page's load or
+      end its process, so the Mac checks cover those. The demo bar's
+      **Simulate ▸ Post notification** (`DemoNotify`) has the focused
+      pane's page post one, for the browser tests
+      (`e2e/app/keeprunning.test.js`) and the screenshots.
+      `platform.Logged` passes `EmitEvent` on to the demo platform, so it
+      works with `BENCH_DEBUG` set too.
+      `e2e/frontend/native-menus.test.js` checks the native menus'
+      checkmark, and that a choice whose tick changed doesn't run. With
+      `keep_running` on, the example config's Outlook, whose title is
+      "(12) Outlook" in the preview, shows its count from a tab that hasn't
+      been shown.
+    - **Not** putting pages to sleep or unloading them, to save memory: that
+      needs a measurement first of what pages kept running cost, with four
+      chat and mail pages kept running on a Mac (the manual checks in
+      `development.md`). Until then, a page that's loaded stays loaded.
+      **Not** a list of chat and mail hosts: the notification is the sign
+      that a page wants to reach the user, whatever its host. **Not** on
+      for every page by default: that would load pages, and use memory and
+      the network, that the user hasn't asked for (decision 61). **Not** all
+      at once at startup: one at a time, after the shown tab, keeps the
+      first seconds for what the user sees.
+
+77. **`bench://` links can only switch tabs and show Jump to… or every tab.
+    The bench command can do more, from Terminal or a script, but only while
+    Allow scripts to control Bench is on, and it's off by default.** The
+    owner asked for Raycast, Shortcuts, and shell scripts to be able to
+    switch tabs and start launchers, through a URL scheme and the `bench`
+    command, with Wails' own ways in: its URL event and the single-instance
+    lock, which forwards a second Bench's arguments to the first. Each way
+    in can be used by something other than the user, so each can do only
+    what is safe for what can reach it.
+    - **Links.** `Info.plist`'s `CFBundleURLTypes` registers the `bench`
+      scheme, so macOS gives Bench a link opened from Safari, Shortcuts, or
+      `open`, and opens Bench first if it isn't running. Wails sends it as
+      `events.Common.ApplicationLaunchedWithUrl`, which `setUpNative` hands
+      to the engine's `FollowLink`. The engine exists before `app.Run`, so a
+      link that opens Bench isn't lost. Its switch is in the model, so the
+      view that the frontend asks for once it loads has it; but its Jump
+      to…, every tab, or refusal would be sent before the frontend listens
+      for events, which Wails doesn't keep. So the engine keeps the newest
+      command and toast that links and scripts send until the frontend
+      first calls `Ready`, which sends them; and the frontend keeps a
+      `bench:command` or `bench:toast` that comes before its first view
+      until it has one. A second Bench that macOS starts for
+      a link, as with two copies of `Bench.app`, forwards it in its
+      arguments (Wails' `captureLaunchURL`), and `secondInstance` hands it
+      over in the same way. `control.ParseLink` takes `bench://tab/`*name or
+      number*, `next`, `previous`, `last`, `jump`, and `overview`, with the
+      action in any case, and one slash at the end or none. The name is decoded from
+      the link's path (`%20` for a space, `%2F` for a slash) and must be
+      UTF-8. A link with a user, a port, a query, a fragment (even an empty
+      one), more path, or no `//` is refused. A tab link with `#` or `?`,
+      or a `%` that isn't an escape, is refused with how to encode them,
+      as `bench://tab/C#` would otherwise name the tab "C".
+    - **Why links can do so little.** Any web page can open a `bench://`
+      link, and a browser's question before it does is easy to answer
+      without reading. So a link can only switch tabs, as a click on a tab
+      does, and show Jump to… or every tab. It needs no setting. Moving a
+      window, starting a launcher, closing anything, and listing the
+      windows' titles are left to scripts. A switch does what a click does:
+      the first time a tab shows, its missing apps open
+      (`open_missing_apps`) and its terminals start, running their
+      `command`, or their `run` with `start_again`. That isn't undone by
+      switching back, and it's accepted: the apps and commands are the
+      user's own, set in the config to start when the tab shows, and a link
+      can't name, change, or repeat one, only make it start sooner, with
+      Bench in front. A refused link brings Bench forward and shows a toast
+      that says what links can do, then names the link, as "Links can only
+      switch tabs or show Jump to… or every tab. Bench can't open
+      bench://launch/Notes.": the app's toasts are one line, cut at the
+      end, so the advice comes first, and the link is cut to 40
+      characters. Every name in a message goes through `control.Shown`,
+      which replaces line breaks, controls, and characters that turn text
+      around with "?", and cuts it to 80 characters, as a link can hold
+      anything.
+    - **At most 4 links a second.** A page can open links again and again:
+      not a page in Bench, which can open a link for another app only
+      when the user clicks, and then only after Bench asks, while the page
+      shows, so never a page that keeps running in the background
+      (decision 76); but a page in another browser that the user lets open
+      `bench://` links. Each link switches tabs and brings Bench forward,
+      so `FollowLink` follows at most `linkBurst` (4) in any `linkWindow`
+      (1 second), refused ones too, and ignores the others, with no toast
+      and without coming forward, logging the first of a row once
+      (`linkLimit`, which keeps the latest 4 times under a lock of its
+      own, taken without the engine's). Four lets a shortcut open a few
+      links one after another. Scripts aren't limited: they need the
+      setting, and a program that can send them can do more than switch.
+    - **Scripts.** `bench tab`, `next`, `previous`, `last`, `move-to-tab`,
+      and `launch` don't carry out anything themselves. They forward their
+      arguments, as `CommandArgs` writes them (`tab -- Code`), to the
+      running Bench with `ui.Forward`, which starts a Wails app with the
+      same `SingleInstance` ID and key: Wails posts the arguments to the
+      running Bench, encrypted, as a distributed notification, and exits
+      with status 0.
+      `secondInstance` hands arguments that `control.IsCommand` takes to the
+      engine's `RunScript`, which reads them again with `ParseCommand` and
+      carries them out as the shortcuts do: `bench last` without a hold, and
+      `bench move-to-tab` as the `send_to_tab_modifiers` shortcut does,
+      without coming forward, but not while the drop-down shows (see
+      **With decisions 67 to 76**). `bench launch` adds the launcher, by its name
+      in any case, to the current tab's focused pane, as the add dialog
+      does. A refusal, such as a tab that isn't there, is a toast, as a
+      shortcut's is. Other arguments still only bring Bench forward, as when
+      it's opened again.
+    - **The key.** Any program that runs as the user can post, and read,
+      a distributed notification with Wails' name, even one that macOS
+      keeps in a sandbox, which can't reach `bench.sock` or read the support
+      folder. Unencrypted, that would let a sandboxed app start launchers
+      while the setting is on, and see every forwarded command. So what
+      Bench takes through the lock is encrypted with `forward.key`, in the
+      support folder, which `config.CheckDir` has checked only the user can
+      change: `appOptions` and `Forward` both pass it as
+      `SingleInstanceOptions.EncryptionKey`, and Wails' AES-GCM drops
+      anything that isn't encrypted with it. So only a program that can
+      read the support folder can send Bench anything new. If Bench can't
+      make or read the key, it runs with a random one that nothing else
+      knows, so that nothing can send it anything, rather than take
+      anything, and logs why.
+    - **Each command once.** The key doesn't stop an app from recording a
+      notification and posting it again as it is: Wails' decryption keeps
+      nothing, so a recorded `bench launch` would start its launcher each
+      time. So `Forward` stamps each subcommand, in
+      `SingleInstanceOptions.AdditionalData`, with `sent`, when it sent it,
+      in nanoseconds since 1970, and `id`, a random ID (`rand.Text`).
+      Wails puts that in the JSON that it encrypts, with the arguments, so
+      that nothing can change it. `secondInstance` passes a subcommand to
+      `RunScript` only if its stamp is fresh, sent no more than 10 seconds
+      (`stampFresh`) before or after Bench's clock, which is Forward's too,
+      and its ID is new (`stampGuard`); it drops the others, and logs why.
+      The guard keeps each ID for twice `stampFresh`, by when no copy can
+      be fresh, so it stays small. Links, and the arguments of a Bench that
+      the user opens again, have no stamp and need none: they can only
+      switch tabs or bring Bench forward, which any page or app can do by
+      opening a link or Bench. So a sandboxed app is left with those.
+    - **The setting.** `allow_scripts`, in Settings ▸ Advanced, as **Allow
+      scripts to control Bench**, is off by default. A program that can
+      read the key, as any unsandboxed program of the user's can, can send
+      Bench commands, and so start a launcher. So `RunScript` checks the
+      setting itself, whoever sends the arguments, and while it's off it
+      does nothing, and only logs it: a toast would let such a program put
+      words on Bench's window. The bench command checks first, so that it
+      can say why nothing happens, but its check is only for the message.
+    - **How the command checks.** It asks the running Bench for its list
+      over the socket (`control.Query`), which is there only while the
+      setting is on. So a Bench that answers lets scripts control it, and
+      the command checks what it can of what Bench would refuse, as
+      forwarding doesn't wait for Bench's answer, and a script couldn't see
+      Bench's toast: the tab that `bench tab` or `move-to-tab` names is
+      there (`control.FindTab`, as the engine finds it), `move-to-tab`
+      doesn't name the current tab, nor run while the list's drop-down
+      shows, and `bench launch`'s launcher is in the config Bench uses
+      (`config.toml`, or the last good one). Each is status 1. Whether the focused pane shows anything is left to Bench,
+      as the list's focused pane can differ from what the compact view
+      shows. If nothing answers, Bench isn't running, can't make its socket,
+      or the setting is off: the command reads the config to say which
+      it can. With the setting on in it, it says Bench isn't running or
+      can't answer, and that the status bar says why; otherwise, how to
+      turn it on. It doesn't look for a running Bench by taking Wails'
+      lock file, as `bench arrange` does: Wails takes the lock without
+      waiting, so a Bench starting at that moment would take itself for a
+      second one and quit. A usage mistake, such as `bench tab` with two
+      names, is status 2, as the other subcommands' are. The browser
+      preview has no single-instance lock, so the forwarding commands
+      refuse there (`errScriptsNeedMacOS`), and `bench list --dir` works.
+    - **The socket.** `bench.sock` in the support folder, which
+      `config.CheckDir` has checked only the user can open, answers one
+      line, `list`, with `control.List` as JSON, or `{"error": …}`. It's
+      made as `bench.new`, given mode 0600, and then renamed, so it
+      never has its name with a wider mode. Each connection's other end must
+      be the user's, where the system says (`LOCAL_PEERCRED` on macOS,
+      `SO_PEERCRED` on Linux). A request is at most 64 bytes, and each end
+      waits 2 seconds at most. A socket there already that nothing answers,
+      as a Bench that crashed leaves, is replaced; one that something
+      answers, or a file that isn't a socket, is left alone, and a notice
+      says why scripts can't control Bench, while Bench tries again every 5
+      seconds (`socketRetryWait`), so that moving the file is enough. Its
+      path must fit macOS's 104 bytes, with the zero at the end; the
+      name it's made under is shorter, so the same check covers both. The
+      engine starts it once it has started, from `flushState`, as the
+      setting goes on, and removes it as the setting goes off, and as Bench
+      quits, checking with `os.SameFile` that it's still its own.
+      `ScriptList` refuses too while the setting is off, in case an answer
+      was on its way. Not for `bench arrange` (`Headless`).
+    - **The list.** `control.List`, version 1: the current tab's number, the
+      totals of what needs the user, each tab, and the drop-down. Each tab
+      has its number from 1, its name, whether it's current, its `colour`
+      (decision 74), what needs the user in it, and its panes, in the
+      order `Leaves` gives them. Each pane has its ID, whether it's
+      focused, and its items: ID, `kind` (`app`, `web`, `vscode`, or
+      `terminal`), app, title as the sub-tab shows it, whether the pane
+      shows it, why it needs the user, as the sub-tab's bell says, its
+      unread count, as `UnreadView` has it, and, for a web page,
+      `keepRunning` and `notLoaded`, as the View has them (decision 76).
+      Items not drawn as sub-tabs are left out, as from the tabs' counts.
+      `dropdown` is the drop-down terminal, an item with `shown` while it
+      shows, or `null` (decision 72): it's in no pane, so the tabs leave
+      it out. The totals count an item in more than one tab once, as the
+      Dock's badge does, and the drop-down too; each tab counts its own.
+      Why an item needs the user can be a notification's title and text,
+      which the setting's help says it lists. No field is left out when
+      empty, so that scripts can rely on each. `bench list` prints the same
+      for people, cutting a long tab name, app name, title, or reason on
+      its own, so that what needs the user, at the end of the line, stays,
+      with "(not loaded yet)" after a page that isn't, and the drop-down
+      last. Each name goes through `control.Shown`, as a tab's name can
+      come from a dropped folder's or app's, so that none can send the
+      terminal escape codes or add a line of its own; `--json` escapes
+      them.
+    - **A tab's name or number.** `FindTab` matches the name exactly, then
+      in any case, as Bench matches tab names, and then a number from 1,
+      written plainly (not `01` or `+1`). A tab whose name is a number comes
+      before that number, so `bench tab 2` goes to a tab called "2" if
+      there's one.
+    - **With decisions 67 to 76.** A link's switch and a script's take
+      the lock twice, as a tab's shortcut does (`switchShowing`): once to
+      end a hold and find the tab, and once to switch, with `switching`
+      sent in between, once the frontend gets events, so that the title
+      bar shows the tab as current at once (decision 67). Each is timed
+      from when Bench got it, as `link` or `script`, among the tab
+      switches, so that **Report a Problem…** tells them apart from clicks
+      and shortcuts; `move-to-tab` and `launch` are `other`, as the
+      shortcut's send to a tab and the add dialog are. A link, and a
+      script that switches or launches, brings Bench forward, so Bench
+      puts away the windows that cover it, as `covering_windows` says
+      (decision 68), as for a click on Bench: that's expected, as the user
+      asked to see a tab. Jump to… and every tab from a link, as from
+      their shortcuts and the app menu, wait in the frontend for a native
+      menu on its way or open to close, and its entry to run
+      (`whenNoNativeMenu`, decision 71): Bench can't close a native menu,
+      and a dialog drawn under one would lose the keyboard as the menu
+      closes; an HTML menu closes first, as before. While a native menu is
+      open, `noteJumpLocked` keeps its note, as for the shortcut.
+      `move-to-tab` moves the focused pane's shown window, but while the
+      drop-down shows, it has the keyboard (decision 72): the window the
+      user looks at is in no pane, and the command may well have been
+      typed in it. So the engine refuses it then, with a toast, and the
+      command first, with status 1, from the list's `dropdown.shown`; it
+      works again once the drop-down hides. The list has each tab's colour
+      (decision 74), the drop-down, and, for web pages, whether each keeps
+      running in the background and whether Bench hasn't loaded it
+      (decision 76): they're in the model or the View already, so cheap.
+    - **Tests.** `control_test.go` checks the links and commands taken and
+      refused, with their messages, `Shown`, and `FindTab`; `socket_test.go`
+      the socket's mode, its replies, a stale socket, one that something
+      answers, a file in the way, the longest path that macOS allows and
+      one byte more, `Close`, and that the JSON has every field, the
+      drop-down's too;
+      `engine_scripts_test.go` links and scripts in the engine, the setting
+      on both paths, move-to-tab, launch, and the list, over the socket,
+      with its counts, an item in two tabs, the socket made again once the
+      file in its way has gone, a link before the frontend loads, a flood
+      of links, the switches' times and `switching`, move-to-tab's time as
+      `other`, move-to-tab while the drop-down shows, and the list's
+      colours, drop-down, and pages; `order.test.js` a command and toast
+      before the first view; `native-menus.test.js` Jump to… and every tab
+      waiting for a native menu;
+      `instance_test.go` how `secondInstance` routes links and scripts,
+      and that it takes each stamped script once, while it's fresh;
+      `forward_test.go` the key; `cmd/bench/scripts_test.go` the command's
+      arguments, checks, and messages, with a fake Bench; and
+      `bundle_test.go` the URL type in `Info.plist`. A Mac is needed for
+      the URL event, the distributed notification, and `LOCAL_PEERCRED`
+      (the manual checks in `development.md`).
+    - **Not** a socket that takes commands as well as the list, which would
+      have saved forwarding: the owner asked for Wails' own forwarding,
+      which a running Bench takes already. **Not** commands in links, behind
+      the setting: a web page can't be told apart from the user, so the
+      setting would let any page move windows and run launchers. **Not** a
+      confirmation for scripts: anything that can send them could click it
+      too. The key is the one secret: it shuts out apps that can't read the
+      support folder, as sandboxed ones can't, and the stamp keeps them
+      from posting again what they record; anything else that runs as the
+      user can read the key, so the setting, off by default, is the
+      boundary for those. **Not** moving the subcommands to `bench.sock`,
+      whose check of the other end's user would stop the replays too: the
+      owner asked for Wails' forwarding, as above, and the stamp keeps it.
+      **Not** holding back a tab's terminals when a link shows it first:
+      its pane would show a terminal that hasn't started, with a way to
+      start it, for what a click on the tab does anyway. **Not** a toast
+      for a script refused while the setting is off, as above.

@@ -15,11 +15,13 @@ import (
 // leaving out any of them, or to start with the one tab that the first
 // config has (decision 28).
 
-// StarterTab is a tab that the welcome guide suggests: its name, and its
-// windows, one for each pane, in reading order.
+// StarterTab is a tab that the welcome guide suggests: its name, its
+// colour (config.TabColours), and its windows, one for each pane, in
+// reading order.
 type StarterTab struct {
-	Name string       `json:"name"`
-	Apps []StarterApp `json:"apps"`
+	Name   string       `json:"name"`
+	Colour string       `json:"colour"`
+	Apps   []StarterApp `json:"apps"`
 	// preset and small are its layout and small-screen setting.
 	preset, small string
 }
@@ -43,20 +45,23 @@ const starterTerminal = ""
 // each pane takes the first of its apps that's installed, by bundle ID,
 // and that no tab has already. A tab with no app, other than a terminal,
 // isn't suggested, nor is one whose name a tab has. preset is its layout
-// with two panes; with one, it's single.
+// with two panes; with one, it's single. Each has a colour of its own, so
+// that a new user's tabs can be told apart at a glance; a config that
+// leaves colour out, as every config from before tab colours does, has
+// none.
 var starterTabs = []struct {
-	name, preset, small string
-	panes               [][]string
+	name, colour, preset, small string
+	panes                       [][]string
 }{
-	{"Comms", layout.PresetSide, string(layout.Tabs), [][]string{
+	{"Comms", config.ColourBlue, layout.PresetSide, string(layout.Tabs), [][]string{
 		{"com.tinyspeck.slackmacgap", "com.microsoft.teams2", "com.microsoft.teams", "com.hnc.Discord"},
 		{"com.microsoft.Outlook", "com.apple.mail"},
 	}},
-	{"Code", layout.PresetMainSide, "", [][]string{
+	{"Code", config.ColourGreen, layout.PresetMainSide, "", [][]string{
 		{"com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "dev.zed.Zed", "com.apple.dt.Xcode"},
 		{starterTerminal},
 	}},
-	{"Plan", layout.PresetSide, string(layout.Tabs), [][]string{
+	{"Plan", config.ColourPurple, layout.PresetSide, string(layout.Tabs), [][]string{
 		{"md.obsidian", "notion.id", "com.apple.Notes"},
 		{"com.flexibits.fantastical2.mac", "com.apple.iCal"},
 	}},
@@ -87,7 +92,7 @@ func (e *Engine) starterTabsLocked() []StarterTab {
 		if slices.ContainsFunc(e.model.Tabs, func(t *Tab) bool { return strings.EqualFold(t.Name, s.name) }) {
 			continue
 		}
-		t := StarterTab{Name: s.name, preset: s.preset, small: s.small}
+		t := StarterTab{Name: s.name, Colour: s.colour, preset: s.preset, small: s.small}
 		hasApp := false
 		for _, pane := range s.panes {
 			for _, id := range pane {
@@ -113,10 +118,10 @@ func (e *Engine) starterTabsLocked() []StarterTab {
 	return out
 }
 
-// configTab returns a suggested tab as a [[tab]] entry: one pane for each
-// of its windows.
+// configTab returns a suggested tab as a [[tab]] entry, with its colour:
+// one pane for each of its windows.
 func (t StarterTab) configTab() config.Tab {
-	ct := config.Tab{Name: t.Name, Layout: layout.PresetSingle}
+	ct := config.Tab{Name: t.Name, Layout: layout.PresetSingle, Colour: t.Colour}
 	if len(t.Apps) > 1 {
 		ct.Layout, ct.SmallScreens = t.preset, t.small
 	}

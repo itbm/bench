@@ -66,6 +66,14 @@
 #define BENCH_MOD_SHIFT 4
 #define BENCH_MOD_COMMAND 8
 
+// The kinds of a window tool's preference that benchCopyToolPreferences
+// reads (mac.toolPreferencesFrom).
+#define BENCH_PREF_NUMBER 0
+#define BENCH_PREF_TEXT 1
+#define BENCH_PREF_SHORTCUT 2
+#define BENCH_PREF_NO_SHORTCUT 3
+#define BENCH_PREF_OTHER 4
+
 // What the drop guide draws (mac.guideMarks): kinds of mark, the side each
 // target stands for, and the targets' size, in points.
 #define BENCH_GUIDE_AREA 0
@@ -126,14 +134,14 @@
 // the native side reads (mac.maxDialogRead).
 #define BENCH_DIALOG_READ 32000
 
-// How well a menu item's title names the New Window item (mac.newWindowRank).
-#define BENCH_NEW_WINDOW_OTHER 1
-#define BENCH_NEW_WINDOW_EXACT 2
-
-// How well a menu item's title names the item that closes the app's main
-// window (mac.closeWindowRank).
-#define BENCH_CLOSE_WINDOW_PLAIN 1
-#define BENCH_CLOSE_WINDOW_EXACT 2
+// The ranks of a menu item as the New Window item (mac.newWindowRank) and
+// as the item that closes the app's main window (mac.closeWindowRank): an
+// exact title, after which the native side reads only the rest of that
+// menu, and the best rank, at which it stops looking at once.
+#define BENCH_NEW_WINDOW_EXACT 3
+#define BENCH_NEW_WINDOW_BEST 4
+#define BENCH_CLOSE_WINDOW_EXACT 3
+#define BENCH_CLOSE_WINDOW_BEST 4
 
 // The first synthetic window ID, for windows whose CGWindowID can't be
 // read. Real CGWindowIDs are far smaller.
@@ -212,6 +220,21 @@ typedef struct {
 	int flags;
 } BenchHotKeyInfo;
 
+// A preference of a window tool's, from its own defaults domain, by its
+// key: a number or a boolean (BENCH_PREF_NUMBER, in number), text
+// (BENCH_PREF_TEXT, in text), a shortcut as MASShortcut keeps one
+// (BENCH_PREF_SHORTCUT: its virtual key code, and its NSEventModifierFlags
+// in number), a shortcut set to none (BENCH_PREF_NO_SHORTCUT), or a value
+// of another kind (BENCH_PREF_OTHER), such as data, which MASShortcut
+// reads as no shortcut.
+typedef struct {
+	char *key;
+	int kind;
+	int keyCode;
+	long long number;
+	char *text;
+} BenchToolPreference;
+
 // Lifecycle (observe_darwin.m). benchStart sets up observers; benchStop
 // removes them and closes web views and the preview.
 void benchStart(void);
@@ -280,6 +303,13 @@ void benchFrontChooser(void);
 // down now, wherever the keyboard is, as BENCH_MOD_ bits. It runs on the
 // calling thread, and needs no permission.
 int benchHeldModifiers(void);
+// benchCopyToolPreferences reads a window tool's preferences from its own
+// defaults domain, by its bundle ID, afresh: its numbers, booleans, text,
+// and shortcuts, as BenchToolPreferences, and the keys of the rest. A domain
+// that macOS has nothing for, as for an App Store app, whose preferences
+// are in its container, gives none. It runs on the calling thread.
+int benchCopyToolPreferences(const char *bundleID, BenchToolPreference **out, int *count);
+void benchFreeToolPreferences(BenchToolPreference *prefs, int count);
 
 // Screens and permissions (screens_darwin.m).
 void benchRefreshScreens(void);
@@ -301,24 +331,45 @@ int benchHasBundleID(void);
 // thread, one icon at a time, never on the main thread.
 int benchAppIcon(const char *bundleID, int pixels, void **png, int *length);
 
-// Bench's window (window_darwin.m). benchSetWindowAppearance gives one of
-// Bench's windows a BENCH_APPEARANCE_ (none, for system, follows macOS),
-// and a background that matches the appearance it has.
+// Bench's window (window_darwin.m). benchPlaceWindow moves Bench's window
+// in one step, without animation, its frame's top-left corner to x and y,
+// from the primary screen's top left, y down, at width by height, then,
+// with fill (1), fills its screen's visible area, as benchFillWindow does.
+// benchSetWindowAppearance gives one of Bench's windows a
+// BENCH_APPEARANCE_ (none, for system, follows macOS), and a background
+// that matches the appearance it has.
 // benchSetPanelsAppearance gives Bench's panels, the drop guide and the
 // live preview, one, which they take as they next show. benchSystemDark
 // reports whether macOS is in dark mode, from the user's defaults, on any
 // thread, before the app runs too.
 void benchAttachWindow(void *nsWindow);
 void benchFillWindow(void *nsWindow);
+void benchPlaceWindow(void *nsWindow, int x, int y, int width, int height, int fill);
 void benchSetRaised(int raised);
 void benchSetWindowAppearance(void *nsWindow, int appearance);
 void benchSetPanelsAppearance(int appearance);
 int benchSystemDark(void);
+// The drop-down terminal's window (window_darwin.m, decision 72).
+// benchShowDropdown puts it at the top of the screen that Bench's window is
+// on, as wide as the screen and fraction of its height tall, slides it into
+// sight, and gives it the keyboard without making Bench active.
+// benchHideDropdown slides it up out of sight and orders it out. With a
+// screen arranged above that one, they fade it instead, and with Reduce
+// Motion on, neither slides nor fades.
+void benchShowDropdown(void *nsWindow, double fraction);
+void benchHideDropdown(void *nsWindow);
 
 // Web views (web_darwin.m). Frames are in content coordinates (top-left
 // origin, y down, points). name is the item's name, which Bench's prompts
 // about its page use, and zoom its page's zoom (1 for actual size).
 void benchWebShow(const char *itemID, const char *name, const char *url, const char *profileUUID, const char *userAgentSuffix, double zoom, double x, double y, double w, double h);
+// benchWebLoad makes a web view that doesn't exist yet, hidden, at a frame,
+// and loads its address, for a page kept running in the background.
+void benchWebLoad(const char *itemID, const char *name, const char *url, const char *profileUUID, const char *userAgentSuffix, double zoom, double x, double y, double w, double h);
+// benchWebKeepRunning says whether a web view keeps running while it's
+// hidden (keep is 1 or 0): one that does loads again after its process
+// ends, or its first load fails, without waiting to be shown.
+void benchWebKeepRunning(const char *itemID, int keep);
 void benchWebHide(const char *itemID);
 void benchWebClose(const char *itemID);
 void benchWebPopOut(const char *itemID, const char *title);
@@ -420,8 +471,14 @@ extern char *benchDownloadPath(char *dir, char *suggested);
 extern void benchDownloadEnded(char *path);
 extern void benchChoseToAdd(char *path);
 extern void benchWebFound(uint64_t request, int found);
-extern int benchNewWindowRank(char *title);
-extern int benchCloseWindowRank(char *title);
+// benchNewWindowRank and benchCloseWindowRank rank a menu item from its
+// title and its key equivalent: the character, or "" for none, and the
+// modifier keys, as AXMenuItemCmdModifiers gives them, or -1. A higher rank
+// is better, and 0 is no match. benchFileMenuRank ranks a menu bar item, at
+// index among its items, as the File menu, which is looked in first.
+extern int benchNewWindowRank(char *title, char *keyChar, int keyModifiers);
+extern int benchCloseWindowRank(char *title, char *keyChar, int keyModifiers);
+extern int benchFileMenuRank(int index, char *title);
 extern char *benchPageSubtitle(char *pageURL, int onlySecureContent);
 extern int benchNotificationAllowed(char *itemURL, char *origin, int mainFrame);
 extern int benchUserClicked(int linkActivated, double sinceUserEvent);

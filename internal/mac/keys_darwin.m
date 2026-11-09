@@ -4,8 +4,10 @@
 // shortcuts may clash with without macOS saying so. RegisterEventHotKey
 // lets Bench take a shortcut that switches input sources, or that VoiceOver
 // uses, but the key press may never reach Bench. Go compares them with
-// Bench's shortcuts (hotkeys.go, and internal/ui). And the modifier keys
-// held down now, for the hold after a global shortcut.
+// Bench's shortcuts (hotkeys.go, and internal/ui). The modifier keys held
+// down now, for the hold after a global shortcut. And a window tool's
+// preferences, for its shortcuts, which can take Bench's without macOS
+// saying so either (toolprefs.go, decision 69).
 
 #import "internal_darwin.h"
 
@@ -151,4 +153,74 @@ int benchHeldModifiers(void) {
 		held |= BENCH_MOD_COMMAND;
 	}
 	return held;
+}
+
+int benchCopyToolPreferences(const char *bundleID, BenchToolPreference **out, int *count) {
+	*out = NULL;
+	*count = 0;
+	@autoreleasepool {
+		NSString *domain = benchString(bundleID);
+		// The tool writes them, in another process, so read them afresh
+		// rather than from this process's cache.
+		CFPreferencesAppSynchronize((__bridge CFStringRef)domain);
+		id copied = CFBridgingRelease(CFPreferencesCopyMultiple(NULL, (__bridge CFStringRef)domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
+		if (![copied isKindOfClass:[NSDictionary class]] || [(NSDictionary *)copied count] == 0) {
+			return BENCH_OK;
+		}
+		NSDictionary *values = (NSDictionary *)copied;
+		BenchToolPreference *prefs = calloc(values.count, sizeof(BenchToolPreference));
+		if (prefs == NULL) {
+			return BENCH_ERR_FAILED;
+		}
+		int n = 0;
+		for (id key in values) {
+			if (![key isKindOfClass:[NSString class]]) {
+				continue;
+			}
+			id value = [values objectForKey:key];
+			BenchToolPreference *pref = &prefs[n];
+			if ([value isKindOfClass:[NSNumber class]]) {
+				pref->kind = BENCH_PREF_NUMBER;
+				pref->number = [value longLongValue];
+			} else if ([value isKindOfClass:[NSString class]]) {
+				pref->kind = BENCH_PREF_TEXT;
+				pref->text = benchCopyCString(value);
+			} else if ([value isKindOfClass:[NSDictionary class]]) {
+				// MASShortcut, which Rectangle uses, keeps a shortcut as its
+				// key code and modifier flags, and one set to none as an
+				// empty dictionary. It reads any dictionary without both as
+				// no shortcut, as Bench does (MASDictionaryTransformer).
+				NSDictionary *shortcut = (NSDictionary *)value;
+				id code = [shortcut objectForKey:@"keyCode"];
+				id flags = [shortcut objectForKey:@"modifierFlags"];
+				if ([code respondsToSelector:@selector(integerValue)] && [flags respondsToSelector:@selector(integerValue)]) {
+					pref->kind = BENCH_PREF_SHORTCUT;
+					pref->keyCode = (int)[code integerValue];
+					pref->number = (long long)[flags integerValue];
+				} else {
+					pref->kind = BENCH_PREF_NO_SHORTCUT;
+				}
+			} else {
+				// Data, a date, or a list: under a shortcut's key, MASShortcut
+				// reads it as no shortcut, which overrides the tool's default.
+				pref->kind = BENCH_PREF_OTHER;
+			}
+			pref->key = benchCopyCString((NSString *)key);
+			n++;
+		}
+		*out = prefs;
+		*count = n;
+	}
+	return BENCH_OK;
+}
+
+void benchFreeToolPreferences(BenchToolPreference *prefs, int count) {
+	if (prefs == NULL) {
+		return;
+	}
+	for (int i = 0; i < count; i++) {
+		free(prefs[i].key);
+		free(prefs[i].text);
+	}
+	free(prefs);
 }

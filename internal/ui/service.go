@@ -17,6 +17,7 @@ type engine interface {
 	Close() error
 	ConfigCopy() workspace.ConfigInfo
 	ReportShortcuts(r workspace.ShortcutReport)
+	WindowToolKeys() []workspace.ToolKeys
 	Shortcut(action, arg string)
 	MoveCurrentTab(step int) error
 	ToggleZoom() error
@@ -25,10 +26,15 @@ type engine interface {
 	AskToQuit() bool
 	AskToQuitNow() (quit, answered bool)
 	AskToCloseTerminal(itemID string) bool
+	DropFiles(target workspace.DropTarget, paths []string) error
 	ProblemReport() workspace.ProblemReport
 	CheckForUpdates() error
 	FoundUpdate(version string)
 	UpdateFinished()
+	// FollowLink and RunScript carry out a bench:// link and a script
+	// subcommand that another Bench forwarded (see secondInstance).
+	FollowLink(link string) error
+	RunScript(args []string) error
 }
 
 // bound is the part of workspace.Engine that Service exposes to the
@@ -69,6 +75,7 @@ type bound interface {
 	UseWebAppWhenReady(itemID string) (bool, error)
 	PopOut(itemID string) error
 	Redock(itemID string) error
+	KeepOverBench(bundleID string) error
 	AddFrontWindow() error
 	BackToBench(itemID string) error
 	OpenItem(itemID string) error
@@ -107,10 +114,14 @@ type bound interface {
 	UndoLatest() error
 	ReopenTab(name string) error
 	ReopenItem(itemID string) error
+	UseAsDropdown(itemID string) error
+	ToggleDropdown() error
+	HideDropdown() error
 	TermInput(itemID, data string) error
 	TermResize(itemID string, cols, rows int) error
 	TermSnapshot(itemID string) (workspace.TermSnapshot, error)
 	SetOverlay(open bool) error
+	ShowMenu(menu workspace.Menu) (string, error)
 	ShowPreview(itemID string, anchor layout.Rect) error
 	HidePreview() error
 	RequestAccessibility() error
@@ -122,9 +133,15 @@ type bound interface {
 	UseStarterTabs(names []string) error
 	SetDialogSize(kind string, w, h float64) error
 	SetDemoScreen(screen string, fitWidth float64) error
+	SetDemoMonitor(plugged bool) error
 	DemoMinimise() error
+	DemoComeForward() error
 	DemoModifiers(held []string) error
+	DemoNotify() error
 	SetDemoVoiceOver(on bool) error
+	SetDemoWindowTool(on bool) error
+	DemoToolMoves() error
+	DemoDropFiles(paths []string, attrs map[string]string) error
 	TermAck(itemID string, offset int64) error
 	TermClear(itemID string) error
 	OpenLink(address string) error
@@ -138,6 +155,7 @@ type bound interface {
 	FindInPage(itemID, text string, backwards bool) (bool, error)
 	MuteCapture(itemID, device string, mute bool) error
 	StopMedia(itemID string) error
+	SetKeepRunning(itemID string, on bool) error
 	ReloadConfig() error
 	OverwriteConfig() error
 	UseConfigBackup() error
@@ -146,6 +164,7 @@ type bound interface {
 	RestoreArrangement() error
 	DismissArrangementNotice() error
 	DismissUpdate() error
+	DismissWindowTool(bundleID string) error
 	InstallUpdate() error
 	Quit(dontAsk bool) error
 	QuitAndReopen(sure, dontAsk bool) error
@@ -418,6 +437,13 @@ func (s *Service) Redock(itemID string) error {
 	return s.call(func(e bound) error { return e.Redock(itemID) })
 }
 
+// KeepOverBench lets an app's windows stay over Bench, with a float rule
+// in config.toml, for the toast that says Bench put them out of sight
+// because they covered it.
+func (s *Service) KeepOverBench(bundleID string) error {
+	return s.call(func(e bound) error { return e.KeepOverBench(bundleID) })
+}
+
 // AddFrontWindow adds the window in front, if it's out of the tabs, to the
 // current tab's focused pane.
 func (s *Service) AddFrontWindow() error {
@@ -687,6 +713,25 @@ func (s *Service) ReopenItem(itemID string) error {
 	return s.call(func(e bound) error { return e.ReopenItem(itemID) })
 }
 
+// UseAsDropdown makes a terminal the drop-down terminal, from its ⋯ menu
+// (decision 72).
+func (s *Service) UseAsDropdown(itemID string) error {
+	return s.call(func(e bound) error { return e.UseAsDropdown(itemID) })
+}
+
+// ToggleDropdown shows the drop-down terminal, or hides it, for the
+// dropdown shortcut in the browser preview, where the frontend handles
+// shortcuts itself, and the jump palette. View ▸ Show Drop-down, the menu
+// bar item, and the shortcut call the engine in Go.
+func (s *Service) ToggleDropdown() error {
+	return s.call(func(e bound) error { return e.ToggleDropdown() })
+}
+
+// HideDropdown hides the drop-down terminal: its Hide button.
+func (s *Service) HideDropdown() error {
+	return s.call(func(e bound) error { return e.HideDropdown() })
+}
+
 // TermInput sends what's typed to a terminal.
 func (s *Service) TermInput(itemID, data string) error {
 	return s.call(func(e bound) error { return e.TermInput(itemID, data) })
@@ -711,6 +756,17 @@ func (s *Service) TermSnapshot(itemID string) (workspace.TermSnapshot, error) {
 // open, and off again.
 func (s *Service) SetOverlay(open bool) error {
 	return s.call(func(e bound) error { return e.SetOverlay(open) })
+}
+
+// ShowMenu shows one of Bench's menus as a native macOS menu, without
+// raised mode, and returns the ID of the entry the user chose, or "" if
+// they chose none (decision 71).
+func (s *Service) ShowMenu(menu workspace.Menu) (string, error) {
+	e, err := s.get()
+	if err != nil {
+		return "", err
+	}
+	return e.ShowMenu(menu)
 }
 
 // ShowPreview shows a live preview of an item under anchor, a sub-tab's
@@ -777,10 +833,22 @@ func (s *Service) SetDemoScreen(screen string, fitWidth float64) error {
 	return s.call(func(e bound) error { return e.SetDemoScreen(screen, fitWidth) })
 }
 
+// SetDemoMonitor simulates unplugging the browser preview's monitor, or
+// plugging it in again.
+func (s *Service) SetDemoMonitor(plugged bool) error {
+	return s.call(func(e bound) error { return e.SetDemoMonitor(plugged) })
+}
+
 // DemoMinimise minimises the window that the focused pane shows, as
 // Command-M does, in the browser preview.
 func (s *Service) DemoMinimise() error {
 	return s.call(func(e bound) error { return e.DemoMinimise() })
+}
+
+// DemoComeForward does what Bench does as it comes forward, in the browser
+// preview: it puts out of sight the windows that cover it.
+func (s *Service) DemoComeForward() error {
+	return s.call(func(e bound) error { return e.DemoComeForward() })
 }
 
 // DemoModifiers says which modifier keys are held down in the browser
@@ -790,10 +858,36 @@ func (s *Service) DemoModifiers(held []string) error {
 	return s.call(func(e bound) error { return e.DemoModifiers(held) })
 }
 
+// DemoNotify has the page that the focused pane shows post a
+// notification, in the browser preview, whose pages are placeholders.
+func (s *Service) DemoNotify() error {
+	return s.call(func(e bound) error { return e.DemoNotify() })
+}
+
 // SetDemoVoiceOver simulates VoiceOver being turned on or off, in the
 // browser preview.
 func (s *Service) SetDemoVoiceOver(on bool) error {
 	return s.call(func(e bound) error { return e.SetDemoVoiceOver(on) })
+}
+
+// SetDemoWindowTool starts or stops a simulated window tool, Rectangle, in
+// the browser preview.
+func (s *Service) SetDemoWindowTool(on bool) error {
+	return s.call(func(e bound) error { return e.SetDemoWindowTool(on) })
+}
+
+// DemoToolMoves has the browser preview's window tool keep moving the
+// window that the focused pane shows out of its pane.
+func (s *Service) DemoToolMoves() error {
+	return s.call(func(e bound) error { return e.DemoToolMoves() })
+}
+
+// DemoDropFiles pretends that paths were dropped from Finder on the
+// element of the page with attributes attrs, in the browser preview, whose
+// browser can't give the paths of what's dropped on it. The app's drops
+// come from Wails' native drop instead (watchDrops).
+func (s *Service) DemoDropFiles(paths []string, attrs map[string]string) error {
+	return s.call(func(e bound) error { return e.DemoDropFiles(paths, attrs) })
 }
 
 // TermAck tells a terminal that a view has drawn its output up to offset.
@@ -875,6 +969,13 @@ func (s *Service) StopMedia(itemID string) error {
 	return s.call(func(e bound) error { return e.StopMedia(itemID) })
 }
 
+// SetKeepRunning turns a web page's Keep Running in the Background on or
+// off, which config.toml saves: a page with it on loads, hidden, soon
+// after Bench starts, so that its notifications and unread count arrive.
+func (s *Service) SetKeepRunning(itemID string, on bool) error {
+	return s.call(func(e bound) error { return e.SetKeepRunning(itemID, on) })
+}
+
 // ReloadConfig reads config.toml again and applies it, keeping the
 // arrangement.
 func (s *Service) ReloadConfig() error {
@@ -919,6 +1020,12 @@ func (s *Service) DismissArrangementNotice() error {
 // Bench doesn't announce again.
 func (s *Service) DismissUpdate() error {
 	return s.call(func(e bound) error { return e.DismissUpdate() })
+}
+
+// DismissWindowTool takes away the notice about a window tool, by its
+// bundle ID, which Bench doesn't show again.
+func (s *Service) DismissWindowTool(bundleID string) error {
+	return s.call(func(e bound) error { return e.DismissWindowTool(bundleID) })
 }
 
 // InstallUpdate shows the updater's window for the newer version that the

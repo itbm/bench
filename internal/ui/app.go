@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -32,6 +33,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/itbm/bench/frontend"
+	"github.com/itbm/bench/internal/control"
 	"github.com/itbm/bench/internal/platform"
 	"github.com/itbm/bench/internal/term"
 	"github.com/itbm/bench/internal/update"
@@ -60,12 +62,28 @@ type Options struct {
 	// zoom it to fill its screen at once (mac.Platform.FillWindow). Nil in
 	// the preview.
 	Fill func(nsWindow unsafe.Pointer)
+	// Place is given the main window's NSWindow, to move it to another
+	// display in one step, without animation, as Bench does when the
+	// display that the user chose comes back: its top-left corner to x and
+	// y, from the primary screen's top left, as Wails' SetPosition has
+	// them, at width by height, then, with fill, filling that display's
+	// visible area at once, as Fill does (mac.Platform.PlaceWindow). Nil in
+	// the preview.
+	Place func(nsWindow unsafe.Pointer, x, y, width, height int, fill bool)
 	// TagPopOut is given a popped-out terminal's NSWindow, with its item's
 	// ID, once the window exists, for the platform to report when it has
 	// the keyboard and when the user drags it, as it does for popped-out
 	// web pages' windows (mac.Platform.TagPopOutWindow). Nil in the
 	// preview.
 	TagPopOut func(nsWindow unsafe.Pointer, itemID string)
+	// SlideDown is given the drop-down terminal's NSWindow as it's to
+	// show, with its height as a fraction of its screen's height, to slide
+	// it down from the top of the screen and give it the keyboard without
+	// making Bench active; SlideUp is given it as it's to hide, to slide
+	// it up out of sight (mac.Platform.ShowDropdown and HideDropdown,
+	// decision 72). Nil in the preview.
+	SlideDown func(nsWindow unsafe.Pointer, fraction float64)
+	SlideUp   func(nsWindow unsafe.Pointer)
 	// Appearance is given each of Bench's windows' NSWindow, once the
 	// window exists and whenever the appearance setting changes, with the
 	// setting (system, light, or dark), for the window to look that way
@@ -232,13 +250,20 @@ type runner struct {
 	// forward brings Bench forward, once the shell exists, for another
 	// Bench that starts. Wails can ask for that as soon as the app exists.
 	forward atomic.Pointer[func()]
+	// scripts carries out the links and script subcommands that macOS and
+	// other Benches hand this one, once the engine exists.
+	scripts atomic.Pointer[scriptTarget]
+	// stamps takes each script subcommand that Forward sends once, while
+	// it's fresh.
+	stamps stampGuard
 
 	shutdownOnce sync.Once
 }
 
 // appOptions returns the Wails options. In the app, Bench is a single
 // instance: a second one brings the first forward and exits, before it
-// builds an engine that could move windows.
+// builds an engine that could move windows. What a second one sends is
+// encrypted with the key in the support folder (forwardKey).
 func (r *runner) appOptions() application.Options {
 	opts := application.Options{
 		Name:        appName,
@@ -251,9 +276,19 @@ func (r *runner) appOptions() application.Options {
 		OnShutdown: r.shutdownOnQuit,
 	}
 	if nativeShell {
+		// What other Benches send is encrypted with the support folder's
+		// key, so that other apps can't send anything new
+		// (ForwardKeyFile), and Forward stamps each script subcommand,
+		// so that they can't send one again (stampGuard).
+		key, err := forwardKey(r.opts.Dir)
+		if err != nil {
+			warn(fmt.Errorf("making the key that the bench command uses: %w", err))
+			key = someKey()
+		}
 		opts.SingleInstance = &application.SingleInstanceOptions{
 			UniqueID:               UniqueID,
 			OnSecondInstanceLaunch: r.secondInstance,
+			EncryptionKey:          key,
 		}
 		opts.ShouldQuit = r.shouldQuit
 		// Wails would quit on SIGINT and SIGTERM as the Quit menu item
@@ -281,15 +316,70 @@ func (r *runner) shouldQuit() bool {
 	return r.native.shouldQuit()
 }
 
-// secondInstance is Wails' OnSecondInstanceLaunch, which brings Bench
-// forward. Wails calls it from the one goroutine that reads a one-slot
-// channel, which the main thread fills each time another Bench starts. So
-// it must return without waiting for the main thread, as bringing Bench
-// forward does: otherwise, once two more Benches start meanwhile, the main
-// thread would block on the channel, and nothing could ever run on it again.
-func (r *runner) secondInstance(application.SecondInstanceData) {
+// scriptTarget carries out links and script subcommands: the engine's
+// FollowLink and RunScript.
+type scriptTarget struct {
+	followLink func(link string) error
+	runScript  func(args []string) error
+}
+
+// secondInstance is Wails' OnSecondInstanceLaunch. Another Bench that starts
+// sends its arguments here. A bench:// link, which Wails adds for a Bench
+// that macOS started to open one, goes to the engine's FollowLink, and a
+// script subcommand that the bench command forwards (Forward), such as
+// `tab Code`, to its RunScript, which checks the allow_scripts setting: any app
+// of the user's could send these. A subcommand goes only if its stamp is
+// fresh and new (stampGuard), as any app can post again what it recorded.
+// Anything else, as from opening Bench again, brings Bench forward. Wails
+// calls it from the one goroutine that reads a one-slot channel, which the
+// main thread fills each time another Bench starts. So it must return
+// without waiting for the main thread, as bringing Bench forward does:
+// otherwise, once two more Benches start meanwhile, the main thread would
+// block on the channel, and nothing could ever run on it again.
+func (r *runner) secondInstance(data application.SecondInstanceData) {
+	args := forwardedArgs(data.Args)
+	link := len(args) == 1 && control.IsLink(args[0])
+	if link || control.IsCommand(args) {
+		if !link {
+			if err := r.stamps.take(data.AdditionalData, time.Now()); err != nil {
+				warn(fmt.Errorf("dropped a script command, as %w", err))
+				return
+			}
+		}
+		if s := r.scripts.Load(); s != nil {
+			if link {
+				go func() { _ = s.followLink(args[0]) }()
+			} else {
+				go func() { _ = s.runScript(args) }()
+			}
+		}
+		return
+	}
 	if forward := r.forward.Load(); forward != nil {
 		go (*forward)()
+	}
+}
+
+// forwardedArgs returns another Bench's arguments without its program's
+// name, and without the -psn_ argument that macOS may add.
+func forwardedArgs(args []string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	var out []string
+	for _, a := range args[1:] {
+		if !strings.HasPrefix(a, "-psn_") {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// followLink follows a bench:// link that macOS hands Bench, once the
+// engine exists.
+func (r *runner) followLink(link string) {
+	if s := r.scripts.Load(); s != nil {
+		_ = s.followLink(link)
 	}
 }
 
@@ -329,6 +419,12 @@ func (r *runner) run(app *application.App) error {
 	if r.opts.Recover != nil {
 		r.opts.Recover()
 	}
+	mainWindow := func() *application.WebviewWindow {
+		if r.native == nil {
+			return nil
+		}
+		return r.native.main
+	}
 	e, err := newEngine(workspace.Options{
 		Platform:      r.opts.Platform,
 		NewTerms:      r.opts.NewTerms,
@@ -342,18 +438,15 @@ func (r *runner) run(app *application.App) error {
 		Version:       r.opts.Version,
 		LatestRelease: latestRelease(r.opts.Version),
 		Updater:       r.opts.Updater,
-		ChooseFolder: folderChooser(app, func() *application.WebviewWindow {
-			if r.native == nil {
-				return nil
-			}
-			return r.native.main
-		}),
+		ChooseFolder:  folderChooser(app, mainWindow),
+		ShowMenu:      menuShower(app, mainWindow),
 	})
 	if err != nil {
 		r.letLockGo()
 		return fmt.Errorf("starting Bench: %w", err)
 	}
 	r.engine = e
+	r.scripts.Store(&scriptTarget{followLink: e.FollowLink, runScript: e.RunScript})
 	// The global shortcuts. The preview's run nothing (previewRegistrar).
 	var reg registrar = previewRegistrar{}
 	if nativeShell {
@@ -402,8 +495,14 @@ func (r *runner) setUpNative(keys *shortcutSet) {
 	n.openSettings = func() { r.emitter.Command(settingsCommand) }
 	n.terminalClosed = r.engine.TerminalWindowClosed
 	n.askToCloseTerminal = r.engine.AskToCloseTerminal
+	n.dropFiles = r.engine.DropFiles
+	n.command = r.emitter.Command
 	n.tagPopOut = r.opts.TagPopOut
+	n.slideDown = r.opts.SlideDown
+	n.slideUp = r.opts.SlideUp
+	n.toggleDropdown = r.engine.ToggleDropdown
 	n.applyAppearance = r.opts.Appearance
+	n.place = r.opts.Place
 	n.askToQuit = r.engine.AskToQuit
 	n.askToQuitNow = r.engine.AskToQuitNow
 	n.loggingOut = r.opts.Platform.LoggingOut
@@ -436,6 +535,12 @@ func (r *runner) setUpNative(keys *shortcutSet) {
 	})
 	r.app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
 		n.reopen()
+	})
+	// A bench:// link, from Safari, Shortcuts, or open(1): Info.plist's
+	// CFBundleURLTypes has macOS send it to Bench, starting Bench if it
+	// isn't running.
+	r.app.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(ev *application.ApplicationEvent) {
+		r.followLink(ev.Context().URL())
 	})
 }
 

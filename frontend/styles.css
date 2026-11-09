@@ -81,6 +81,23 @@
   --unread-bg: #4A5262;
   --unread-text: #F1F3F6;
   --unread-dot: #A6ADB9;
+  /* The tab colours (decision 74): a coloured tab's underline, the band
+     along the top of its panes' headers, and the dot beside its name in
+     lists. Each is at 3:1 at least, as a mark that isn't text, on each
+     surface it sits on, with Increase contrast too, which doesn't change
+     the surfaces. There's no orange: that's the accent's, and each is at
+     least 20 apart from it (CIEDE2000), so a tab's colour can't be taken
+     for the focus, and as far from the amber of a problem (--warning), so
+     a yellow tab's underline and band can't be taken for the warning sign
+     of a window that keeps moving, which its sub-tab shows. */
+  --tab-red: #FF7A70;
+  --tab-yellow: #E8F50A;
+  --tab-green: #5FD37A;
+  --tab-cyan: #4FCFE0;
+  --tab-blue: #5B9BFF;
+  --tab-purple: #B88CFF;
+  --tab-pink: #FF7FC4;
+  --tab-grey: #9AA1AD;
 
   /* Code colours */
   --syn-keyword: #D7A6FF;
@@ -205,8 +222,28 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
   color: var(--text-muted);
 }
 .proto-bar strong { color: var(--text-strong); font-weight: 600; }
-.proto-hint { margin-left: auto; font-size: 12px; }
+/* The hint takes the room left on the bar's line, if there's enough for
+   most of it, and ends in "…" where it doesn't fit: its title has all of
+   it. So the bar stays one line at the usual widths. */
+.proto-hint {
+  flex: 1 1 24em; min-width: 0; text-align: right; font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .proto-bar .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--text-strong); background: var(--bg-control-on); }
+/* Simulate shows the things the preview can pretend happen below it, as a
+   list of buttons over Bench's window (simulate.js). */
+.proto-simulate { position: relative; display: inline-flex; }
+.proto-chevron {
+  display: inline-block; width: 6px; height: 6px; margin: -3px 1px 0 8px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg);
+}
+.proto-pop {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 0;
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 200px;
+  padding: 6px; border-radius: 10px; background: var(--bg-raised); border: 1px solid var(--line-strong);
+  box-shadow: 0 16px 40px var(--shadow);
+}
+.proto-pop .btn { justify-content: flex-start; text-align: left; border-color: transparent; }
 
 /* ---------- Segmented controls ---------- */
 .seg {
@@ -290,6 +327,31 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
   --cross-bg: var(--bg-tab-active);
 }
 .tab:active { background: var(--bg-pressed); --cross-bg: var(--bg-pressed); }
+/* A tab's colour (decision 74), as --tab-colour, for what has a
+   data-colour: a tab, its panes, the dot beside its name in a list, and
+   Tab properties' swatch. A coloured tab has a short underline in it,
+   and the current one, raised as any current tab is, has its full
+   underline in it in place of the accent. The name always shows, so the
+   colour never stands alone. */
+[data-colour="red"] { --tab-colour: var(--tab-red); }
+[data-colour="yellow"] { --tab-colour: var(--tab-yellow); }
+[data-colour="green"] { --tab-colour: var(--tab-green); }
+[data-colour="cyan"] { --tab-colour: var(--tab-cyan); }
+[data-colour="blue"] { --tab-colour: var(--tab-blue); }
+[data-colour="purple"] { --tab-colour: var(--tab-purple); }
+[data-colour="pink"] { --tab-colour: var(--tab-pink); }
+[data-colour="grey"] { --tab-colour: var(--tab-grey); }
+.tab[data-colour]::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; pointer-events: none;
+  border-radius: 1px; background: var(--tab-colour);
+}
+.tab[data-colour][aria-selected="true"] { box-shadow: inset 0 -2px 0 var(--tab-colour); }
+.tab[data-colour][aria-selected="true"]::after { display: none; }
+/* The dot of a tab's colour before its name in a list, or an empty slot
+   as wide for a tab with none (tabDot in util.js). */
+.tab-dot { flex: 0 0 auto; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tab-colour); }
+.tab-dot:not([data-colour]) { visibility: hidden; }
+.palette-item .tab-dot { margin-right: -4px; }
 .tab.drop-target { background: var(--accent-wash); color: var(--text-strong); }
 /* With Option held, a drop on a tab shows the window there as well, and the
    dragged sub-tab carries a plus, like a copy in the Finder. */
@@ -299,7 +361,8 @@ kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); 
    one is dragged, + has a dashed outline, and under the pointer it's
    tinted, as a tab is. */
 body.dragging-subtab .new-tab { outline: 1px dashed var(--line-strong); outline-offset: -1px; }
-body.dragging-subtab .new-tab.drop-target { background: var(--accent-wash); color: var(--accent); outline: 1px solid var(--accent); }
+body.dragging-subtab .new-tab.drop-target,
+.new-tab.file-drop-target-active { background: var(--accent-wash); color: var(--accent); outline: 1px solid var(--accent); }
 /* A tab or sub-tab being renamed (rename.js) has a field in place of its
    name or title, and after it, while the name will be numbered, the name
    it will have. */
@@ -486,6 +549,15 @@ body.resizing-column, body.resizing-column * { cursor: row-resize !important; -w
   height: calc(var(--pane-header) + 1px); padding: 0 6px;
   background: var(--bg-pane-header); border-bottom: 1px solid var(--line);
 }
+/* In a tab with a colour, a band of it along the top of each pane's
+   header, inside its border: the focused pane's border stays the
+   accent's. The band is 1 pt below the border and 12 pt in from each
+   end, as a tab's short underline is, so that it never touches the
+   border and can't be taken for part of the focused pane's. */
+.pane[data-colour] > .pane-header {
+  background-image: linear-gradient(var(--tab-colour), var(--tab-colour));
+  background-position: 12px 1px; background-size: calc(100% - 24px) 2px; background-repeat: no-repeat;
+}
 /* Sub-tabs share the header's room, as a browser's tabs do: each is as
    wide as its title, up to a width that grows with the pane's
    (--subtab-max), and they shrink when crowded, down to --subtab-min,
@@ -647,6 +719,11 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .status-mark .mark-cut { stroke: var(--on-accent); }
 .subtab .mono-tile { position: relative; }
 .subtab .status-mark { position: absolute; top: -5px; right: -6px; background: var(--subtab-bg); }
+/* In the compact density, a coloured tab's pane header has too little room
+   above its sub-tabs for the sign and the band along its top (decision
+   74): the sign comes down, clear of the band, so that a yellow band and
+   the amber warning sign of a window that keeps moving never touch. */
+body[data-density="compact"] .pane[data-colour] > .pane-header .subtab .status-mark { top: -2px; }
 .drag-ghost .status-mark { display: none; }
 /* A monogram is 10 pt in every tile, a sub-tab's smaller one too: the
    smallest text that Apple's guidelines allow on the Mac. */
@@ -734,6 +811,28 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
   background: var(--accent-wash); border: 2px solid var(--accent);
 }
 .drop-indicator[hidden] { display: none; }
+/* What files dragged from Finder are over (drops.js), which Wails marks
+   file-drop-target-active: a terminal, or a pane's body, gets a frame over
+   what it shows, as a sub-tab dragged onto a pane does (drop-indicator),
+   above xterm.js's layers, the highest of which is 11, and the links'
+   addresses. A pane's header is washed and framed, and the tabs' + is
+   washed, as when a sub-tab is dragged onto it. A popped-out terminal's
+   window frames its terminal while the files are over its bar too. The
+   main window as a whole, which takes the files only to say where to drop
+   them, gets nothing. */
+.term-host.file-drop-target-active::after,
+.pane-body.file-drop-target-active::after,
+body.is-terminal-window.file-drop-target-active .term-host::after {
+  content: ""; position: absolute; inset: 0; z-index: 13; pointer-events: none; border-radius: 6px;
+  background: var(--accent-wash); border: 2px solid var(--accent);
+}
+.pane-header.file-drop-target-active,
+.title-pane.file-drop-target-active { background: var(--accent-wash); box-shadow: inset 0 0 0 2px var(--accent); }
+/* The band of a coloured tab's pane header (decision 74) moves down below
+   the frame while files are over the header, so that both show and they
+   never touch: the frame is on top of the background, and would cover the
+   band where it is. */
+.pane[data-colour] > .pane-header.file-drop-target-active { background-position: 12px 3px; }
 
 /* What a pane shows instead of its item while the item isn't ready. */
 .pane-status { color: var(--text-muted); }
@@ -969,19 +1068,16 @@ body.dragging-subtab, body.dragging-subtab *, body.dragging-tab, body.dragging-t
 .menu-sub-mark { flex: 0 0 auto; display: inline-flex; margin-right: -4px; color: var(--text-muted); }
 .menu.submenu { z-index: 31; min-width: 200px; }
 .menu-item .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-/* The tick of the chosen one of a choice, such as the layout in use. */
+/* The tick of the chosen one of a choice, such as the layout in use, and
+   of a checkbox that's on, such as a page's Keep Running in the Background.
+   A menu with a checkbox keeps the tick's column before every entry, and
+   its headings and notes line up with the labels (ticked, menu.js). */
 .menu-tick { flex: 0 0 14px; display: inline-flex; color: var(--accent); }
+.menu-heading.ticked, .menu-note.ticked, .menu-status.ticked { padding-left: 34px; }
 .menu-item .menu-label.wrap { white-space: normal; overflow-wrap: anywhere; }
 /* An entry with a detail below its label, such as why a window needs
    attention. */
 .menu-item .menu-label.stacked { display: flex; flex-direction: column; gap: 1px; padding: 3px 0; }
-/* A row of buttons in a menu, after its name: a web page's Back, Forward,
-   Reload, and zooms (pages.js), with a gap between the two groups. */
-.menu-row { display: flex; align-items: center; gap: 2px; padding: 0 0 0 10px; }
-.menu-row-label { flex: 1 1 auto; min-width: 0; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
-.menu-row-gap { flex: 0 0 10px; }
-.menu-item.menu-icon { flex: 0 0 auto; width: 32px; justify-content: center; padding: 0; }
-.menu-item.menu-icon.text { width: auto; min-width: 48px; padding: 0 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .menu-main { overflow: hidden; text-overflow: ellipsis; }
 .menu-detail { font-size: 12px; line-height: 1.4; color: var(--text-muted); white-space: normal; overflow-wrap: anywhere; }
 /* Why a window isn't ready: the first line of its menu, which isn't an
@@ -1250,6 +1346,22 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .editor-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 18px 24px 0; }
 .editor-row h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .editor-row p { margin: 0; font-size: 12px; color: var(--text-muted); }
+/* Tab properties' colours: a round swatch for each, and None, a ring with
+   a line through it. The chosen one has a ring round it, apart from the
+   accent's focus ring outside it, and its name shows beside them. */
+.swatches { display: flex; flex-wrap: wrap; gap: 4px; }
+.swatch {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
+  border: 0; border-radius: 50%; background: transparent;
+}
+.swatch::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: var(--tab-colour); }
+.swatch[data-colour=""]::before {
+  box-sizing: border-box; border: 1.5px solid var(--text-muted);
+  background: linear-gradient(135deg, transparent calc(50% - 0.75px), var(--text-muted) calc(50% - 0.75px),
+    var(--text-muted) calc(50% + 0.75px), transparent calc(50% + 0.75px));
+}
+.swatch:hover { background: var(--bg-hover); }
+.swatch[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--text-strong); }
 .presets { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
 .preset {
   flex: 1 1 104px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 6px;
@@ -1355,6 +1467,8 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   .settings-title-row { margin-bottom: 4px; }
 }
 .settings-label { display: block; margin-bottom: 8px; }
+/* A field after a section's tick boxes. */
+.settings-label.settings-after { margin-top: 20px; }
 .settings-field { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
 .settings-help { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
 .settings-choice { margin-top: 16px; }
@@ -1449,6 +1563,7 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
   padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
 }
 .starter-name { font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
+.starter-name .tab-dot { margin-right: 8px; vertical-align: 1px; }
 .starter-apps { display: flex; flex-wrap: wrap; gap: 6px 14px; min-width: 0; font-size: 13px; color: var(--text); }
 .starter-app { display: inline-flex; align-items: center; gap: 6px; }
 /* The set-up's first choice, a tab of the windows that are open, and the
@@ -1540,6 +1655,27 @@ body.resizing-dialog, body.resizing-dialog * { cursor: nwse-resize !important; -
 .term-window-bar[hidden] { display: none; }
 .term-window-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
 .term-window-bar .btn { flex: none; }
+.term-window-actions { flex: none; display: flex; gap: 6px; }
+
+/* The drop-down terminal's panel, which slides down from the top of the
+   screen (dropdown.go): the same page, with Hide beside Back to Bench, and
+   a line along its bottom edge, where it covers the app below. */
+.is-dropdown .window { border-bottom: 1px solid var(--line-strong); }
+
+/* The browser preview draws the drop-down in the page, over the top of the
+   window, as the panel covers the top of the screen (syncDropdown in
+   render.js). It slides down as it shows, except with Reduce Motion, as the
+   panel does. */
+.dropdown-sheet {
+  position: absolute; z-index: 8; top: 0; left: 0; right: 0; min-height: 120px;
+  display: flex; flex-direction: column;
+  background: var(--bg-pane); border-bottom: 1px solid var(--line-strong);
+  box-shadow: 0 12px 32px var(--shadow);
+  animation: dropdown-in 180ms ease-out;
+}
+.dropdown-sheet[hidden] { display: none; }
+.dropdown-body { flex: 1 1 auto; min-height: 0; }
+@keyframes dropdown-in { from { transform: translateY(-100%); } }
 
 /* The Acknowledgements window: acknowledgements.html, a long page of
    licences that scrolls as a document does, with text that can be selected
@@ -1575,8 +1711,9 @@ body.is-acknowledgements {
    which WebKit tells pages as prefers-contrast: more. The colours already
    meet WCAG AA, so this adds little: stronger lines, quiet text at 7:1 at
    least on each surface it sits on, faint terminal text just above 7:1 on
-   the pane, so that it stays fainter than the rest, and a 2 pt border on
-   the focused pane. The border's second point is a ring outside it, so
+   the pane, so that it stays fainter than the rest, a 2 pt border on
+   the focused pane, and thicker frames on what files from Finder are
+   dragged over. The border's second point is a ring outside it, so
    that the pane's inside stays where Go's layout docks its window, and the
    pane sits above the others, so that none covers the ring when there's no
    gap. With no gap, the pane area's edges clip the ring where the pane
@@ -1601,6 +1738,14 @@ body.is-acknowledgements {
   }
   .pane[data-focused="true"] { z-index: 1; box-shadow: 0 0 0 1px var(--accent); }
   .settings-tab[aria-selected="true"] { box-shadow: inset 0 0 0 2px var(--line-control); }
+  /* What files dragged from Finder are over has a thicker frame. */
+  .term-host.file-drop-target-active::after,
+  .pane-body.file-drop-target-active::after,
+  body.is-terminal-window.file-drop-target-active .term-host::after { border-width: 3px; }
+  .pane-header.file-drop-target-active,
+  .title-pane.file-drop-target-active { box-shadow: inset 0 0 0 3px var(--accent); }
+  .pane[data-colour] > .pane-header.file-drop-target-active { background-position: 12px 4px; }
+  .new-tab.file-drop-target-active { outline-width: 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -18,21 +18,32 @@ import (
 // Tab, Show side by side in the "tabs" view, which changes the layout's
 // mode too, equal sizes from a divider, the keys that arrange the panes (a
 // run of which is one change, panekeys.go), a drag of a docked window's
-// edge that resizes the panes, and closing a web page or a terminal. Each
-// names itself (undoName), for Undo away from its toast. Before each, the
-// engine notes the arrangement (undoStep): the tabs, in order, with their
-// trees, sizes, and items, and what's "Not in a tab", as state.json saves
-// them.
+// edge that resizes the panes, closing a web page or a terminal, Keep
+// over Bench, which adds a float rule to config.toml (covering.go), Tab
+// properties' Save of a tab that was there, or its rename in place, and a
+// page's first notification turning its Keep Running in the Background on
+// (keeprunning.go), which changes no arrangement. Each names itself
+// (undoName), for Undo away from its toast. Before each, the engine notes
+// the arrangement (undoStep): the tabs, in order, with their trees, sizes,
+// and items, and what's "Not in a tab", as state.json saves them.
 // Undo puts it back. What has gone since, such as the windows that Close
 // tab closed, stays gone, and what has come since stays where it is. A
 // deleted tab's entry in config.toml comes back too, with its rules, a
-// moved tab's goes back to its place, and a new tab's goes. Windows that a
-// new tab took from "Not in a tab" go back where they were, and a page or
-// terminal that was closed opens again in its place (closeditems.go).
+// moved tab's goes back to its place, a changed tab's gets its name,
+// layout, small-screen setting, and colour back, and a new tab's goes.
+// Windows that a new tab took from "Not in a tab" go back where they
+// were, and a page or terminal that was closed opens again in its place
+// (closeditems.go).
 // The latest change can also be taken back away from its toast
 // (UndoLatest): from Tab ▸ Undo in the menu bar, the jump palette, and the
 // undo shortcut, which is off until the user sets it, as Command-Z
 // belongs to the pages and terminals.
+//
+// Bench's move back to the display that the user chose (returning.go)
+// isn't one of these changes: it moves only the window, which the user
+// didn't ask for, so it isn't the latest change that UndoLatest takes
+// back, and Undo of an earlier change leaves the window where it is. Its
+// toast's Undo, whose number is counted with theirs, takes it back alone.
 //
 // It also keeps the tabs that were deleted or closed most recently, which
 // state.json saves, for Reopen Closed Tab.
@@ -75,6 +86,9 @@ type undoStep struct {
 	saved    []Tab
 	current  int
 	floating []string
+	// dropdown is the drop-down terminal before the change, or "" (see
+	// restoreLocked).
+	dropdown string
 	// items holds the model's items before the change, until it's kept.
 	items map[string]*Item
 	// kept holds the items that the change forgot, which Undo brings back:
@@ -84,8 +98,8 @@ type undoStep struct {
 	kept  map[string]*Item
 	added []string
 	// cfgTabs and cfgRules are config.toml's tabs and rules before a
-	// change that deleted a tab (closed), or added one (Move to Tab ▸ New Tab),
-	// which Undo puts back.
+	// change that deleted a tab (closed), added one (Move to Tab ▸ New Tab),
+	// or changed one (SaveTab), which Undo puts back.
 	cfgTabs  []config.Tab
 	cfgRules []config.Rule
 	closed   *config.ClosedTab
@@ -100,10 +114,22 @@ type undoStep struct {
 	// puts back.
 	setsMode bool
 	mode     layout.Mode
+	// covering is set for a change that added a float rule for an app that
+	// covered Bench (KeepOverBench), which changed config.toml's rules
+	// alone: Undo takes the rule back with cfgRules, leaves the tabs, in
+	// config.toml and in the arrangement, as they are, and puts what covers
+	// Bench out of sight again.
+	covering bool
 	// reopen is the web page or terminal that the change closed (CloseItem),
 	// as Reopen Closed Page or Terminal keeps it, which Undo opens again in
 	// its place.
 	reopen *closedItem
+	// keepOn is the web page whose Keep Running in the Background the
+	// change turned on, as the page posted its first notification
+	// (keepNotifierLocked), which Undo turns off again, as the user's
+	// choice. Such a change has no arrangement to put back: its step has
+	// no tabs.
+	keepOn string
 	// name names the change, and undone is the toast after Undo.
 	name   undoName
 	undone string
@@ -121,6 +147,9 @@ func (e *Engine) beginUndoLocked() *undoStep {
 		c := *t
 		c.Root = layout.Clone(t.Root)
 		s.saved = append(s.saved, c)
+	}
+	if d := e.dropdownLocked(); d != nil {
+		s.dropdown = d.ID
 	}
 	return s
 }
@@ -174,7 +203,7 @@ func (e *Engine) keepUndoLocked(s *undoStep, name undoName, undone string) int {
 }
 
 // forgetUndoLocked forgets the changes that Undo could take back, after a
-// change to the tabs that it can't, such as a new or renamed tab, or a
+// change to the tabs that it can't, such as a tab added by New Tab, or a
 // reloaded config.toml: the arrangement before them would name tabs that
 // config.toml no longer has, or miss ones it has.
 func (e *Engine) forgetUndoLocked() {
@@ -209,10 +238,15 @@ func (e *Engine) undoToastLocked(msg string, step int) {
 // A tab that was deleted comes back, with its entry in config.toml and its
 // rules, which Bench saves, and the windows, pages, and terminals that are
 // still open dock in it again. A tab that was moved goes back to its place,
-// in config.toml too, and one that Move to Tab ▸ New Tab or a tab made of
-// open windows added goes; the windows that the latter took from "Not in a tab"
-// go back where they were. What has closed since stays closed, and what has
-// come since stays where it is.
+// in config.toml too, one that Tab properties changed gets its name,
+// layout, small-screen setting, and colour back, and one that Move to Tab ▸
+// New Tab or a tab made of open windows added goes; the windows that the
+// latter took from "Not in a tab" go back where they were. What has closed
+// since stays closed, and what has come since stays where it is. The Undo
+// of Bench's move back to the display that the user chose moves the window
+// back alone (undoWentBackLocked). A page that a notification set to keep
+// running in the background is set not to, as the user's choice;
+// config.toml's entries keep each page's keep_running as it is.
 func (e *Engine) Undo(step int) error {
 	return e.takeBack(step, false)
 }
@@ -237,23 +271,49 @@ func (e *Engine) takeBack(step int, latest bool) error {
 		}
 		step = e.undo[len(e.undo)-1].id
 	}
+	if w := e.wentBack; w != nil && !latest && !e.closed && step == w.step {
+		msg, err := e.undoWentBackLocked()
+		e.unlock()
+		if err != nil {
+			return err
+		}
+		e.em.Toast(msg)
+		return nil
+	}
 	i := slices.IndexFunc(e.undo, func(s *undoStep) bool { return s.id == step })
 	if e.closed || i < 0 {
 		e.unlock()
 		return errCantUndo
 	}
 	steps := e.undo[i:]
+	// arranged is the first of the changes with an arrangement from before
+	// it, which comes back, or nil if they only added float rules for apps
+	// that covered Bench (covering), which changed config.toml's rules
+	// alone, or kept pages running in the background (keepOn): with nothing
+	// else to take back, the arrangement stays as it is, with the tab
+	// switches and sizes since.
+	var arranged *undoStep
+	if j := slices.IndexFunc(steps, func(s *undoStep) bool { return !s.covering && s.keepOn == "" }); j >= 0 {
+		arranged = steps[j]
+	}
 	var cfg *config.Config
 	kept, added := map[string]*Item{}, map[string]bool{}
 	for _, s := range slices.Backward(steps) {
-		if s.cfgTabs != nil {
+		if s.keepOn != "" && cfg == nil {
+			cfg = e.cfg.Clone()
+		}
+		if s.cfgTabs != nil || s.covering {
 			if cfg == nil {
 				cfg = e.cfg.Clone()
 			}
 			// Settings saved since, or turned off by the change itself (Don't
-			// ask again), stay as they are.
+			// ask again), stay as they are, and so do the tabs if the change
+			// was to the rules alone.
 			was := (&config.Config{Tabs: s.cfgTabs, Rules: s.cfgRules}).Clone()
-			cfg.Tabs, cfg.Rules = was.Tabs, was.Rules
+			if !s.covering {
+				cfg.Tabs = was.Tabs
+			}
+			cfg.Rules = was.Rules
 		}
 		maps.Copy(kept, s.kept)
 		for _, id := range s.added {
@@ -271,17 +331,17 @@ func (e *Engine) takeBack(step int, latest bool) error {
 		}
 	}
 	first := steps[0]
-	if slices.ContainsFunc(steps, func(s *undoStep) bool { return s.reordered }) {
+	if arranged != nil && slices.ContainsFunc(steps, func(s *undoStep) bool { return s.reordered }) {
 		if cfg == nil {
 			cfg = e.cfg.Clone()
 		}
-		cfg.Tabs = inTabOrder(cfg.Tabs, first.saved)
+		cfg.Tabs = inTabOrder(cfg.Tabs, arranged.saved)
 	}
 	names := e.cfg.TabNames()
 	if cfg != nil {
 		names = cfg.TabNames()
 	}
-	if !slices.EqualFunc(first.saved, names, func(t Tab, name string) bool { return strings.EqualFold(t.Name, name) }) {
+	if arranged != nil && !slices.EqualFunc(arranged.saved, names, func(t Tab, name string) bool { return strings.EqualFold(t.Name, name) }) {
 		e.forgetUndoLocked()
 		e.unlock()
 		return errCantUndo
@@ -294,7 +354,7 @@ func (e *Engine) takeBack(step int, latest bool) error {
 		// A page or terminal that a change closed opens again in its
 		// place, unless Reopen has brought it back already, or it came after
 		// the first change, which has no place for it: it stays for Reopen.
-		if c := s.reopen; c != nil && first.hadItem(c.id) && slices.Contains(e.closedItems, c) && e.model.Items[c.id] == nil {
+		if c := s.reopen; c != nil && arranged != nil && arranged.hadItem(c.id) && slices.Contains(e.closedItems, c) && e.model.Items[c.id] == nil {
 			kept[c.id] = e.reopenedItemLocked(c)
 			e.closedItems = slices.DeleteFunc(e.closedItems, func(o *closedItem) bool { return o == c })
 		}
@@ -305,7 +365,32 @@ func (e *Engine) takeBack(step int, latest bool) error {
 	if i := slices.IndexFunc(steps, func(s *undoStep) bool { return s.setsMode }); i >= 0 {
 		e.model.Mode = steps[i].mode
 	}
-	e.restoreLocked(first, kept, added, outside)
+	if arranged != nil {
+		e.restoreLocked(arranged, kept, added, outside)
+	} else {
+		e.touch()
+	}
+	// A page that a change set to keep running in the background is set
+	// not to, as the user's choice, which later notifications leave alone.
+	// It stays loaded until Bench quits.
+	for _, s := range steps {
+		if it := e.model.Items[s.keepOn]; s.keepOn != "" && keepable(it) {
+			it.KeepRunning, it.KeepChosen = false, true
+			e.changed()
+		}
+	}
+	e.keepWebViewsLocked()
+	if cfg != nil {
+		// config.toml's tabs from before a change keep each page's
+		// keep_running as it is now: it's the page's setting, not a part
+		// of the arrangement.
+		e.keepRunningInConfigLocked(cfg)
+	}
+	// What covers Bench goes again, if Bench is in front, now that the
+	// tab it shows is the one to keep apps for.
+	if slices.ContainsFunc(steps, func(s *undoStep) bool { return s.covering }) && e.benchActive && e.trusted && !e.benchHidden && !e.opts.Headless {
+		e.hideCoveringLocked()
+	}
 	msg := first.undone
 	if latest && first.name.did != "" {
 		msg = "Undid: " + first.name.did + "."
@@ -358,8 +443,20 @@ func inTabOrder(tabs []config.Tab, order []Tab) []config.Tab {
 // items that the changes since it forgot (kept) and without those they
 // added (added), puts the windows that they took from "Not in a tab" back
 // where they were (outside), and arranges the current tab.
+//
+// The drop-down terminal isn't part of the arrangement (decision 72): Use
+// as Drop-down isn't a change that Undo takes back. So the drop-down stays
+// the drop-down, out of the tabs, even if the arrangement had it in a pane,
+// or added it, and a terminal that was the drop-down before change s, and
+// has gone back into a pane since, stays where it is now, as what has come
+// since does.
 func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[string]bool, outside []outsideWindow) {
 	m := e.model
+	drop := ""
+	if d := e.dropdownLocked(); d != nil {
+		drop = d.ID
+		delete(added, drop)
+	}
 	before := maps.Clone(m.Items)
 	wasFloating := slices.Clone(m.Floating)
 	current := m.CurrentTab()
@@ -399,7 +496,7 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 		*t = s.saved[i]
 		t.Root = layout.Clone(s.saved[i].Root)
 		for _, id := range layout.Items(t.Root) {
-			if m.Items[id] == nil {
+			if m.Items[id] == nil || id == drop {
 				t.Root, _, _ = layout.TakeItem(t.Root, id)
 			}
 		}
@@ -407,7 +504,9 @@ func (e *Engine) restoreLocked(s *undoStep, kept map[string]*Item, added map[str
 			in[id] = true
 		}
 	}
-	floating := slices.DeleteFunc(slices.Clone(s.floating), func(id string) bool { return m.Items[id] == nil || in[id] })
+	floating := slices.DeleteFunc(slices.Clone(s.floating), func(id string) bool {
+		return m.Items[id] == nil || in[id] || (id == s.dropdown && id != drop)
+	})
 
 	// What has come since stays where it is: in its pane, if its tab still
 	// has it, or else in the tab's focused pane, or else "Not in a tab".
@@ -586,6 +685,7 @@ func (e *Engine) ReopenTab(name string) error {
 		e.unlock()
 		return err
 	}
+	t.Colour = ct.Colour
 	e.cfg = cfg
 	e.closedTabs = slices.Delete(e.closedTabs, ci, ci+1)
 	e.forgetUndoLocked()

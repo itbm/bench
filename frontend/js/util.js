@@ -53,12 +53,6 @@ export const ICONS = {
   // (bellMark). Filled, and blue, so that it isn't taken for a
   // marker of a window that isn't ready.
   bell: '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.25c.55 0 1 .45 1 1v.55a4.5 4.5 0 0 1 3.5 4.39v2.56l1.3 1.73c.3.4.02.97-.48.97H2.68c-.5 0-.78-.57-.48-.97l1.3-1.73V7.19A4.5 4.5 0 0 1 7 2.8v-.55c0-.55.45-1 1-1z"/><path d="M6.25 13.5h3.5a1.75 1.75 0 0 1-3.5 0z"/></svg>',
-  // Arrows back and forward, and a minus and a plus: a web page's Back,
-  // Forward, Zoom Out, and Zoom In, in the Page row of its menu (pages.js).
-  back: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8H3.5M7.5 4L3.5 8l4 4"/></svg>',
-  forward: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9.5M8.5 4l4 4-4 4"/></svg>',
-  minus: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.5 8h9"/></svg>',
-  plusSmall: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>',
   // A video camera and a microphone, and each struck through: a page that
   // uses the camera or the microphone, live or turned off (pages.js).
   camera: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4" width="9" height="8" rx="1.5"/><path d="M10.5 7l4-2.25v6.5L10.5 9"/></svg>',
@@ -82,6 +76,7 @@ export const STATUS_SHORT = {
   'launching': 'Opening',
   'missing': 'Not open',
   'undocked': 'Moved out of the pane',
+  'moving': 'Keeps moving out of the pane',
   'needs-room': 'Needs more room',
   'full-screen': 'In full screen',
   'unavailable': 'On another desktop',
@@ -95,6 +90,7 @@ const MARKERS = {
   'launching': 'opening',
   'missing': 'problem',
   'undocked': 'problem',
+  'moving': 'problem',
   'needs-room': 'problem',
   'full-screen': 'info',
   'unavailable': 'info',
@@ -180,6 +176,12 @@ export function statusMark(marker) {
   return MARK_ICONS[marker] ? '<span class="status-mark" data-marker="' + marker + '">' + MARK_ICONS[marker] + '</span>' : '';
 }
 
+// demoToolOn reports whether the browser preview's window tool, Rectangle,
+// runs, for the demo bar's Rectangle.
+export function demoToolOn(view) {
+  return (view.windowTools || []).includes('Rectangle');
+}
+
 // statusText explains an item that isn't ready, if Go didn't.
 export function statusText(item) {
   if (item.statusText) return item.statusText;
@@ -187,6 +189,7 @@ export function statusText(item) {
     case 'launching': return 'Opening ' + item.app + '…';
     case 'missing': return item.app + ' isn\'t open.';
     case 'undocked': return 'This window has been moved out of the pane.';
+    case 'moving': return item.app + ' or another tool keeps moving this window.';
     case 'needs-room': return item.app + '\'s window can\'t shrink to fit this pane.';
     case 'full-screen': return 'In full screen';
     case 'unavailable': return 'This window is on another desktop.';
@@ -217,6 +220,47 @@ export function attentionOf(view) {
 // layouts for a custom layout, has its first as its stop (roving.js).
 export function radioState(chosen) {
   return ' role="radio" aria-checked="' + chosen + '" tabindex="' + (chosen ? '0' : '-1') + '"';
+}
+
+// TAB_COLOURS are the colours a tab can have (decision 74), in the order
+// Tab properties shows them, as config.toml names them, with the names
+// that show for them. Each is a token in the themes, --tab-<id>.
+export const TAB_COLOURS = [
+  { id: 'red', label: 'Red' },
+  { id: 'yellow', label: 'Yellow' },
+  { id: 'green', label: 'Green' },
+  { id: 'cyan', label: 'Cyan' },
+  { id: 'blue', label: 'Blue' },
+  { id: 'purple', label: 'Purple' },
+  { id: 'pink', label: 'Pink' },
+  { id: 'grey', label: 'Grey' },
+];
+
+// colourOf returns a tab's colour, if it's one of TAB_COLOURS, or ''.
+export function colourOf(tab) {
+  const c = (tab && tab.colour) || '';
+  return TAB_COLOURS.some((t) => t.id === c) ? c : '';
+}
+
+// colourAttr returns the data-colour attribute that gives an element a
+// tab's colour, as --tab-colour, or '' for a tab with none.
+export function colourAttr(tab) {
+  const c = colourOf(tab);
+  return c ? ' data-colour="' + c + '"' : '';
+}
+
+// tabDot returns the dot of a tab's colour that goes before its name in a
+// list, such as the overview's cards, or for a tab with none, an empty
+// slot as wide, so that the names line up. A list has them only while a
+// tab has a colour (anyColoured). A screen reader doesn't hear the dot:
+// the name says which tab it is.
+export function tabDot(tab) {
+  return '<span class="tab-dot"' + colourAttr(tab) + ' aria-hidden="true"></span>';
+}
+
+// anyColoured reports whether any of the view's tabs has a colour.
+export function anyColoured(view) {
+  return ((view && view.tabs) || []).some((t) => colourOf(t));
 }
 
 // withKeys adds a shortcut to a control's tooltip, if it has one.
@@ -465,6 +509,12 @@ export function pairText(a, b) {
 // Only when no release follows did the button come up where Bench couldn't
 // see it.
 export const RELEASE_WAIT = 250;
+
+// DROPDOWN_HIDE_KEYS is the key that hides the drop-down terminal from its
+// panel, or the browser preview's drop-down, whatever has the keyboard in
+// it: Escape is a program's while one runs, and the dropdown shortcut is
+// off by default.
+export const DROPDOWN_HIDE_KEYS = '⌘⎋';
 
 // TERM_KEY starts the key that stands for a terminal, which has no
 // data-key: 'term:' and the item ID.

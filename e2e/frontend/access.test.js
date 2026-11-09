@@ -403,7 +403,7 @@ test('⌘T and ⌘, save the name typed in a tab or sub-tab first, as a Mac\'s t
   await page.waitForSelector('#rename-input');
   await page.keyboard.type('Work');
   await page.keyboard.press('Meta+KeyT');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [1, { name: 'Work', preset: 'custom', smallScreens: 'stack' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [1, { name: 'Work', preset: 'custom', smallScreens: 'stack', colour: '' }]);
   await page.waitForSelector('#editor-title:text("New tab")');
   await page.waitForSelector('#rename-input', { state: 'detached' });
   // The dialog keeps the focus, and gives it back to the tab.
@@ -440,9 +440,10 @@ test('while VoiceOver is on, the terminals are read out, and bells and finished 
 
   // The browser preview's VoiceOver pretends that it's on.
   assert.equal(await page.getAttribute('#demo-voiceover', 'aria-pressed'), 'false');
+  await page.click('#demo-simulate');
   await page.click('#demo-voiceover');
   assert.deepEqual((await fake.waitForCall('SetDemoVoiceOver')).args, [true]);
-  await page.waitForSelector('#demo-voiceover[aria-pressed="true"]');
+  await page.waitForSelector('#demo-voiceover[aria-pressed="true"]', { state: 'attached' });
   await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
   assert.ok(await page.$('.pane[data-pane-id="p4"] .xterm-accessibility-tree'), 'xterm.js has its tree for VoiceOver');
 
@@ -475,8 +476,9 @@ test('while VoiceOver is on, the terminals are read out, and bells and finished 
   await toastSays(page, 'go test — ~/code/bench in Code: its command has finished.');
 
   // Off again, the terminals leave screen reader mode.
+  await page.click('#demo-simulate');
   await page.click('#demo-voiceover');
-  await page.waitForSelector('#demo-voiceover[aria-pressed="false"]');
+  await page.waitForSelector('#demo-voiceover[aria-pressed="false"]', { state: 'attached' });
   await page.click('.tab[data-index="1"]');
   await page.waitForSelector('.tab[data-index="1"][aria-selected="true"]');
   await page.waitForFunction(() => window.bench.terminalReader('w5') === false);

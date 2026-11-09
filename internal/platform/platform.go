@@ -220,6 +220,25 @@ type SystemKeys struct {
 	VoiceOver bool `json:"voiceOver,omitempty"`
 }
 
+// ToolPreferences is what Bench reads of a window tool's preferences, from
+// the tool's own defaults domain, to name the tool's shortcuts that clash
+// with Bench's (decision 69).
+type ToolPreferences struct {
+	// Shortcuts holds each preference that's a shortcut as MASShortcut
+	// keeps one, which Rectangle uses, by its key: in canonical form
+	// (shortcuts.Parse), such as "ctrl+alt+left", or "" for one set to
+	// none, or that Bench's shortcuts couldn't be. Each preference of
+	// another kind, such as data, is here as "" too, as MASShortcut reads
+	// it as no shortcut: under an action's key, it means that the action
+	// has none.
+	Shortcuts map[string]string `json:"shortcuts,omitempty"`
+	// Numbers holds each preference that's a number or a boolean (1 for
+	// true, 0 for false), by its key.
+	Numbers map[string]int64 `json:"numbers,omitempty"`
+	// Texts holds each preference that's text, by its key.
+	Texts map[string]string `json:"texts,omitempty"`
+}
+
 // Modifiers is a set of modifier keys, as HeldModifiers reports them.
 type Modifiers uint8
 
@@ -556,6 +575,19 @@ type Platform interface {
 	// ShowWebView shows a Web item's web view inside Bench's window, at
 	// frame in content coordinates, creating it on first use.
 	ShowWebView(id string, view WebView, frame layout.Rect) error
+	// LoadWebView creates a Web item's web view, hidden, at frame in
+	// content coordinates, and loads its address, so that its page runs,
+	// and can post notifications, before it's shown, as one that
+	// HideWebView hid does. It does nothing for a web view that exists.
+	// ShowWebView shows it later. The web view keeps running while it's
+	// hidden, as KeepWebViewRunning(id, true) says.
+	LoadWebView(id string, view WebView, frame layout.Rect) error
+	// KeepWebViewRunning says whether a web view keeps running while it's
+	// hidden, for a page kept running in the background: one that does
+	// loads again by itself after its page's process ends, or its first
+	// load fails, as one that's shown does, rather than wait to be shown.
+	// It does nothing for a web view that doesn't exist.
+	KeepWebViewRunning(id string, on bool)
 	// HideWebView hides a web view, keeping it loaded.
 	HideWebView(id string)
 	// CloseWebView destroys a web view.
@@ -699,6 +731,14 @@ type Platform interface {
 	// StageManagerChanged event says when it changes. The browser
 	// preview's platform reports false.
 	StageManager() bool
+
+	// ToolPreferences reads the preferences of a window tool, such as
+	// Rectangle, from its own defaults domain, by its bundle ID, afresh,
+	// as the tool writes them: none for a tool that has none, or whose
+	// preferences Bench can't read, such as an App Store app's, which
+	// macOS keeps in its container. Nothing says when they change. The
+	// browser preview's platform reports what SetToolPreferences set.
+	ToolPreferences(bundleID string) ToolPreferences
 
 	// TrackDrags turns on (true) or off watching the user drag windows by
 	// their title bars, for them to be dropped onto Bench's panes: other

@@ -70,7 +70,8 @@ func itemFromConfig(ci config.Item, appName namer) *Item {
 			profile = hostOf(ci.Web)
 		}
 		return &Item{Kind: KindWeb, App: app, Mono: apps.Mono(app), Title: app, Name: ci.Name,
-			URL: ci.Web, Home: ci.Web, Profile: profile, Status: StatusReady}
+			URL: ci.Web, Home: ci.Web, Profile: profile, Status: StatusReady,
+			KeepRunning: ci.KeepsRunning(), KeepChosen: ci.KeepRunning != nil}
 	case ci.VSCode != "":
 		title := ci.Name
 		if title == "" {
@@ -116,7 +117,7 @@ func modelFromConfig(cfg *config.Config, appName namer) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("building tab %q: %w", ct.Name, err)
 		}
-		t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Root: root}
+		t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Colour: ct.Colour, Root: root}
 		t.fixFocus()
 		m.Tabs = append(m.Tabs, t)
 	}
@@ -148,7 +149,7 @@ func (m *Model) addConfigTab(ct config.Tab, appName namer) (*Tab, error) {
 		}
 		return nil, fmt.Errorf("building tab %q: %w", ct.Name, err)
 	}
-	t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Root: root}
+	t := &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Colour: ct.Colour, Root: root}
 	t.fixFocus()
 	m.Tabs = append(m.Tabs, t)
 	return t, nil
@@ -160,7 +161,8 @@ func (m *Model) addConfigTab(ct config.Tab, appName namer) (*Tab, error) {
 // tab new to the config is built from it, and a tab that the config no
 // longer has is dropped, with its items that no other tab has. The windows
 // of those find places as other windows do at startup. Small-screen
-// settings come from the config, which state.json doesn't repeat.
+// settings and colours come from the config, which state.json doesn't
+// repeat.
 func modelFromState(st *config.State, cfg *config.Config, appName namer) *Model {
 	return modelFromTabs(st, cfg, stateTabs(st, cfg), appName)
 }
@@ -175,6 +177,7 @@ func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName nam
 		m.Items[id] = itemFromState(id, is, appName)
 	}
 	m.Floating = append([]string(nil), st.Floating...)
+	m.Dropdown = st.Dropdown
 	tabs := make([]*Tab, len(cfg.Tabs))
 	for ci, si := range from {
 		if si < 0 {
@@ -186,6 +189,7 @@ func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName nam
 			Preset:       ts.Preset,
 			FromPreset:   ts.FromPreset,
 			SmallScreens: smallScreensOf(cfg.Tabs[ci].SmallScreens),
+			Colour:       cfg.Tabs[ci].Colour,
 			Root:         layout.Clone(ts.Root),
 			Focus:        ts.Focus,
 			CompactShown: ts.CompactShown,
@@ -210,7 +214,7 @@ func modelFromTabs(st *config.State, cfg *config.Config, from []int, appName nam
 		if err != nil {
 			// The config has been validated, so this would be a bug: an
 			// empty tab keeps the tabs in step with the config.
-			t = &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens),
+			t = &Tab{Name: ct.Name, Preset: ct.Layout, SmallScreens: smallScreensOf(ct.SmallScreens), Colour: ct.Colour,
 				Root: layout.NewPane(m.NewID(panePrefix))}
 			t.fixFocus()
 		}
@@ -580,6 +584,10 @@ func applyEntry(it *Item, ci config.Item, appName namer) {
 			it.Title = fresh.Title
 		}
 		it.Name, it.Profile, it.App, it.Mono = fresh.Name, fresh.Profile, fresh.App, fresh.Mono
+		// A page with an entry takes keep_running from it, not from
+		// state.json: taking the field out of the file is as if Bench had
+		// never set it.
+		it.KeepRunning, it.KeepChosen = fresh.KeepRunning, fresh.KeepChosen
 	}
 }
 
@@ -601,6 +609,9 @@ func itemFromState(id string, s config.ItemState, appName namer) *Item {
 	}
 	if it.Kind == KindWeb {
 		it.Zoom = savedZoom(s.Zoom)
+	}
+	if it.Kind == KindWeb && it.VSCode == "" && s.KeepRunning != nil {
+		it.KeepRunning, it.KeepChosen = *s.KeepRunning, true
 	}
 	switch {
 	case it.Kind == KindApp:
@@ -646,6 +657,7 @@ func (m *Model) State() *config.State {
 		Seq:      m.Seq,
 		Items:    map[string]config.ItemState{},
 		Floating: append([]string{}, m.Floating...),
+		Dropdown: m.Dropdown,
 	}
 	for _, t := range m.Tabs {
 		st.Tabs = append(st.Tabs, tabState(t))
@@ -683,7 +695,17 @@ func itemState(it *Item, floating bool) config.ItemState {
 	if plainShell(it) {
 		s.LastFolder = it.LastFolder
 	}
+	s.KeepRunning = keepRunningField(it)
 	return s
+}
+
+// keepRunningField returns a web page's keep_running, for config.toml and
+// state.json: nil until Bench or the user has set it.
+func keepRunningField(it *Item) *bool {
+	if it.Kind != KindWeb || it.VSCode != "" || !it.KeepChosen {
+		return nil
+	}
+	return config.KeepRunningOf(it.KeepRunning)
 }
 
 // configPanes returns a tab's items as [[tab.pane]] entries for a preset
@@ -762,7 +784,7 @@ func configItem(it *Item) (config.Item, string, bool) {
 	if !secureAddress(address) {
 		return config.Item{}, "", false
 	}
-	ci := config.Item{Web: address, Name: it.Name}
+	ci := config.Item{Web: address, Name: it.Name, KeepRunning: keepRunningField(it)}
 	if it.Profile != "" && it.Profile != hostOf(address) {
 		ci.Profile = it.Profile
 	}

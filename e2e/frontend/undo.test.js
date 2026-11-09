@@ -389,6 +389,46 @@ test('a toast with Undo waits while the pointer is over it or the keyboard is in
   await page.waitForFunction(() => !document.getElementById('toast').classList.contains('show'), null, { timeout: 4000 });
 });
 
+test('the recent messages keep the Undo of Bench\'s move back to the display chosen, which Tab ▸ Undo doesn\'t take back', async (t) => {
+  const { page, fake, close } = await openBench({ world: defaultWorld({ demo: true, screen: 'monitor' }) });
+  t.after(close);
+  await page.waitForSelector('#app-window[data-screen="monitor"]');
+  const monitor = async () => {
+    await page.click('#demo-simulate');
+    await page.click('#demo-monitor');
+  };
+  await monitor();
+  await page.waitForSelector('#app-window[data-screen="laptop"]');
+  await deleteCode(page);
+  await toastIs(page, DELETED);
+  await monitor();
+  await toastIs(page, 'Back on Monitor.');
+  await page.waitForSelector('#app-window[data-screen="monitor"]');
+  // The latest change that Tab ▸ Undo takes back is still the user's.
+  const v = fake.view();
+  assert.equal(v.undo && v.undo.name, 'Delete Tab');
+  assert.equal(v.wentBack && v.wentBack.name, 'Move to Display');
+
+  await page.click('[data-action="notices"]');
+  await page.waitForSelector('#notices-menu');
+  const first = '#notices-menu .message:first-child', second = '#notices-menu .message:nth-child(2)';
+  assert.equal(await page.textContent(first + ' .message-text'), 'Back on Monitor.');
+  assert.equal(await page.getAttribute(first + ' [data-action="message-undo"]', 'aria-label'), 'Undo Move to Display');
+  assert.equal(await page.getAttribute(first + ' [data-action="message-undo"]', 'title'), 'Moved Bench back to Monitor.');
+  assert.equal(await page.textContent(second + ' .message-text'), DELETED);
+  assert.equal(await page.getAttribute(second + ' [data-action="message-undo"]', 'aria-label'), 'Undo Delete Tab');
+
+  // The move back's Undo takes back the move alone: the user's change
+  // keeps its Undo.
+  await page.click(first + ' [data-action="message-undo"]');
+  assert.deepEqual((await fake.waitForCall('Undo')).args, [v.wentBack.step]);
+  await page.waitForFunction(() => document.querySelector('#notices-menu .message:first-child .message-text').textContent === 'Back on Laptop.');
+  await page.waitForSelector('#app-window[data-screen="laptop"]');
+  assert.equal(await page.$$eval('#notices-menu [data-action="message-undo"]', (els) => els.length), 1);
+  assert.equal(await page.getAttribute('#notices-menu [data-action="message-undo"]', 'aria-label'), 'Undo Delete Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'notices-list');
+});
+
 test('a toast doesn\'t cover the open list of messages, which shows it at its top with Undo while that change is the latest', async (t) => {
   const { page, fake, close } = await openBench();
   t.after(close);
@@ -423,6 +463,59 @@ test('a toast doesn\'t cover the open list of messages, which shows it at its to
   await page.waitForSelector('#notices-menu', { state: 'detached' });
   assert.equal(await page.$eval('#toast', (el) => el.classList.contains('under-list')), false);
   assert.equal(await toastText(page), 'Brought back Code.');
+});
+
+test('a recent message keeps its toast\'s Keep over Bench while Go can still keep that app over Bench, and the keyboard reaches it', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const HID = 'Hid Finder because it covered Bench.';
+  fake.world.keepOver = ['com.apple.finder'];
+  fake.on('KeepOverBench', ([bundleID], f) => {
+    f.world.keepOver = f.world.keepOver.filter((b) => b !== bundleID);
+    f.changed();
+    setTimeout(() => f.emit('bench:toast', 'Added a rule to config.toml: Finder windows now stay over Bench, and new ones stay out of your tabs.'), 0);
+    return null;
+  });
+  await fake.emitState();
+  await fake.emit('bench:toast', { text: HID, action: { label: 'Keep over Bench', method: 'KeepOverBench', item: 'com.apple.finder' } });
+  await toastIs(page, HID);
+  // Another toast takes the toast's place: the list still offers it.
+  await fake.emit('bench:toast', 'Saved.');
+  await toastIs(page, 'Saved.');
+  await page.click('[data-action="notices"]');
+  const keep = '#notices-menu .message:nth-child(2) [data-action="message-keep"]';
+  await page.waitForSelector(keep);
+  assert.equal(await page.textContent(keep), 'Keep over Bench');
+  assert.match(await page.getAttribute(keep, 'aria-label'), /^Keep over Bench, for the message from \d\d:\d\d$/);
+  assert.equal(await page.$('#notices-menu .message:first-child [data-action="message-keep"]'), null);
+  // The keyboard reaches it, before the message's Copy.
+  await page.focus('[data-key="notices-list"]');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'message-keep-1');
+  await page.keyboard.press('Enter');
+  assert.deepEqual((await fake.waitForCall('KeepOverBench')).args, ['com.apple.finder']);
+  // Go can't any more, so the button goes, and the list stays open.
+  await page.waitForFunction(() => !document.querySelector('#notices-menu [data-action="message-keep"]'));
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'notices-list');
+});
+
+test('a recent message keeps Keep over Bench for an app whose bundle ID has capitals, which Go lists in lower case', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  const HID = 'Hid Preview because it covered Bench.';
+  fake.world.keepOver = ['com.apple.preview'];
+  await fake.emitState();
+  await fake.emit('bench:toast', { text: HID, action: { label: 'Keep over Bench', method: 'KeepOverBench', item: 'com.apple.Preview' } });
+  await toastIs(page, HID);
+  await fake.emit('bench:toast', 'Saved.');
+  await toastIs(page, 'Saved.');
+  await page.click('[data-action="notices"]');
+  const keep = '#notices-menu .message:nth-child(2) [data-action="message-keep"]';
+  await page.waitForSelector(keep);
+  await page.click(keep);
+  // Go gets the app's bundle ID as macOS gives it, for the rule.
+  assert.deepEqual((await fake.waitForCall('KeepOverBench')).args, ['com.apple.Preview']);
 });
 
 test('the keyboard reaches a recent message\'s Undo, in the order the buttons show, and Return takes the change back', async (t) => {

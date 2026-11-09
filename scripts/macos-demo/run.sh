@@ -11,7 +11,8 @@
 # drags with the real mouse.
 #
 # The output folder gets tour.mp4 (the recording), shots/ (a screenshot after
-# each step), steps.log, bench.log, and diagnostics.txt.
+# each step), steps.log, bench.log, diagnostics.txt, and arrange-times.txt,
+# how long each arrangement took (see arrange_times).
 
 set -u
 
@@ -126,6 +127,47 @@ for tab in state.get("tabs", []):
         print(tab["name"])
         break
 PY
+}
+
+# arrange_times: how long Bench took to arrange the tab each time, from the
+# key, click, or event to the last window placed (decision 67), from the
+# line that Bench logs for each with BENCH_DEBUG: each line, then the median
+# and the worst for each reason, in arrange-times.txt, and the sums in
+# steps.log. A slow time doesn't fail the job: the times are for reading,
+# and a runner's are slower than a Mac's. They include BENCH_DEBUG's log of
+# every platform call, which a Mac without it doesn't write.
+arrange_times() {
+	local out="$OUT/arrange-times.txt"
+	grep ' msg=arranged ' "$OUT/bench.log" >"$out.lines" 2>/dev/null
+	/usr/bin/python3 - "$out.lines" >"$out.sums" <<'PY' 2>>"$OUT/steps.log"
+import re, statistics, sys
+times = {}
+for line in open(sys.argv[1]):
+    m = re.search(r" reason=(\S+) ms=([0-9.]+) windows=([0-9]+)", line)
+    if m:
+        t = times.setdefault(m[1], ([], []))
+        t[0].append(float(m[2]))
+        t[1].append(int(m[3]))
+count = lambda n, word: f"{n} {word}" + ("" if n == 1 else "s")
+for reason, (ms, windows) in sorted(times.items(), key=lambda t: (-len(t[1][0]), t[0])):
+    changed = f"up to {count(max(windows), 'window')} changed" if max(windows) else "no windows changed"
+    print(f"{reason}: median {statistics.median(ms):.1f} ms, worst {max(ms):.1f} ms ({count(len(ms), 'time')}, {changed})")
+PY
+	{
+		echo "How long each arrangement took, by reason, with BENCH_DEBUG on:"
+		echo
+		cat "$out.sums"
+		echo
+		echo "Each arrangement:"
+		echo
+		cat "$out.lines"
+	} >"$out"
+	if [ -s "$out.sums" ]; then
+		while IFS= read -r line; do log "Arrange times: $line"; done <"$out.sums"
+	else
+		log "Arrange times: Bench logged none"
+	fi
+	rm -f "$out.lines" "$out.sums"
 }
 
 # pane_of <bundle id>: "x y w h index" for the displayed pane holding an item
@@ -524,4 +566,5 @@ done
 kill -INT "$ffmpeg_pid" 2>/dev/null
 wait "$ffmpeg_pid" 2>/dev/null
 kill "$bench_pid" 2>/dev/null
+arrange_times || log "couldn't sum up the arrange times"
 log "Done"

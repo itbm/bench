@@ -99,6 +99,10 @@ class FakeGo {
     // Undo shows.
     this.undo = [];
     this.undoSeq = 0;
+    // wentBack is Bench's move back to the display that the user chose,
+    // which Undo takes back alone, as Go's wentBack: its step, counted
+    // with the undo history's, its name, what it did, and where Bench was.
+    this.wentBack = null;
     // closed holds the tabs that Reopen Closed Tab brings back, by name.
     this.closed = new Map();
     // split is the empty pane that mSplitPane made, with its tab as it was
@@ -134,6 +138,8 @@ class FakeGo {
     if (this.world.zoom && !zoomedPane(this.world)) this.world.zoom = null;
     const last = this.undo[this.undo.length - 1];
     this.world.undo = last && last.name ? { step: last.id, name: last.name, did: last.did } : null;
+    const back = this.wentBack;
+    this.world.wentBack = back ? { step: back.step, name: back.name, did: back.did } : null;
     return buildView(this.world);
   }
 
@@ -315,8 +321,35 @@ class FakeGo {
   mSetDemoScreen(screen, width) {
     if (!this.world.demo) throw new Error('Simulated screens are only for the browser preview.');
     this.world.demo.screen = screen;
+    delete this.world.demo.unplugged;
+    this.wentBack = null;
     if (screen === 'fit' && width > 0) this.world.fitWidth = width;
     this.changed();
+  }
+
+  // mSetDemoMonitor is the demo bar's Unplug monitor and Plug in monitor,
+  // as Go has them: unplugging the monitor puts Bench on the laptop's
+  // screen, and plugging it in again puts it back, once the screens settle
+  // in Go, at once here, with a toast whose Undo takes the move back alone
+  // (mUndo), not one of the changes that UndoLatest takes back.
+  mSetDemoMonitor(plugged) {
+    const demo = this.world.demo;
+    if (!demo) throw new Error('Simulated screens are only for the browser preview.');
+    if (plugged) {
+      if (!demo.unplugged) throw new Error('The monitor is plugged in already.');
+      delete demo.unplugged;
+      demo.screen = 'monitor';
+      this.undoSeq += 1;
+      this.wentBack = { step: this.undoSeq, name: 'Move to Display', did: 'moved Bench back to Monitor', from: 'laptop' };
+      this.undoToast('Back on Monitor.', this.undoSeq);
+    } else {
+      if (demo.screen !== 'monitor') throw new Error('Choose Monitor in the demo bar first, then unplug it.');
+      demo.screen = 'laptop';
+      demo.unplugged = true;
+      this.wentBack = null;
+    }
+    this.changed();
+    return null;
   }
 
   // mSetDemoVoiceOver is the demo bar's VoiceOver, which pretends that
@@ -324,6 +357,22 @@ class FakeGo {
   mSetDemoVoiceOver(on) {
     if (!this.world.demo) throw new Error('Simulated VoiceOver is only for the browser preview.');
     this.world.voiceOver = Boolean(on);
+    this.changed();
+  }
+
+  // mSetDemoWindowTool is the demo bar's Rectangle, which starts or stops
+  // a window tool, as the platform would report it on a Mac.
+  mSetDemoWindowTool(on) {
+    if (!this.world.demo) throw new Error('Simulated window tools are only for the browser preview.');
+    this.world.windowTools = on ? ['Rectangle'] : [];
+    this.changed();
+  }
+
+  // mDismissWindowTool takes away the notice about a window tool, as Go
+  // does: the notice whose Dismiss names the tool.
+  mDismissWindowTool(bundleID) {
+    this.world.notices = this.world.notices.filter((n) => typeof n === 'string'
+      || !(n.actions || []).some((a) => a.method === 'DismissWindowTool' && a.arg === bundleID));
     this.changed();
   }
 
@@ -658,6 +707,23 @@ class FakeGo {
     return null;
   }
 
+  // mSetKeepRunning turns a page's Keep Running in the Background on or
+  // off, and says so, as Go does, refusing VS Code for the Web. A page
+  // turned on that isn't loaded loads at once, where Go waits a moment.
+  mSetKeepRunning(itemId, on) {
+    const it = this.webPage(itemId);
+    if (it.folder) throw new Error('Only web pages can keep running in the background.');
+    if (on) {
+      it.keepRunning = true;
+      delete it.notLoaded;
+    } else {
+      delete it.keepRunning;
+    }
+    this.emit('bench:toast', it.app + (on ? ' will keep running in the background.'
+      : ' will load only when you show it, from the next time Bench opens.'));
+    this.changed();
+  }
+
   // The config notices' buttons, and Reload config.toml. FakeGo has no
   // config.toml: reloading it, or using its backup, takes away the notices
   // that have buttons, as Go does once the file loads, and Overwrite the
@@ -804,7 +870,7 @@ class FakeGo {
         return pane(this.nextId('p'), [id]);
       });
       const root = panes.length === 1 ? panes[0] : split(this.nextId('s'), 'row', [50, 50], panes);
-      this.world.tabs.push({ name: t.name, preset: panes.length === 1 ? 'single' : 'side', smallScreens: 'tabs', focus: panes[0].id, root });
+      this.world.tabs.push({ name: t.name, preset: panes.length === 1 ? 'single' : 'side', smallScreens: 'tabs', colour: t.colour || '', focus: panes[0].id, root });
     }
     if (tabs.length) this.emit('bench:toast', 'Added ' + tabs.map((t) => t.name).join(' and ') + '.');
     this.changed();
@@ -1235,7 +1301,7 @@ class FakeGo {
       }
     }
     const root = this.windowsTree(preset, groups);
-    const tab = { name, preset, smallScreens: draft.smallScreens || 'stack', focus: leaves(root)[0].id, root };
+    const tab = { name, preset, smallScreens: draft.smallScreens || 'stack', colour: draft.colour || '', focus: leaves(root)[0].id, root };
     const at = draft.place > 0 ? Math.min(draft.place, w.tabs.length + 1) - 1 : w.tabs.length;
     w.tabs.splice(at, 0, tab);
     w.current = at;
@@ -1289,6 +1355,25 @@ class FakeGo {
     if (floating) this.dock(floating);
   }
 
+  // mAddToPane adds a window in no tab to a pane, as Go's AddToPane does
+  // for a { type: 'floating' } source: the drop-down's Move into This
+  // Pane. FakeGo adds nothing else this way.
+  mAddToPane(paneId, source) {
+    const w = this.world;
+    const floating = source && source.type === 'floating' ? w.floating.find((f) => f.id === source.id) : null;
+    if (!floating) return null;
+    const tab = this.currentTab();
+    const p = find(tab.root, paneId) || find(tab.root, tab.focus);
+    w.floating = w.floating.filter((f) => f !== floating);
+    const { tab: _, ...rest } = floating;
+    w.items[floating.id] = rest;
+    p.items.push(floating.id);
+    p.active = floating.id;
+    tab.focus = p.id;
+    this.changed();
+    return null;
+  }
+
   // dock adds a window that's in no tab to the current tab's focused pane
   // and shows it there, with a toast whose Pop out takes it out again, as
   // Go's dockAndSayLocked does.
@@ -1305,6 +1390,63 @@ class FakeGo {
     const label = rest.title && rest.title !== rest.app ? rest.app + ' — ' + rest.title : rest.app;
     this.emit('bench:toast', { text: 'Added ' + label + ' to this pane.', action: { label: 'Pop out', method: 'PopOut', arg: 0, item: floating.id } });
     this.changed();
+  }
+
+  // mUseAsDropdown makes a terminal the drop-down, as Go's UseAsDropdown
+  // does: it leaves its panes for the windows in no tab, and shows, drawn
+  // in the page as the browser preview draws it (world.dropdown). The
+  // terminal that was the drop-down goes into the pane that the new one
+  // leaves, or the focused pane, and shows there.
+  mUseAsDropdown(itemId) {
+    const w = this.world;
+    const it = w.items[itemId] || w.floating.find((f) => f.id === itemId);
+    if (!it) throw new Error('That window has closed.');
+    if (it.kind !== 'builtin') throw new Error('Only a terminal can be the drop-down.');
+    if (w.dropdown && w.dropdown.id === itemId) return this.mToggleDropdown(true);
+    const tab = this.currentTab();
+    const p = leaves(tab.root).find((n) => n.items.includes(itemId)) || find(tab.root, tab.focus) || leaves(tab.root)[0];
+    const old = w.dropdown && w.floating.find((f) => f.id === w.dropdown.id);
+    if (old) {
+      w.floating = w.floating.filter((f) => f !== old);
+      const { tab: _, ...rest } = old;
+      w.items[old.id] = rest;
+      p.items.push(old.id);
+      p.active = old.id;
+    }
+    const label = this.labelOf(itemId);
+    const { tab: _, ...rest } = it;
+    this.dropItem(itemId);
+    w.floating.push({ ...rest, tab: -1 });
+    w.dropdown = { id: itemId, shown: true, inPage: true };
+    const keys = w.keys.dropdown;
+    this.emit('bench:toast', label + ' is the drop-down now. ' + (keys
+      ? 'Press ' + keys + ' to show or hide it.'
+      : 'Show it again with View ▸ Show Drop-down, or set its shortcut in Settings ▸ Keyboard.'));
+    this.changed();
+    return null;
+  }
+
+  // mToggleDropdown shows the drop-down, or hides it if it shows, as Go's
+  // ToggleDropdown does, or with show, shows it. With no drop-down yet, a
+  // new terminal in the home folder becomes the drop-down.
+  mToggleDropdown(show = false) {
+    const w = this.world;
+    if (!w.dropdown || !w.floating.some((f) => f.id === w.dropdown.id)) {
+      const id = this.nextId('w');
+      w.floating.push({ id, kind: 'builtin', app: 'Terminal', mono: '>_', title: 'zsh — ~', folder: '~', status: 'ready', tab: -1 });
+      w.dropdown = { id, shown: true, inPage: true };
+    } else {
+      w.dropdown.shown = show || !w.dropdown.shown;
+    }
+    this.changed();
+    return null;
+  }
+
+  // mHideDropdown hides the drop-down, as Go's HideDropdown does.
+  mHideDropdown() {
+    if (this.world.dropdown) this.world.dropdown.shown = false;
+    this.changed();
+    return null;
   }
 
   // mRenameItem gives a terminal or web page a name of its own, which its
@@ -1328,8 +1470,17 @@ class FakeGo {
   }
 
   // mUndo puts the world back as it was before step, undoing it and every
-  // later step, as Go's Undo does.
+  // later step, as Go's Undo does. The Undo of Bench's move back to the
+  // display that the user chose moves Bench back alone.
   mUndo(step, said = '') {
+    const back = this.wentBack;
+    if (back && back.step === step) {
+      this.wentBack = null;
+      this.world.demo.screen = back.from;
+      this.emit('bench:toast', 'Back on Laptop.');
+      this.changed();
+      return;
+    }
     const at = this.undo.findIndex((s) => s.id === step);
     if (at < 0) throw new Error('Bench can\'t undo that any more.');
     const steps = this.undo.slice(at);
@@ -1537,6 +1688,17 @@ class FakeGo {
     return chosen.added ? { added: chosen.added } : { command: chosen.command, name: chosen.name || '', folder: chosen.folder || '' };
   }
 
+  // mShowMenu answers as the user choosing the entry world.menuChoice in a
+  // native menu, or closing it for '', as Go's ShowMenu does: it counts
+  // only an entry that's on, and refuses where there are no native menus,
+  // as in the browser preview.
+  mShowMenu(menu) {
+    if (!this.world.nativeMenus) throw new Error('This build of Bench draws its menus itself.');
+    const offers = (entries) => entries.some((e) => !e.disabled && !e.sep && !e.heading && !e.note && !e.status
+      && (e.submenu ? offers(e.submenu) : e.id === this.world.menuChoice));
+    return this.world.menuChoice && offers(menu.entries || []) ? this.world.menuChoice : '';
+  }
+
   // mChooseFolder answers as the user choosing ~/code/bench in macOS's
   // folder picker. The browser preview has no picker, as Go says.
   mChooseFolder() {
@@ -1553,7 +1715,9 @@ class FakeGo {
   // snapshot text for its title.
   termBytes(itemId) {
     if (!this.termText.has(itemId)) {
-      const it = this.world.items[itemId];
+      // A terminal out of the tabs, such as the drop-down, has its output
+      // too.
+      const it = this.world.items[itemId] || this.world.floating.find((f) => f.id === itemId);
       this.termText.set(itemId, Buffer.from((it && SNAPSHOTS[it.title]) || '$ ', 'utf8'));
     }
     return this.termText.get(itemId);

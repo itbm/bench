@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -56,13 +57,21 @@ func (s *fakeShell) popOutTerminal(itemID, title string) error {
 	return s.err
 }
 func (s *fakeShell) closeTerminalWindow(itemID string) { s.record("closeTerminalWindow", itemID) }
+func (s *fakeShell) showDropdown(itemID, title string, height int) error {
+	s.record("showDropdown", itemID, title, height)
+	return s.err
+}
+func (s *fakeShell) hideDropdown(itemID string) { s.record("hideDropdown", itemID) }
 func (s *fakeShell) setMenuBar(m workspace.MenuBar) {
 	s.record("setMenuBar", m)
 }
 func (s *fakeShell) shortcutsChanged() { s.record("shortcutsChanged") }
 func (s *fakeShell) fillScreen()       { s.record("fillScreen") }
-func (s *fakeShell) quit()             { s.record("quit") }
-func (s *fakeShell) relaunch()         { s.record("relaunch") }
+func (s *fakeShell) moveToScreen(content layout.Rect, fill bool) {
+	s.record("moveToScreen", content, fill)
+}
+func (s *fakeShell) quit()     { s.record("quit") }
+func (s *fakeShell) relaunch() { s.record("relaunch") }
 func (s *fakeShell) setAppearance(appearance string) {
 	s.record("setAppearance", appearance)
 }
@@ -162,6 +171,11 @@ func TestEmitterCommandBringsBenchForward(t *testing.T) {
 		// other focus changes: doing it again here, later, could take the
 		// keyboard from a pane focused since.
 		{"focus-terminal", false},
+		// A tab's shortcut shows its tab in the title bar at once, whether
+		// Bench is in front or not: show_on_tab_shortcut brings it forward,
+		// not these (decision 67).
+		{"switching", false},
+		{"switch-refused", false},
 		{"something-else", false},
 	}
 	for _, tt := range tests {
@@ -188,10 +202,15 @@ func TestEmitterShell(t *testing.T) {
 		t.Error("PopOutTerminal didn't pass on the shell's error")
 	}
 	em.CloseTerminalWindow("w4")
+	if err := em.ShowDropdown("w4", "zsh — ~/code", 40); err == nil {
+		t.Error("ShowDropdown didn't pass on the shell's error")
+	}
+	em.HideDropdown("w4")
 	bar := workspace.MenuBar{Show: "icon", Current: 1, Tabs: []workspace.MenuBarTab{{Name: "Comms"}, {Name: "Code"}}}
 	em.MenuBar(bar)
 	em.ShortcutsChanged()
 	em.FillScreen()
+	em.MoveToScreen(layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}, true)
 	em.BringForward()
 	em.Quit()
 	em.Relaunch()
@@ -199,9 +218,12 @@ func TestEmitterShell(t *testing.T) {
 	want := []call{
 		{"popOutTerminal", []any{"w4", "zsh — ~/code"}},
 		{"closeTerminalWindow", []any{"w4"}},
+		{"showDropdown", []any{"w4", "zsh — ~/code", 40}},
+		{"hideDropdown", []any{"w4"}},
 		{"setMenuBar", []any{bar}},
 		{"shortcutsChanged", nil},
 		{"fillScreen", nil},
+		{"moveToScreen", []any{layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}, true}},
 		{"bringForward", nil},
 		{"quit", nil},
 		{"relaunch", nil},
@@ -227,6 +249,7 @@ func TestEmitterClosed(t *testing.T) {
 	em.MenuBar(workspace.MenuBar{})
 	em.ShortcutsChanged()
 	em.FillScreen()
+	em.MoveToScreen(layout.Rect{W: 1440, H: 900}, false)
 	em.BringForward()
 	em.Quit()
 	em.Relaunch()

@@ -20,6 +20,9 @@ type Model struct {
 	Items map[string]*Item
 	// Floating holds the items popped out of Bench, in the order they left.
 	Floating []string
+	// Dropdown is the terminal in Floating that is the drop-down, or ""
+	// (decision 72). Take forgets it as it leaves Floating.
+	Dropdown string
 	Current  int
 	Mode     layout.Mode
 	// Seq is the last number used in an item, pane, or split ID.
@@ -49,7 +52,10 @@ type Tab struct {
 	// the tree still has its shape (see layoutOf).
 	FromPreset   string
 	SmallScreens layout.SmallScreens
-	Root         *layout.Node
+	// Colour is the tab's colour from the config (config.TabColours), or
+	// "" for none.
+	Colour string
+	Root   *layout.Node
 	// Focus is the focused pane's ID.
 	Focus string
 	// CompactShown is the item the "tabs" small-screen view shows.
@@ -93,6 +99,16 @@ type Item struct {
 	Zoom float64
 	// VSCode is the folder of a VS Code for the Web item.
 	VSCode string
+	// KeepRunning is set for a web page whose view Bench makes, hidden, soon
+	// after it opens, and keeps, so that the page can post notifications
+	// and show its unread count before the user shows it (keep_running,
+	// see keeprunning.go). KeepChosen is set once keep_running has a value:
+	// Bench turned it on when the page posted a notification, or the user
+	// turned it on or off. A notification turns it on only while it isn't.
+	// config.toml keeps them, and state.json too, for a page that
+	// config.toml doesn't list.
+	KeepRunning bool
+	KeepChosen  bool
 
 	// Folder and Command are a terminal's. Run is typed into a terminal's
 	// shell as it starts (see term.Options.Input), with Return if
@@ -129,8 +145,14 @@ type Item struct {
 	Status     string
 	StatusText string
 	// Undocked is set when the user dragged the item's window out of its
-	// pane.
+	// pane, or when its app or a window tool kept moving it (keptMoving).
 	Undocked bool
+	// keptMoving is set, with Undocked, when Bench stopped putting back the
+	// item's window because something kept moving it out of its pane: its
+	// app, or a window tool such as Rectangle (see redockSoonLocked). Its
+	// pane says so, until the window is docked again or the user moves it
+	// themselves. It isn't saved.
+	keptMoving bool
 	// minimised is set for an App item in a tab whose window the user
 	// minimised, until they show it again (see minimise.go). Arranging
 	// leaves the window in the Dock meanwhile. It isn't saved: the startup
@@ -328,7 +350,8 @@ func (t *Tab) markCustom() {
 }
 
 // Take removes an item from its pane in every tab, or from Floating,
-// keeping it in Items. A pane left empty is removed and its parent closes
+// keeping it in Items. An item that leaves Floating is no longer the
+// drop-down. A pane left empty is removed and its parent closes
 // up, unless it's the last pane in its tab. It returns the index of the
 // tab the item was in, as Where gives it (-1 if it was floating or
 // unknown), and whether a pane was removed, in which case that pane's tab
@@ -336,6 +359,9 @@ func (t *Tab) markCustom() {
 func (m *Model) Take(id string) (tab int, removedPane bool) {
 	if i := slices.Index(m.Floating, id); i >= 0 {
 		m.Floating = slices.Delete(m.Floating, i, i+1)
+		if m.Dropdown == id {
+			m.Dropdown = ""
+		}
 		return -1, false
 	}
 	tab, _ = m.Where(id)
@@ -605,7 +631,7 @@ func (m *Model) Bind(it *Item, w platform.Window) {
 	it.Created = m.created
 	it.Title = w.Title
 	it.pid = w.PID
-	it.Undocked = false
+	it.Undocked, it.keptMoving = false, false
 	it.minimised, it.restore = false, false
 	it.gone = false
 	it.Status, it.StatusText = StatusReady, ""
@@ -621,7 +647,7 @@ func (m *Model) Unbind(it *Item) {
 	}
 	it.WindowID = 0
 	it.pid = 0
-	it.Undocked = false
+	it.Undocked, it.keptMoving = false, false
 	it.minimised, it.restore = false, false
 	it.gone = false
 	it.Status, it.StatusText = "", ""

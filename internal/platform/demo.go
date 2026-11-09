@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"slices"
 	"time"
 
 	"github.com/itbm/bench/internal/clock"
@@ -20,6 +21,18 @@ const DemoLaunchDelay = 600 * time.Millisecond
 
 // DemoBrowser is the demo's default browser, Safari.
 const DemoBrowser = "com.apple.Safari"
+
+// DemoWindowTool is the demo's window tool, Rectangle, which is installed
+// but doesn't run until the demo bar's Rectangle starts it (StartAgent).
+const DemoWindowTool = "com.knollsoft.Rectangle"
+
+// demoToolPreferences are the demo's Rectangle's preferences: the
+// recommended shortcuts, as a Rectangle first installed at version 95 has
+// them, with none that the user changed.
+var demoToolPreferences = ToolPreferences{
+	Numbers: map[string]int64{"alternateDefaultShortcuts": 1},
+	Texts:   map[string]string{"installVersion": "95"},
+}
 
 // DemoWebAppDelay is how long the demo's default browser takes to make a web
 // app of a site that it's asked to open, standing in for the user following
@@ -44,6 +57,23 @@ type DemoScreens interface {
 }
 
 var _ DemoScreens = (*Fake)(nil)
+
+// DemoDisplays is what the browser preview's platform adds for unplugging
+// its simulated monitor and plugging it in again, as on a laptop with a
+// monitor, and for moving Bench's simulated window from one of its screens
+// to another, as Bench does when the display that the user chose for it
+// comes back (decision 70).
+type DemoDisplays interface {
+	// SetDemoMonitor unplugs the monitor, or plugs it in again (see
+	// Fake.SetDemoMonitor).
+	SetDemoMonitor(plugged bool) bool
+	// DemoUnplugged reports whether the monitor is unplugged.
+	DemoUnplugged() bool
+	// MoveDemoBench moves Bench's window to a screen, by ID.
+	MoveDemoBench(screenID string)
+}
+
+var _ DemoDisplays = (*Fake)(nil)
 
 // demoApp is an installed demo app, and its windows if it's running.
 type demoApp struct {
@@ -135,6 +165,9 @@ var demoWebTitles = map[string]string{
 //   - No keys that macOS keeps for itself (SystemKeys): one input source,
 //     and VoiceOver off.
 //   - Stage Manager off (StageManager is false).
+//   - Rectangle (DemoWindowTool), a window tool, installed and not
+//     running, with the preferences of one whose user chose its
+//     recommended shortcuts (ToolPreferences). StartAgent starts it.
 //   - Dock badges for Brave ("4"), Mail ("8"), and Slack ("•"), which
 //     DockBadges reports while they run and Bench watches the Dock (see
 //     SetDockBadge): Brave's from the start.
@@ -190,6 +223,8 @@ func NewDemo(clk clock.Clock) *Fake {
 		f.SetDockBadge(bundleID, label)
 	}
 	f.SetWebTitles(func(address string) string { return demoWebTitles[address] })
+	f.InstallApp(DemoWindowTool, "Rectangle", AppNotRegular())
+	f.SetToolPreferences(DemoWindowTool, demoToolPreferences)
 	return f
 }
 
@@ -208,18 +243,8 @@ func (f *Fake) SetDemoScreen(name string, fitWidth float64) {
 	defer f.mu.Unlock()
 	var s Screen
 	switch name {
-	case DemoMonitor:
-		s = Screen{
-			Name:    "Monitor",
-			Frame:   layout.Rect{W: 2560, H: 1440},
-			Visible: layout.Rect{Y: 25, W: 2560, H: 1415},
-		}
-	case DemoLaptop:
-		s = Screen{
-			Name:    "Laptop",
-			Frame:   layout.Rect{W: 1512, H: 982},
-			Visible: layout.Rect{Y: 33, W: 1512, H: 949},
-		}
+	case DemoMonitor, DemoLaptop:
+		s = demoDisplay(name)
 	case DemoFit:
 		if fitWidth > 0 {
 			f.demoFit = fitWidth
@@ -238,8 +263,84 @@ func (f *Fake) SetDemoScreen(name string, fitWidth float64) {
 	s.ID = name
 	s.Primary = true
 	f.demoScreen = name
+	f.demoUnplugged = false
+	f.benchScreen = ""
 	f.setScreensLocked([]Screen{s})
 	f.emitLocked(Event{Kind: ScreensChanged})
+}
+
+// demoDisplay returns the simulated monitor or laptop screen, primary, at
+// the top left of the displays.
+func demoDisplay(name string) Screen {
+	if name == DemoMonitor {
+		return Screen{ID: DemoMonitor, Name: "Monitor", Primary: true,
+			Frame: layout.Rect{W: 2560, H: 1440}, Visible: layout.Rect{Y: 25, W: 2560, H: 1415}}
+	}
+	return Screen{ID: DemoLaptop, Name: "Laptop", Primary: true,
+		Frame: layout.Rect{W: 1512, H: 982}, Visible: layout.Rect{Y: 33, W: 1512, H: 949}}
+}
+
+// SetDemoMonitor simulates unplugging the monitor, with plugged false, or
+// plugging it in again, as on a laptop with a monitor, and reports whether
+// it could:
+//
+//   - Unplugging needs the monitor among the screens, as after
+//     SetDemoScreen(DemoMonitor) or plugging it in. The laptop's screen is
+//     then the only one, and Bench's window goes to it, as macOS moves the
+//     windows of a display that goes: it sends ScreensChanged, then
+//     BenchMoved.
+//   - Plugging in needs the monitor unplugged. The monitor comes back to
+//     the right of the laptop's screen, which stays primary, and Bench's
+//     window stays where it is, as macOS 26 leaves it: it sends
+//     ScreensChanged.
+//
+// The simulated screen (DemoScreen) is the one Bench's window is on.
+func (f *Fake) SetDemoMonitor(plugged bool) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	laptop := demoDisplay(DemoLaptop)
+	if !plugged {
+		if !slices.ContainsFunc(f.screens, func(s Screen) bool { return s.ID == DemoMonitor }) {
+			return false
+		}
+		f.setScreensLocked([]Screen{laptop})
+		f.benchScreen, f.demoScreen, f.demoUnplugged = DemoLaptop, DemoLaptop, true
+		f.emitLocked(Event{Kind: ScreensChanged})
+		f.emitLocked(Event{Kind: BenchMoved})
+		return true
+	}
+	if !f.demoUnplugged {
+		return false
+	}
+	monitor := demoDisplay(DemoMonitor)
+	monitor.Primary = false
+	monitor.Frame.X, monitor.Visible.X = laptop.Frame.W, laptop.Frame.W
+	f.setScreensLocked([]Screen{laptop, monitor})
+	f.demoUnplugged = false
+	f.emitLocked(Event{Kind: ScreensChanged})
+	return true
+}
+
+// DemoUnplugged reports whether SetDemoMonitor has unplugged the monitor,
+// and it hasn't been plugged in again since.
+func (f *Fake) DemoUnplugged() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.demoUnplugged
+}
+
+// MoveDemoBench moves Bench's window to one of the screens, by ID, which
+// becomes the simulated screen (DemoScreen), and sends BenchMoved, as the
+// shell's move does on a Mac. It does nothing for an ID that isn't one of
+// the screens.
+func (f *Fake) MoveDemoBench(screenID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !slices.ContainsFunc(f.screens, func(s Screen) bool { return s.ID == screenID }) {
+		return
+	}
+	f.benchScreen, f.demoScreen = screenID, screenID
+	f.emitLocked(Event{Kind: BenchMoved})
 }
 
 // DemoScreen returns the name of the simulated screen set by SetDemoScreen,

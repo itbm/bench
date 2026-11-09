@@ -394,7 +394,7 @@ func (e *Engine) undockLocked(it *Item, frame layout.Rect) {
 		e.stopEdgeLocked()
 	}
 	e.log.Debug("the user dragged a window out of its pane", "window", it.WindowID, "item", it.ID, "frame", frame)
-	it.Undocked = true
+	it.Undocked, it.keptMoving = true, false
 	it.Status, it.StatusText = StatusUndocked, undockedText
 	e.win.Forget(it.WindowID)
 	e.arrangeLocked(arrangeOpts{})

@@ -17,6 +17,7 @@ pane_headers = "always"       # always, or auto: none over one app window
 open_missing_apps = true      # Open a tab's apps if they aren't running.
 hide_other_tabs = true        # Hide windows that belong to other tabs.
 hide_other_apps = false       # Also hide every app Bench doesn't manage.
+covering_windows = "hide"     # hide, or leave: windows over Bench
 new_windows = "app-pane"      # app-pane, focused-pane, or float
 follow_focus = "switch-tab"   # switch-tab, bring-here, or off
 drag_to_add = true            # Drag a window onto a pane to add it.
@@ -25,7 +26,9 @@ terminal_font_size = 12.5     # Points, from 9 to 24.
 terminal_option_as_meta = false  # Option sends Meta in terminals.
 notify_terminals = true       # When a terminal out of view needs you.
 keep_terminal_output = true   # Show terminals' output again next time.
+dropdown_height = 40          # Percent of the screen, from 20 to 90.
 launch_timeout = "15s"
+allow_scripts = false         # Let the bench command control Bench.
 
 [shortcuts]
 tab_modifiers = "ctrl+alt"          # Plus 1 to 9.
@@ -47,6 +50,7 @@ next_layout = ""                    # The six layouts in turn.
 previous_layout = ""
 add_front_window = ""               # To the focused pane. Off when empty.
 undo = ""                           # The latest change, from any app. Off when empty.
+dropdown = ""                       # The drop-down terminal. Off when empty.
 
 [[tab]]
 name = "Research"

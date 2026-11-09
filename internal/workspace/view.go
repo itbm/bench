@@ -19,6 +19,7 @@ const (
 	StatusLaunching   = "launching"   // Its app is opening, or Bench is waiting for its window.
 	StatusMissing     = "missing"     // Its app isn't running or its window has gone, and Bench isn't opening it.
 	StatusUndocked    = "undocked"    // The user dragged its window out of the pane.
+	StatusMoving      = "moving"      // Its app or a window tool kept moving its window out of the pane.
 	StatusNeedsRoom   = "needs-room"  // Its window can't shrink to the pane.
 	StatusFullScreen  = "full-screen" // Its window is in native full screen.
 	StatusUnavailable = "unavailable" // Its window is on another desktop.
@@ -83,6 +84,10 @@ type View struct {
 	// terminals then turn on xterm.js's screen reader mode, and the
 	// frontend reads out bells and finished commands (decision 64).
 	VoiceOver bool `json:"voiceOver"`
+	// WindowTools names the window tools that are running, such as
+	// Rectangle, each once (decision 69). The browser preview's demo bar
+	// shows by it whether its Rectangle runs.
+	WindowTools []string `json:"windowTools,omitempty"`
 	// Keys are the configured global shortcuts, for hints in the menus,
 	// palette, and status bar.
 	Keys KeysView `json:"keys"`
@@ -110,6 +115,11 @@ type View struct {
 	// InstallsUpdates is set when Bench has an updater, Sparkle, which
 	// installs new versions (Options.Updater), for Settings to say so.
 	InstallsUpdates bool `json:"installsUpdates,omitempty"`
+	// NativeMenus is set in the Mac app, where Bench's tab, window, pane,
+	// terminal, and layout menus are native macOS menus (ShowMenu), which
+	// need no raised mode. Without it, as in the browser preview, the
+	// frontend draws them in HTML (decision 71).
+	NativeMenus bool `json:"nativeMenus,omitempty"`
 	// Dialogs holds the size that the user gave each dialog they've
 	// resized, by kind, such as "settings", for it to open at that size
 	// (SetDialogSize).
@@ -123,9 +133,36 @@ type View struct {
 	// Undo is the latest change that Undo can take back, which UndoLatest
 	// takes back, or nil if there's none.
 	Undo *UndoView `json:"undo,omitempty"`
+	// WentBack is Bench's latest move back to the display that the user
+	// chose (decision 70), while its toast's Undo can still take it back,
+	// for the recent messages to keep that Undo after the toast has gone.
+	// It isn't one of the changes that UndoLatest takes back, so Undo
+	// doesn't name it.
+	WentBack *UndoView `json:"wentBack,omitempty"`
+	// KeepOver lists, by lower-case bundle ID, the apps whose windows Bench
+	// has said it put out of sight because they covered it, and that Keep
+	// over Bench (KeepOverBench) can still keep over it, for the recent
+	// messages to offer it again after its toast has gone. The toast's
+	// button has the app's bundle ID as macOS gives it.
+	KeepOver []string `json:"keepOver,omitempty"`
+	// Dropdown is the drop-down terminal, or nil if there's none
+	// (decision 72).
+	Dropdown *DropdownView `json:"dropdown,omitempty"`
 	// Demo is set in the browser preview (the server build), where window
 	// contents are placeholders and the frontend handles shortcuts itself.
 	Demo *DemoView `json:"demo,omitempty"`
+}
+
+// DropdownView is the drop-down terminal (decision 72): a terminal out of
+// the tabs, which View.Floating lists too, that shows at the top of the
+// screen, over any app, while Shown is set (ToggleDropdown). In the Mac
+// app it has a window of its own. InPage is set in the browser preview,
+// which has no such window: the page draws it at the top of Bench's
+// window instead.
+type DropdownView struct {
+	ID     string `json:"id"`
+	Shown  bool   `json:"shown,omitempty"`
+	InPage bool   `json:"inPage,omitempty"`
 }
 
 // UndoView is the latest change that Undo can take back: Step is its number,
@@ -152,6 +189,11 @@ type ClosedItemView struct {
 // NoticeView is a notice in the status bar, with the buttons that the list
 // of notices shows for it, if any.
 type NoticeView struct {
+	// Key names a notice whose text can change while it shows, such as a
+	// window tool's, which follows Bench's shortcuts: the recent messages
+	// keep it once, with its latest text. Most notices have none, and
+	// their text names them.
+	Key     string         `json:"key,omitempty"`
 	Text    string         `json:"text"`
 	Actions []NoticeAction `json:"actions,omitempty"`
 }
@@ -203,6 +245,11 @@ type TabView struct {
 	// Preset is a preset ID, or "custom" once items have been moved.
 	Preset       string `json:"preset"`
 	SmallScreens string `json:"smallScreens"`
+	// Colour is the tab's colour (config.TabColours), for its underline,
+	// the band along its pane headers, and the dot beside its name in the
+	// overview, the jump palette, and the Move to Tab and Also Show In
+	// menus, or "" for none.
+	Colour string `json:"colour"`
 	// Root is the tab's own tree, before small-screen changes.
 	Root  *layout.Node `json:"root"`
 	Focus string       `json:"focus"`
@@ -400,6 +447,15 @@ type ItemView struct {
 	Camera       string `json:"camera,omitempty"`
 	Microphone   string `json:"microphone,omitempty"`
 	Finding      bool   `json:"finding,omitempty"`
+	// KeepRunning is set for a web page whose Keep Running in the
+	// Background is on (SetKeepRunning), for the tick in its ⋯ menu.
+	// NotLoaded is set for a web page whose web view Bench hasn't made,
+	// and won't make until it's shown, such as one in a tab not shown
+	// since Bench started that isn't kept running: it posts no
+	// notifications and has no unread count until then, as its sub-tab's
+	// tooltip and VoiceOver name say (decision 76).
+	KeepRunning bool `json:"keepRunning,omitempty"`
+	NotLoaded   bool `json:"notLoaded,omitempty"`
 	// Ended is set for a terminal whose command has finished. Its output
 	// stays, and Return runs the command again. Failed is set with it if
 	// the command ended with an error, for what's announced while
@@ -449,6 +505,7 @@ type SettingsView struct {
 	HideOtherApps            bool    `json:"hideOtherApps"`
 	NewWindows               string  `json:"newWindows"`
 	FollowFocus              string  `json:"followFocus"`
+	CoveringWindows          string  `json:"coveringWindows"` // hide or leave.
 	DragToAdd                bool    `json:"dragToAdd"`
 	LivePreviews             bool    `json:"livePreviews"`
 	// TerminalFontSize is the terminals' text size, in points. Zero, as
@@ -457,7 +514,11 @@ type SettingsView struct {
 	TerminalOptionAsMeta bool    `json:"terminalOptionAsMeta"`
 	NotifyTerminals      bool    `json:"notifyTerminals"`
 	KeepTerminalOutput   bool    `json:"keepTerminalOutput"`
-	LaunchTimeout        string  `json:"launchTimeout"` // Such as "15s".
+	// DropdownHeight is how tall the drop-down terminal is, in percent of
+	// its screen's height. Zero, as when it's missing, keeps it as it is.
+	DropdownHeight int    `json:"dropdownHeight"`
+	LaunchTimeout  string `json:"launchTimeout"` // Such as "15s".
+	AllowScripts   bool   `json:"allowScripts"`
 	// Launchers are the [[launcher]] entries, in order. SaveSettings
 	// replaces them with these, unless they're missing (nil), which keeps
 	// them as they are.
@@ -495,6 +556,15 @@ type ShortcutView struct {
 	// and SuggestionDisplay the same as macOS shows it; or "".
 	Suggestion        string `json:"suggestion,omitempty"`
 	SuggestionDisplay string `json:"suggestionDisplay,omitempty"`
+}
+
+// ToolKeys are a window tool's shortcuts that Bench could read, such as
+// Rectangle's, by the tool's name, in canonical form (shortcuts.Parse), for
+// the shell to check Bench's shortcuts against (Engine.WindowToolKeys,
+// decision 69).
+type ToolKeys struct {
+	Name string
+	Keys []string
 }
 
 // ShortcutReport is what the shell found as it registered the global
@@ -582,6 +652,9 @@ type KeysView struct {
 	AddFrontWindow string `json:"addFrontWindow"`
 	// Undo undoes the latest change (UndoLatest). It's off by default.
 	Undo string `json:"undo"`
+	// Dropdown shows or hides the drop-down terminal (ToggleDropdown).
+	// It's off by default.
+	Dropdown string `json:"dropdown"`
 }
 
 // PermissionsView says which macOS permissions Bench has.
@@ -609,8 +682,11 @@ type DialogSize struct {
 // DemoView is the browser preview's simulated screen.
 type DemoView struct {
 	// Screen is "fit" (the browser's width), "monitor" (2,560 pt), or
-	// "laptop" (1,512 pt).
+	// "laptop" (1,512 pt): the one Bench's window is on.
 	Screen string `json:"screen"`
+	// Unplugged is set while the monitor is unplugged (SetDemoMonitor),
+	// for the demo bar to offer to plug it in again.
+	Unplugged bool `json:"unplugged,omitempty"`
 }
 
 // TabDraft is what the Tab properties dialog saves, with SaveTab. It holds
@@ -621,6 +697,9 @@ type TabDraft struct {
 	// Preset is a preset ID, or "custom" to keep the tab's current tree.
 	Preset       string `json:"preset"`
 	SmallScreens string `json:"smallScreens"`
+	// Colour is one of config.TabColours, or "" for none. A rename keeps
+	// the tab's colour by sending it back.
+	Colour string `json:"colour"`
 	// Place is the tab's place among the tabs, counting from 1, which gives
 	// it its shortcut. 0 leaves it where it is, or puts a new tab last.
 	Place int `json:"place"`
@@ -746,20 +825,31 @@ type Command struct {
 	// "first-run",
 	// "focus-terminal" (give the terminal ItemID the keyboard focus, because
 	// its pane was focused: the engine has already activated Bench and
-	// given its UI the keyboard), "confirm-quit" (ask before quitting, as
-	// Terminals are running something), "confirm-close-terminal" (ask,
-	// in the terminal ItemID's own window, before closing it, as it's
-	// running something), or, from Pane ▸ Page, "find-in-page" and
+	// given its UI the keyboard), "switching" and "switch-refused" (around
+	// a tab's shortcut's switch: see Tab), "confirm-quit" (ask before
+	// quitting, as Terminals are running something),
+	// "confirm-close-terminal" (ask, in the terminal ItemID's own window,
+	// before closing it, as it's running something), "paste-terminal"
+	// (type Text into the terminal ItemID, as a paste, in the window that
+	// shows it: the paths of files dropped on it), or, from Pane ▸ Page,
+	// "find-in-page" and
 	// "copy-page-link" (open the Web item ItemID's find bar, or put its
 	// page's link on the clipboard).
 	Name   string `json:"name"`
 	ItemID string `json:"itemId,omitempty"`
+	// Text is what paste-terminal types.
+	Text string `json:"text,omitempty"`
 	// Terminals are the terminals that confirm-quit and
 	// confirm-close-terminal ask about.
 	Terminals []BusyTerminal `json:"terminals,omitempty"`
 	// Reopen is set on the confirm-quit that QuitAndReopen sends: its
 	// Quit and Reopen calls QuitAndReopen again, rather than Quit.
 	Reopen bool `json:"reopen,omitempty"`
+	// Tab is the tab, counting from 0, that "switching" says a tab's
+	// shortcut is about to switch to, for the title bar to show as current
+	// at once; "switch-refused" says that the switch was refused (decision
+	// 67). Tab 0 is left out, as for other commands.
+	Tab int `json:"tab,omitempty"`
 }
 
 // TermData is the payload of the term:data event.

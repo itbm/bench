@@ -4,13 +4,15 @@
 // messages, which are in the title bar while the status bar is hidden.
 
 import { call, setClipboardText } from './bridge.js';
-import { act, closeMenu, isDemo, recentMessages, runCommand, store, toast, update } from './state.js';
 import {
-  activeKey, attentionOf, contentOrigin, currentTab, esc, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES, layoutText, leaves,
-  markerOf, realPaneOf, sentence, statusMark, statusText, tabsOf, termKey, undoHint, windowElement,
+  act, canRestore, closeMenu, isDemo, recentMessages, runCommand, runPaneLater, shownCurrent, store, switchTab, toast, update,
+} from './state.js';
+import {
+  activeKey, anyColoured, attentionOf, colourOf, contentOrigin, currentTab, esc, focusKey, ICONS, isPage, itemOf, keysOf, labelOf, LAYOUT_MODES,
+  layoutText, leaves, markerOf, realPaneOf, sentence, statusMark, statusText, tabDot, tabsOf, termKey, undoHint, windowElement,
 } from './util.js';
 import { makeWebApp, openAdd, splitEmpty } from './palette.js';
-import { openEditor } from './editor.js';
+import { followTab, openEditor } from './editor.js';
 import { closeItem, closeLabel, closeTab, closeTabLabel } from './close.js';
 import { canRenameItem, startItemRename, startTabRename, useAutomaticTitle } from './rename.js';
 import { pageEntries, reloadEntry } from './pages.js';
@@ -26,17 +28,18 @@ export const SIDE_BY_SIDE_WIDE = 'Show Side by Side (Wide Layout)';
 // menu bar's Pane menu gives the same commands. The common actions come
 // first, where the menu opens: Reload Page, for a web page, Rename…, for a
 // terminal or web page, and closing it, last in the group, which the
-// focus doesn't start on (openWindowMenu). Then splitting
-// and zooming, moving the sub-tab along its strip, moving to another pane,
-// the Move to Tab and Also Show In submenus, which list the tabs, the
-// places of closed windows, a Web item's Page group (pageEntries), and the
-// rest. For a web page, webApp is what Go offers to put a web app of its
-// site in its place (WebAppChoice), once it has answered. For an item that
-// wasn't ready when the menu opened, status is why (statusLine): the menu's
-// first line says so. The jump palette's This window lists the same
-// entries (windowRows in palette.js): an entry under a heading or in a
-// submenu names it (under), and Zoom Pane, which is the pane's, says so
-// (pane).
+// focus doesn't start on (openWindowMenu). Then splitting and zooming,
+// moving the sub-tab along its strip, the Move to Pane, Move to Tab, and
+// Also Show In submenus, which list the panes and the tabs, the places of
+// closed windows, a Web item's page controls (pageEntries), and the rest.
+// Each entry has an id, unique in the menu, which a native menu reports
+// when it's chosen (showNative). For a web page, webApp is what Go offers
+// to put a web app of its site in its place (WebAppChoice), once it has
+// answered. For an item that wasn't ready when the menu opened, status is
+// why (statusLine): the menu's first line says so. The jump palette's This
+// window lists the same entries (windowRows in palette.js): an entry in a
+// submenu, or with under, is named with it, and Zoom Pane, which is the
+// pane's, says so (pane).
 export function windowMenuEntries(view, itemId, paneId, webApp = null, status = null) {
   const t = view.current;
   const d = view.display || {};
@@ -49,22 +52,23 @@ export function windowMenuEntries(view, itemId, paneId, webApp = null, status = 
   // shows in place of the title its shell or page sets, typed in place of
   // that title. An app's window takes its title from the app.
   if (shown && canRenameItem(view, itemId, shown.id)) {
-    common.push({ label: 'Rename…', run: () => startItemRename(itemId, shown.id) });
-    if (item.label) common.push({ label: 'Use Automatic Title', detail: item.autoTitle || '', run: () => useAutomaticTitle(itemId) });
+    common.push({ id: 'rename', label: 'Rename…', run: () => startItemRename(itemId, shown.id) });
+    if (item.label) common.push({ id: 'use-automatic-title', label: 'Use Automatic Title', detail: item.autoTitle || '', run: () => useAutomaticTitle(itemId) });
   }
   common.push(...closeEntries(view, item, t));
   const entries = status ? [{ status: status.text, marker: status.marker }, { sep: true }] : [];
   entries.push(...withSeparators([
-    common, splitEntries(view, itemId, paneId), alongEntries(itemId, t, shown), paneEntries(view, itemId, paneId),
-    tabEntries(view, item), closedEntries(shown), pageEntries(item), moreEntries(item, paneId),
+    common, splitEntries(view, itemId, paneId), alongEntries(itemId, t, shown),
+    [...paneEntries(view, itemId, paneId), ...tabEntries(view, item)], closedEntries(shown), dropdownEntries(view, paneId), pageEntries(item),
+    moreEntries(item, paneId),
   ]));
   // The web app entry's label wraps, rather than hide the browser's name.
   if (webApp && webApp.offer === 'use') {
     entries.push({ sep: true }, {
-      label: 'Use the ' + webApp.app + ' Web App from ' + webApp.browser, wrap: true, run: () => useWebApp(view, itemId, webApp),
+      id: 'use-web-app', label: 'Use the ' + webApp.app + ' Web App from ' + webApp.browser, wrap: true, run: () => useWebApp(view, itemId, webApp),
     });
   } else if (webApp && webApp.offer === 'make') {
-    entries.push({ sep: true }, { label: 'Make a Web App in ' + webApp.browser + '…', wrap: true, run: () => makeWebApp(itemId, paneId) });
+    entries.push({ sep: true }, { id: 'make-web-app', label: 'Make a Web App in ' + webApp.browser + '…', wrap: true, run: () => makeWebApp(itemId, paneId) });
   }
   return entries;
 }
@@ -84,17 +88,17 @@ function splitEntries(view, itemId, paneId) {
   const down = move ? move + '↓' : '';
   const entries = [];
   if (d.splitsDisabled) {
-    entries.push({ label: SIDE_BY_SIDE_WIDE, keys: right, run: () => act('ShowSideBySide', itemId) });
+    entries.push({ id: 'side-by-side', label: SIDE_BY_SIDE_WIDE, keys: right, run: () => act('ShowSideBySide', itemId) });
   } else {
-    entries.push({ label: 'Split Right', keys: right, run: () => act('MoveItem', itemId, t, paneId, 'right') });
-    entries.push({ label: 'Split Down', keys: down, run: () => act('MoveItem', itemId, t, paneId, 'bottom') });
-    entries.push({ label: 'Split Right with an Empty Pane', run: () => splitEmpty(paneId, 'right') });
-    entries.push({ label: 'Split Down with an Empty Pane', run: () => splitEmpty(paneId, 'bottom') });
+    entries.push({ id: 'split-right', label: 'Split Right', keys: right, run: () => act('MoveItem', itemId, t, paneId, 'right') });
+    entries.push({ id: 'split-down', label: 'Split Down', keys: down, run: () => act('MoveItem', itemId, t, paneId, 'bottom') });
+    entries.push({ id: 'split-right-empty', label: 'Split Right with an Empty Pane', run: () => splitEmpty(paneId, 'right') });
+    entries.push({ id: 'split-down-empty', label: 'Split Down with an Empty Pane', run: () => splitEmpty(paneId, 'bottom') });
   }
   // Zoom Pane shows this pane alone for a while, and goes with the splits,
   // which change how the tab's panes are shown too.
   const zoom = zoomEntry(view, paneId);
-  if (zoom) entries.push({ label: zoom.zoomed ? 'Show All Panes' : 'Zoom Pane', keys: zoom.keys, pane: true, run: zoom.run });
+  if (zoom) entries.push({ id: 'zoom-pane', label: zoom.zoomed ? 'Show All Panes' : 'Zoom Pane', keys: zoom.keys, pane: true, run: zoom.run });
   return entries;
 }
 
@@ -106,25 +110,33 @@ function alongEntries(itemId, t, shown) {
   const at = strip.indexOf(itemId);
   if (strip.length < 2) return [];
   return [
-    at > 0 ? { label: 'Move Left', run: () => act('MoveItemAt', itemId, t, shown.id, at - 1) } : { label: 'Move Left', disabled: true },
-    at < strip.length - 1 ? { label: 'Move Right', run: () => act('MoveItemAt', itemId, t, shown.id, at + 2) } : { label: 'Move Right', disabled: true },
+    at > 0 ? { id: 'move-left', label: 'Move Left', run: () => act('MoveItemAt', itemId, t, shown.id, at - 1) } : { id: 'move-left', label: 'Move Left', disabled: true },
+    at < strip.length - 1
+      ? { id: 'move-right', label: 'Move Right', run: () => act('MoveItemAt', itemId, t, shown.id, at + 2) }
+      : { id: 'move-right', label: 'Move Right', disabled: true },
   ];
 }
 
-// paneEntries lists the panes that the window can move to, under Move to
-// Pane, each named by what it shows. While a pane is zoomed, the tab's
-// other panes are out of sight, but still there to move to.
+// paneEntries lists the Move to Pane submenu: the panes that the window
+// can move to, each named by what it shows. It's a submenu, as Move to Tab
+// is, so that a native menu, which has no headings, names the move too.
+// While a pane is zoomed, the tab's other panes are out of sight, but
+// still there to move to.
 function paneEntries(view, itemId, paneId) {
   const d = view.display || {};
   const tab = currentTab(view);
   const panes = d.zoomed && tab ? leaves(tab.root) : (d.panes || []);
   const others = panes.filter((p) => p.id !== paneId && p.id !== 'compact');
   if (!others.length) return [];
-  return [{ heading: 'Move to Pane' }, ...others.map((p) => ({
-    label: p.active ? 'Pane with ' + labelOf(view, p.active) : 'Empty Pane',
-    under: 'Move to Pane',
-    run: () => act('MoveItem', itemId, view.current, p.id, 'center'),
-  }))];
+  return [{
+    id: 'move-to-pane',
+    label: 'Move to Pane',
+    submenu: others.map((p) => ({
+      id: 'move-to-pane:' + p.id,
+      label: p.active ? 'Pane with ' + labelOf(view, p.active) : 'Empty Pane',
+      run: () => act('MoveItem', itemId, view.current, p.id, 'center'),
+    })),
+  }];
 }
 
 // tabEntries lists the Move to Tab and Also Show In submenus. Each lists
@@ -134,19 +146,23 @@ function paneEntries(view, itemId, paneId) {
 // modifiers with their number, which move the focused pane's shown window
 // there too: Go says which, as a key that another shortcut has goes
 // without. A new tab of the window's own is named after its app, as a drop
-// of its sub-tab on the tabs' + makes.
+// of its sub-tab on the tabs' + makes. While any tab has a colour, each
+// tab's entry has the dot of its colour before its name (dot), or "none"
+// for a tab with none, which keeps an empty place as wide, as the app
+// menu's Tab menu has them (decision 74).
 function tabEntries(view, item) {
   if (!item) return [];
   const t = view.current;
   const tabs = tabsOf(item);
+  const dot = (tab) => (anyColoured(view) ? { dot: colourOf(tab) || 'none' } : {});
   const moveTo = (view.tabs || []).map((other, i) => (i === t
-    ? { label: other.name, keys: other.sendShortcut || '', disabled: true }
-    : { label: other.name, keys: other.sendShortcut || '', run: () => act('MoveItemToTab', item.id, i) }));
-  moveTo.push({ sep: true }, { label: 'New Tab', run: () => act('MoveItemToNewTab', item.id, false) });
+    ? { id: 'move-to-tab:' + i, label: other.name, ...dot(other), keys: other.sendShortcut || '', disabled: true }
+    : { id: 'move-to-tab:' + i, label: other.name, ...dot(other), keys: other.sendShortcut || '', run: () => act('MoveItemToTab', item.id, i) }));
+  moveTo.push({ sep: true }, { id: 'move-to-tab:new', label: 'New Tab', run: () => act('MoveItemToNewTab', item.id, false) });
   const also = (view.tabs || []).map((other, i) => (i === t || tabs.includes(i)
-    ? { label: other.name, disabled: true }
-    : { label: other.name, run: () => act('AddItemToTab', item.id, i) }));
-  also.push({ sep: true }, { label: 'New Tab', run: () => act('MoveItemToNewTab', item.id, true) });
+    ? { id: 'also-show-in:' + i, label: other.name, ...dot(other), disabled: true }
+    : { id: 'also-show-in:' + i, label: other.name, ...dot(other), run: () => act('AddItemToTab', item.id, i) }));
+  also.push({ sep: true }, { id: 'also-show-in:new', label: 'New Tab', run: () => act('MoveItemToNewTab', item.id, true) });
   return [{ id: 'move-to-tab', label: 'Move to Tab', submenu: moveTo }, { id: 'also-show-in', label: 'Also Show In', submenu: also }];
 }
 
@@ -157,33 +173,54 @@ function closedEntries(shown) {
   const waiting = (shown && shown.remembered) || [];
   if (!waiting.length) return [];
   const entries = [{ heading: 'Closed Windows' }];
-  waiting.forEach((r) => {
-    if (r.canOpen) entries.push({ label: 'Open ' + r.app, under: 'Closed Windows', run: () => act('OpenItem', r.itemId) });
-    entries.push({ label: 'Remove ' + r.app + ' from This Pane', under: 'Closed Windows', run: () => act('RemoveRemembered', shown.id, r.bundleId) });
+  waiting.forEach((r, i) => {
+    if (r.canOpen) entries.push({ id: 'open-closed:' + i, label: 'Open ' + r.app, under: 'Closed Windows', run: () => act('OpenItem', r.itemId) });
+    entries.push({
+      id: 'remove-closed:' + i, label: 'Remove ' + r.app + ' from This Pane', under: 'Closed Windows', run: () => act('RemoveRemembered', shown.id, r.bundleId),
+    });
   });
   return entries;
 }
 
+// dropdownEntries lists Move into This Pane, under the heading Drop-down,
+// while a terminal is the drop-down (view.dropdown): it comes back out of
+// the drop-down into the pane, as a sub-tab, and the drop-down is off
+// until the dropdown shortcut makes a new one, or another terminal's Use
+// as Drop-down. It's the window menu's and the empty pane menu's.
+function dropdownEntries(view, paneId) {
+  const drop = view && view.dropdown;
+  if (!drop || !paneId) return [];
+  return [
+    { heading: 'Drop-down' },
+    { id: 'move-dropdown-here', label: 'Move into This Pane', under: 'Drop-down', run: () => act('AddToPane', paneId, { type: 'floating', id: drop.id }) },
+  ];
+}
+
 // moreEntries lists the window menu's last group: a terminal's New
-// Terminal in its folder, Dock Again, Show Again, Open in Browser, and Pop
-// Out of Bench.
+// Terminal in its folder and Use as Drop-down, Dock Again, Show Again,
+// Open in Browser, and Pop Out of Bench.
 function moreEntries(item, paneId) {
   if (!item) return [];
   const entries = [];
   // A terminal opens another beside it, in the folder its shell is in now.
   if (item.kind === 'builtin') {
     const here = item.here || item.folder || '~';
-    entries.push({ label: 'New Terminal in ' + here, run: () => act('AddToPane', paneId, { type: 'terminal', folder: here }) });
+    entries.push({ id: 'new-terminal-here', label: 'New Terminal in ' + here, run: () => act('AddToPane', paneId, { type: 'terminal', folder: here }) });
+    // It leaves its pane and slides down from the top of the screen, over
+    // any app, with the dropdown shortcut (dropdown.go).
+    entries.push({ id: 'use-as-dropdown', label: 'Use as Drop-down', run: () => act('UseAsDropdown', item.id) });
   }
-  if (item.status === 'undocked') entries.push({ label: 'Dock Again', run: () => act('Redock', item.id) });
+  if (item.status === 'undocked' || item.status === 'moving') {
+    entries.push({ id: 'dock-again', label: 'Dock Again', run: () => act('Redock', item.id) });
+  }
   // A minimised window comes back from the Dock, as clicking its sub-tab
   // brings it.
-  if (item.status === 'minimised') entries.push({ label: 'Show Again', run: () => act('ShowItem', paneId, item.id) });
+  if (item.status === 'minimised') entries.push({ id: 'show-again', label: 'Show Again', run: () => act('ShowItem', paneId, item.id) });
   // A web page opens in the default browser, where its address can be
   // checked and the page used with the browser's own sign-ins.
-  if (isPage(item)) entries.push({ label: 'Open in Browser', run: () => act('OpenInBrowser', item.id) });
+  if (isPage(item)) entries.push({ id: 'open-in-browser', label: 'Open in Browser', run: () => act('OpenInBrowser', item.id) });
   // A sub-tab with no window has nothing to pop out, so Go forgets it.
-  entries.push({ label: item.noWindow ? 'Remove from Bench' : 'Pop Out of Bench', run: () => act('PopOut', item.id) });
+  entries.push({ id: 'pop-out', label: item.noWindow ? 'Remove from Bench' : 'Pop Out of Bench', run: () => act('PopOut', item.id) });
   return entries;
 }
 
@@ -197,14 +234,14 @@ function closeEntries(view, item, t) {
   if (!item) return [];
   const shared = tabsOf(item).length > 1;
   const entries = [];
-  if (shared) entries.push({ label: 'Remove from This Tab', run: () => act('RemoveItemFromTab', item.id, t) });
+  if (shared) entries.push({ id: 'remove-from-tab', label: 'Remove from This Tab', run: () => act('RemoveItemFromTab', item.id, t) });
   if (item.noWindow) return entries;
   const label = shared ? 'Close Everywhere' : closeLabel(item);
   const untrusted = item.kind === 'app' && Boolean(view.permissions) && !view.permissions.accessibility && !view.demo;
   if (untrusted) {
-    entries.push({ label, disabled: true }, { note: 'Closing an app\'s window needs Accessibility permission.' });
+    entries.push({ id: 'close', label, disabled: true }, { note: 'Closing an app\'s window needs Accessibility permission.' });
   } else {
-    entries.push({ label, run: () => closeItem(item.id) });
+    entries.push({ id: 'close', label, run: () => closeItem(item.id) });
   }
   return entries;
 }
@@ -238,6 +275,253 @@ function askWebAppChoice(menu) {
   }, () => {});
 }
 
+// WEB_APP_WAIT_MS is how long, in milliseconds, a web page's native menu
+// waits for Go to say what it can offer to put a web app in the page's
+// place, before it opens without that entry (webAppChoiceFor).
+const WEB_APP_WAIT_MS = 300;
+
+// webAppAnswers keeps Go's last answer to WebAppChoice for each web page,
+// or null for no offer, for a native menu that opens before Go answers
+// again.
+const webAppAnswers = new Map();
+
+// webAppChoiceFor asks Go what a web page's native menu can offer to put a
+// web app of its site in its place, as askWebAppChoice does for the HTML
+// menu. A native menu can't take an entry once it's open. So once Go has
+// answered for the page, the menu opens at once with that answer, and Go's
+// new answer, when it comes, is kept for the next time. Until then, the
+// menu waits for the answer, but for WEB_APP_WAIT_MS at most, and then
+// opens without the entry. A refusal, which means the page has gone,
+// offers nothing.
+function webAppChoiceFor(itemId) {
+  const asked = call('WebAppChoice', itemId).then((choice) => {
+    const offer = choice && choice.offer ? choice : null;
+    webAppAnswers.set(itemId, offer);
+    return offer;
+  }, () => {
+    webAppAnswers.delete(itemId);
+    return null;
+  });
+  if (webAppAnswers.has(itemId)) return Promise.resolve(webAppAnswers.get(itemId));
+  const waited = new Promise((resolve) => {
+    setTimeout(() => resolve(null), WEB_APP_WAIT_MS);
+  });
+  return Promise.race([asked, waited]);
+}
+
+// nativeMenus reports whether the window, tab, empty pane, terminal, and
+// layout menus show as native macOS menus (View.nativeMenus): in the app,
+// where they open without raised mode, so that the web pages and the
+// docked windows stay in view (decision 71). The browser preview draws
+// them in HTML, with the same entries. The status bar's lists, which are
+// lists more than menus, are always drawn in HTML.
+export function nativeMenus(view) {
+  return Boolean(view && view.nativeMenus);
+}
+
+// openMenu opens menu m: as a native menu with its top left corner at
+// point, in the points of the UI's viewport (showNative), where Bench has
+// native menus; or else in HTML, with the focus on the control with
+// data-key focus. later is what the click that opened it does in its pane
+// if it closes with nothing chosen, or null (ui.paneLater). A native menu
+// keeps it with itself (m.later), as it's shown after a wait, and then
+// waits for the user. While one is on its way or open, no other menu
+// opens: the click that would have opened it does nothing, in its pane
+// too.
+function openMenu(m, focus, point, later = null) {
+  const { ui } = store;
+  if (!nativeMenus(store.view)) {
+    ui.paneLater = later;
+    openHTML(m, focus);
+    return;
+  }
+  ui.paneLater = null;
+  if (ui.nativeMenu) return;
+  m.later = later;
+  showNative(m, focus, point);
+}
+
+// afterNative holds what waits for the native menu on its way or open to
+// close (whenNoNativeMenu).
+let afterNative = [];
+
+// whenNoNativeMenu runs f now, or, while a native menu is on its way or
+// open (ui.nativeMenu), once it has closed and its entry, or its click in
+// its pane, has run: Bench can't close a native menu, and a dialog drawn
+// meanwhile would be under it, with the focus taken from it as the menu
+// closes. Jump to… and every tab wait so, from a bench:// link, a
+// shortcut, or the app menu (decision 77).
+export function whenNoNativeMenu(f) {
+  if (store.ui.nativeMenu) afterNative.push(f);
+  else f();
+}
+
+// runAfterNative runs what waited for the native menu, in turn.
+function runAfterNative() {
+  const waiting = afterNative;
+  afterNative = [];
+  for (const f of waiting) f();
+}
+
+// openHTML draws menu m in HTML, with the focus on the control with
+// data-key focus. A web page's menu asks Go what it can offer to put a web
+// app in the page's place, and takes the entry when Go answers
+// (askWebAppChoice).
+function openHTML(m, focus) {
+  store.ui.menu = m;
+  store.ui.pendingFocus = focus;
+  update();
+  if (m.kind === 'window' && !m.webApp && asksWebApp(itemOf(store.view, m.itemId))) askWebAppChoice(m);
+}
+
+// showNative shows menu m as a native menu (ShowMenu), with its top left
+// corner at point, and runs the entry chosen, as runMenuEntry does. One
+// shows at a time (ui.nativeMenu). Bench isn't raised for it: overlayOpen
+// leaves it out. A web page's menu waits a moment for Go's web app offer
+// first (webAppChoiceFor). Once the menu has closed, the entry chosen runs
+// if the menu's subject is still there (staleMenu) and the entry still
+// reads as it did: it runs as the view has it now, so that a tab's menu,
+// for one, follows its tab if it moved meanwhile. The focus goes back to
+// the control that opened the menu (canRestore), and with nothing chosen,
+// the click that opened it does what it would have done in its pane
+// (m.later), as closeMenu does. If Go can't show the menu, it opens in
+// HTML instead, with the focus on focus. Then what waited for the menu
+// runs (whenNoNativeMenu).
+async function showNative(m, focus, point) {
+  const { ui } = store;
+  ui.nativeMenu = m;
+  ui.menu = null;
+  update();
+  if (m.kind === 'window' && asksWebApp(itemOf(store.view, m.itemId))) m.webApp = await webAppChoiceFor(m.itemId);
+  const shown = store.view && !staleMenu(store.view, m) ? menuEntriesOf(store.view, m) : [];
+  let id = '';
+  if (shown.length) {
+    try {
+      id = await call('ShowMenu', { entries: plainEntries(shown), x: Math.round(point.x), y: Math.round(point.y) });
+    } catch {
+      ui.nativeMenu = null;
+      ui.paneLater = m.later;
+      openHTML(m, focus);
+      runAfterNative();
+      return;
+    }
+  }
+  ui.nativeMenu = null;
+  const view = store.view;
+  const entry = id && view && !staleMenu(view, m) ? chosenEntry(menuEntriesOf(view, m), shown, id) : null;
+  ui.paneLater = entry ? null : m.later;
+  const back = canRestore(m.opener);
+  update();
+  if (back) focusKey(m.opener);
+  if (entry) entry.run();
+  else runPaneLater();
+  runAfterNative();
+}
+
+// plainEntries returns a menu's entries as ShowMenu takes them
+// (workspace.MenuEntry): data, without what they run, with an entry that
+// runs nothing off. Only Bench's global shortcuts go with them, which the
+// native item's label shows, as the app menu does: keys that work only
+// where the menu is, such as a terminal's ⌘C (localKeys), are left out,
+// as Mac context menus show no keys. A tab's dot goes too, which the
+// native item shows as its image.
+export function plainEntries(entries) {
+  return entries.map((e) => {
+    if (e.sep) return { sep: true };
+    if (e.heading) return { heading: e.heading };
+    if (e.note) return { note: e.note };
+    if (e.status) return { status: e.status };
+    const p = { id: e.id || '', label: e.label || '' };
+    if (e.keys && !e.localKeys) p.keys = e.keys;
+    if (e.detail) p.detail = e.detail;
+    if (e.dot) p.dot = e.dot;
+    if (e.disabled || (!e.run && !e.submenu)) p.disabled = true;
+    if (typeof e.checked === 'boolean') p.checked = e.checked;
+    if (e.submenu) p.submenu = plainEntries(e.submenu);
+    return p;
+  });
+}
+
+// findEntry returns the entry with id among a menu's entries, or those of
+// a submenu that's on, if it runs, or null.
+export function findEntry(entries, id) {
+  for (const e of entries) {
+    if (e.submenu) {
+      const found = e.disabled ? null : findEntry(e.submenu, id);
+      if (found) return found;
+    } else if (e.id === id && e.run && !e.disabled) {
+      return e;
+    }
+  }
+  return null;
+}
+
+// chosenEntry returns the entry with id in a menu's entries now, if it
+// runs and reads as it did in the entries shown, or null. A checkbox, such
+// as a page's Keep Running in the Background, reads as it did only with
+// the same tick: one that a notification ticked while the menu was open
+// would otherwise turn off what the user chose to turn on.
+function chosenEntry(now, shown, id) {
+  const was = findEntry(shown, id);
+  const entry = findEntry(now, id);
+  if (!was || !entry || entry.label !== was.label) return null;
+  return entry.checkbox && entry.checked !== was.checked ? null : entry;
+}
+
+// menuEntriesOf returns the entries of a window, tab, empty pane,
+// terminal, or layout menu m, as the view has them now: the same whether
+// they're drawn in HTML (renderMenu) or shown natively (showNative).
+function menuEntriesOf(view, m) {
+  switch (m.kind) {
+    case 'window': return itemOf(view, m.itemId) ? windowMenuEntries(view, m.itemId, m.paneId, m.webApp, m.status) : [];
+    case 'tab': return view.tabs[m.index] ? tabMenuEntries(view, m.index) : [];
+    case 'pane': return paneMenuEntries(view, m.paneId, m.addTo);
+    case 'terminal': return terminals.menuEntries(m.itemId);
+    case 'layout': return layoutMenuEntries(view);
+    default: return [];
+  }
+}
+
+// staleMenu reports whether an open menu's subject has gone: a window
+// menu's window has closed or left the pane it was opened in, or Go has
+// switched tabs; a tab's menu's tab has been deleted (it follows its tab
+// when others are added or deleted, as Tab properties does); an empty
+// pane's menu's pane has closed or isn't empty any more, or Go has
+// switched tabs; or the windows that need attention have changed, or Go
+// has switched tabs, so that the list's entries don't move under the
+// pointer. The layout menu's subject never goes, nor do the notices', which
+// keep the recent messages once the notices have gone.
+export function staleMenu(view, m) {
+  if (m.kind === 'layout') return false;
+  if (m.kind === 'notices') return false;
+  if (m.kind === 'attention') return m.tab !== view.current || attentionKey(view) !== m.key;
+  if (m.kind === 'tab') return !followTab(m, view);
+  const panes = (view.display && view.display.panes) || [];
+  if (m.kind === 'pane') {
+    const pane = panes.find((p) => p.id === m.paneId);
+    return m.tab !== view.current || !pane || (pane.items || []).length > 0;
+  }
+  if (!itemOf(view, m.itemId) || m.tab !== view.current) return true;
+  const pane = panes.find((p) => p.id === m.shownIn);
+  return !pane || !(pane.items || []).includes(m.itemId);
+}
+
+// under returns the point below element el, where its menu opens without
+// a pointer, as a pop-up button's does, in the points of the UI's
+// viewport: at its left, or dx points in, and dy points below it, or, with
+// top, dy points below its top.
+function under(el, dx = 0, dy = 4, top = false) {
+  const r = el.getBoundingClientRect();
+  return { x: r.left + dx, y: (top ? r.top : r.bottom) + dy };
+}
+
+// inViewport returns point at, in content coordinates, in the points of
+// the UI's viewport, where a native menu opens.
+function inViewport(at) {
+  const o = contentOrigin();
+  return { x: at.x + o.x, y: at.y + o.y };
+}
+
 // statusLine returns why an item isn't ready, with its marker, for the
 // first line of its menu, or null for an item that's ready.
 function statusLine(item) {
@@ -255,11 +539,14 @@ function statusLine(item) {
 // Arrow and End to the last (menuKeys in keyboard.js). Closing it gives the
 // focus back to opener, the data-key of the control that opened it: the
 // menu button, or a sub-tab that opened it from the keyboard (roving.js).
-export function openWindowMenu(button, itemId, paneId, at = null, opener = button.dataset.key || null) {
+// A native menu opens at the pointer too, or else below the button, at its
+// left, as a pop-up button's does (openMenu). later is what the click that
+// opened it does in its pane if it closes with nothing chosen.
+export function openWindowMenu(button, itemId, paneId, at = null, opener = button.dataset.key || null, later = null) {
   const view = store.view;
   const o = contentOrigin();
   const r = button.getBoundingClientRect();
-  store.ui.menu = {
+  const m = {
     kind: 'window',
     itemId,
     paneId: realPaneOf(view, itemId, paneId),
@@ -271,9 +558,7 @@ export function openWindowMenu(button, itemId, paneId, at = null, opener = butto
     webApp: null,
     status: statusLine(itemOf(view, itemId)),
   };
-  store.ui.pendingFocus = 'window-menu';
-  update();
-  if (asksWebApp(itemOf(view, itemId))) askWebAppChoice(store.ui.menu);
+  openMenu(m, 'window-menu', at ? inViewport(at) : under(button), later);
 }
 
 // menuX keeps a window or tab menu that starts at x inside the window
@@ -298,25 +583,29 @@ export function tabMenuEntries(view, index) {
   const only = count === 1;
   return withSeparators([
     [
-      { label: 'Tab Properties…', opens: true, run: () => openEditor(index) },
+      { id: 'tab-properties', label: 'Tab Properties…', opens: true, run: () => openEditor(index) },
       // The tab's name turns into a field, with the name selected, to type
       // a new one, as a double-click on the tab does.
-      { label: 'Rename…', run: () => startTabRename(index) },
+      { id: 'rename', label: 'Rename…', run: () => startTabRename(index) },
     ],
     only ? [] : [
-      index > 0 ? { label: 'Move Tab Left', run: () => act('MoveTab', index, index - 1) } : { label: 'Move Tab Left', disabled: true },
-      index < count - 1 ? { label: 'Move Tab Right', run: () => act('MoveTab', index, index + 1) } : { label: 'Move Tab Right', disabled: true },
+      index > 0
+        ? { id: 'move-tab-left', label: 'Move Tab Left', run: () => act('MoveTab', index, index - 1) }
+        : { id: 'move-tab-left', label: 'Move Tab Left', disabled: true },
+      index < count - 1
+        ? { id: 'move-tab-right', label: 'Move Tab Right', run: () => act('MoveTab', index, index + 1) }
+        : { id: 'move-tab-right', label: 'Move Tab Right', disabled: true },
     ],
     [
-      { label: 'Rearrange', keys: current ? keysOf(view).rearrange || '' : '', run: () => rearrangeTab(index) },
+      { id: 'rearrange', label: 'Rearrange', keys: current ? keysOf(view).rearrange || '' : '', run: () => rearrangeTab(index) },
       // As in Tab properties, Reset Layout doesn't ask first.
-      { label: 'Reset Layout', run: () => act('ResetLayout', index) },
+      { id: 'reset-layout', label: 'Reset Layout', run: () => act('ResetLayout', index) },
     ],
     [
-      { label: closeTabLabel(view), run: () => closeTab(index) },
-      ...(only ? [] : [{ label: 'Delete Tab (Keep Windows)', run: () => act('DeleteTab', index) }]),
+      { id: 'close-tab', label: closeTabLabel(view), run: () => closeTab(index) },
+      ...(only ? [] : [{ id: 'delete-tab', label: 'Delete Tab (Keep Windows)', run: () => act('DeleteTab', index) }]),
     ],
-    [{ label: 'New Tab…', opens: true, run: () => openEditor(-1) }, ...reopenEntries(view)],
+    [{ id: 'new-tab', label: 'New Tab…', opens: true, run: () => openEditor(-1) }, ...reopenEntries(view)],
   ]);
 }
 
@@ -328,8 +617,8 @@ function reopenEntries(view) {
   const name = (view.closedTabs || [])[0];
   const item = (view.closedItems || [])[0];
   return [
-    ...(name ? [{ label: 'Reopen Closed Tab', detail: name, run: () => act('ReopenTab', name) }] : []),
-    ...(item ? [{ label: reopenItemLabel(item), detail: item.label, run: () => act('ReopenItem', item.id) }] : []),
+    ...(name ? [{ id: 'reopen-tab', label: 'Reopen Closed Tab', detail: name, run: () => act('ReopenTab', name) }] : []),
+    ...(item ? [{ id: 'reopen-item', label: reopenItemLabel(item), detail: item.label, run: () => act('ReopenItem', item.id) }] : []),
   ];
 }
 
@@ -342,15 +631,18 @@ export function reopenItemLabel(item) {
 
 // paneMenuEntries lists what an empty pane's menu offers, with the names
 // that the menu bar's Pane menu gives them: what the buttons in its body
-// do, and zooming it. A pane closes only in a tab that has more
-// than one, shown or zoomed. Adding to it opens the add dialog for addTo,
-// the pane that the add dialog adds to (the focused pane, for the "tabs"
-// view's compact pane).
+// do, moving the drop-down into it (dropdownEntries), and zooming it. A
+// pane closes only in a tab that has more than one, shown or zoomed.
+// Adding to it, or moving the drop-down into it, is for addTo, the pane
+// that the add dialog adds to (the focused pane, for the "tabs" view's
+// compact pane).
 export function paneMenuEntries(view, paneId, addTo) {
-  const entries = [{ label: 'Add to Pane…', run: () => openAdd(addTo) }];
-  if (panesCanClose(view)) entries.push({ label: 'Close Pane', run: () => act('ClosePane', paneId) });
+  const entries = [{ id: 'add-to-pane', label: 'Add to Pane…', run: () => openAdd(addTo) }];
+  if (panesCanClose(view)) entries.push({ id: 'close-pane', label: 'Close Pane', run: () => act('ClosePane', paneId) });
+  const drop = dropdownEntries(view, addTo);
+  if (drop.length) entries.push({ sep: true }, ...drop);
   const zoom = zoomEntry(view, paneId);
-  if (zoom) entries.push({ sep: true }, { label: zoom.zoomed ? 'Show All Panes' : 'Zoom Pane', keys: zoom.keys, run: zoom.run });
+  if (zoom) entries.push({ sep: true }, { id: 'zoom-pane', label: zoom.zoomed ? 'Show All Panes' : 'Zoom Pane', keys: zoom.keys, run: zoom.run });
   return entries;
 }
 
@@ -393,10 +685,11 @@ function withSeparators(groups) {
 }
 
 // rearrangeTab arranges tab index again. Go arranges only the current tab,
-// so another tab is switched to first.
+// so another tab is switched to first, as is the tab Go has current while
+// a switch to another is on its way (shownCurrent, decision 67).
 async function rearrangeTab(index) {
-  if (index !== store.view.current) {
-    const r = await act('SwitchTab', index);
+  if (index !== shownCurrent(store.view)) {
+    const r = await switchTab(index);
     if (!r.ok) return;
   }
   act('Rearrange');
@@ -406,15 +699,14 @@ async function rearrangeTab(index) {
 // the tab in the tab strip: at the pointer (at, in content coordinates), or
 // below the tab without one. The tab isn't switched to: the menu is about
 // that tab, whichever is current. If it replaces a window menu, the click
-// that opened that menu no longer focuses its pane (ui.paneLater).
+// that opened that menu no longer focuses its pane (openMenu).
 export function openTabMenu(tabEl, index, at = null) {
   const view = store.view;
   const tab = view.tabs[index];
   if (!tab) return;
-  store.ui.paneLater = null;
   const o = contentOrigin();
   const r = tabEl.getBoundingClientRect();
-  store.ui.menu = {
+  const m = {
     kind: 'tab',
     index,
     // tabName is the tab's name when the menu opened, to find it by
@@ -424,8 +716,7 @@ export function openTabMenu(tabEl, index, at = null) {
     y: at ? at.y : r.bottom - o.y + 4,
     opener: tabEl.dataset.key || null,
   };
-  store.ui.pendingFocus = 'menu-item-0';
-  update();
+  openMenu(m, 'menu-item-0', at ? inViewport(at) : under(tabEl));
 }
 
 // openNotices opens the list of notices by the button that opens it.
@@ -476,7 +767,7 @@ function listStyle(m) {
 // layoutMenuEntries lists the layouts, with the one in use ticked, and why
 // the layout is as it is.
 export function layoutMenuEntries(view) {
-  const entries = LAYOUT_MODES.map(([id, label]) => ({ label, checked: view.mode === id, run: () => act('SetMode', id) }));
+  const entries = LAYOUT_MODES.map(([id, label]) => ({ id: 'layout:' + id, label, checked: view.mode === id, run: () => act('SetMode', id) }));
   entries.push({ sep: true }, { note: sentence(layoutText(view, currentTab(view))) });
   return entries;
 }
@@ -485,18 +776,16 @@ export function layoutMenuEntries(view) {
 // button, which stands for the layout control there, with the focus on the
 // layout in use.
 export function openLayoutMenu(button) {
-  store.ui.paneLater = null;
   const o = contentOrigin();
   const r = button.getBoundingClientRect();
-  store.ui.menu = {
+  const m = {
     kind: 'layout',
     x: menuX(r.left - o.x),
     y: r.bottom - o.y + 4,
     opener: button.dataset.key || null,
   };
   const view = store.view;
-  store.ui.pendingFocus = 'menu-item-' + Math.max(0, LAYOUT_MODES.findIndex(([id]) => view && id === view.mode));
-  update();
+  openMenu(m, 'menu-item-' + Math.max(0, LAYOUT_MODES.findIndex(([id]) => view && id === view.mode)), under(button));
 }
 
 // attentionEntries lists the windows that need attention, each with why:
@@ -505,6 +794,7 @@ function attentionEntries(view) {
   return attentionOf(view).map(({ itemId, paneId }) => {
     const item = itemOf(view, itemId);
     return {
+      id: 'show:' + paneId + '/' + itemId,
       label: labelOf(view, itemId),
       detail: sentence(statusText(item)),
       marker: markerOf(item),
@@ -685,13 +975,13 @@ export function installMenuHover() {
 
 // openPaneMenu opens an empty pane's menu, for a right-click on its header
 // or body: at the pointer (at, in content coordinates), or below the
-// header (el) without one.
-export function openPaneMenu(el, paneId, addTo, at = null) {
+// header (el) without one. later is what the click does in the pane if
+// the menu closes with nothing chosen.
+export function openPaneMenu(el, paneId, addTo, at = null, later = null) {
   const view = store.view;
-  store.ui.paneLater = null;
   const o = contentOrigin();
   const r = el.getBoundingClientRect();
-  store.ui.menu = {
+  const m = {
     kind: 'pane',
     paneId,
     addTo,
@@ -700,20 +990,20 @@ export function openPaneMenu(el, paneId, addTo, at = null) {
     y: at ? at.y : r.bottom - o.y + 4,
     opener: null,
   };
-  store.ui.pendingFocus = 'menu-item-0';
-  update();
+  openMenu(m, 'menu-item-0', at ? inViewport(at) : under(el, 8), later);
 }
 
 // openTerminalMenu opens a terminal's menu (terminals.menuEntries), for a
 // right-click in the terminal (host, its element), shown in pane paneId: at
 // the pointer (at, in content coordinates), or at the terminal's top left
-// without one. The terminal gets the keyboard back when it closes.
-export function openTerminalMenu(host, itemId, paneId, at = null) {
+// without one. The terminal gets the keyboard back when it closes. later
+// is what the click does in the pane if the menu closes with nothing
+// chosen.
+export function openTerminalMenu(host, itemId, paneId, at = null, later = null) {
   const view = store.view;
-  store.ui.paneLater = null;
   const o = contentOrigin();
   const r = host.getBoundingClientRect();
-  store.ui.menu = {
+  const m = {
     kind: 'terminal',
     itemId,
     paneId,
@@ -723,8 +1013,7 @@ export function openTerminalMenu(host, itemId, paneId, at = null) {
     y: at ? at.y : r.top - o.y + 8,
     opener: termKey(itemId),
   };
-  store.ui.pendingFocus = 'menu-item-0';
-  update();
+  openMenu(m, 'menu-item-0', at ? inViewport(at) : under(host, 8, 8, true), later);
 }
 
 // renderMenu returns the open menu's HTML.
@@ -741,8 +1030,8 @@ export function renderMenu(view, ui) {
       + ' style="' + listStyle(m) + '">'
       + '<div class="menu-heading" role="presentation">Need attention</div>' + renderEntries(entries) + '</div>';
   }
+  const entries = menuEntriesOf(view, m);
   if (m.kind === 'layout') {
-    const entries = layoutMenuEntries(view);
     ui.menuEntries = entries;
     // The note, why the layout is in use, describes the menu.
     return '<div class="menu" role="menu" aria-label="Layout" id="layout-menu" aria-describedby="menu-note-' + entries.findIndex((e) => e.note) + '"'
@@ -751,26 +1040,22 @@ export function renderMenu(view, ui) {
   if (m.kind === 'tab') {
     const tab = view.tabs[m.index];
     if (!tab) return '';
-    const entries = tabMenuEntries(view, m.index);
     ui.menuEntries = entries;
     return '<div class="menu" role="menu" aria-label="' + esc('Options for the ' + tab.name + ' tab') + '" id="tab-menu"'
       + ' data-scroll="tab-menu" style="' + menuStyle(m) + '">' + renderEntries(entries) + '</div>';
   }
   if (m.kind === 'terminal') {
-    const entries = terminals.menuEntries(m.itemId);
     if (!entries.length) return '';
     ui.menuEntries = entries;
     return renderTerminalMenu(entries, menuStyle(m));
   }
   if (m.kind === 'pane') {
-    const entries = paneMenuEntries(view, m.paneId, m.addTo);
     ui.menuEntries = entries;
     return '<div class="menu" role="menu" aria-label="Pane options" id="pane-menu"'
       + ' data-scroll="pane-menu" style="' + menuStyle(m) + '">' + renderEntries(entries) + '</div>';
   }
   const item = itemOf(view, m.itemId);
   if (!item) return '';
-  const entries = windowMenuEntries(view, m.itemId, m.paneId, m.webApp, m.status);
   ui.menuEntries = entries;
   // An open submenu whose entry has gone closes.
   const open = m.sub ? entries.findIndex((e) => e.submenu && e.id === m.sub) : -1;
@@ -807,20 +1092,25 @@ export function renderTerminalMenu(entries, style) {
 }
 
 // renderEntries returns the HTML of a menu's entries. An entry can have a
-// marker before its label, and a detail on a line below it. A status line
+// marker before its label, or the dot of a tab's colour (tabDot), and a
+// detail on a line below it. A status line
 // says why a window isn't ready, as a disabled line with its marker. An
 // entry that's one of a choice (checked, true or false) is ticked if it's
-// the one chosen. Entries in a row (row) are buttons side by side, each
-// with its icon, or its text, and its label as its tooltip, after the row's
-// name (under), with a gap before one that starts a group of its own (gap):
-// a web page's Back, Forward, and zooms (pages.js). An entry with a
-// submenu, such as Move to Tab, opens it (data-action "menu-sub"), and is
-// marked as expanded while submenu open is. With parent, the entries are
-// those of the submenu of the menu's entry at parent: each runs as entry
-// data-sub of it.
+// the one chosen. A checkbox (checkbox, with checked) is a setting that's
+// on or off on its own, such as a page's Keep Running in the Background,
+// ticked while it's on. A menu with a checkbox keeps a column for its tick
+// before every entry, as a Mac menu does, so that the labels line up
+// (ticks): the headings, notes, and submenu entries too. An entry with a
+// submenu, such as Move to Tab or a web page's Page, opens it (data-action
+// "menu-sub"), and is marked as expanded while submenu open is. With
+// parent, the entries are those of the submenu of the menu's entry at
+// parent: each runs as entry data-sub of it.
 function renderEntries(entries, { open = null, parent = null } = {}) {
   const sub = parent != null;
   const prefix = sub ? 'menu-sub-' : 'menu-item-';
+  const ticks = entries.some((e) => e.checkbox);
+  const slot = ticks ? '<span class="menu-tick" aria-hidden="true"></span>' : '';
+  const ticked = ticks ? ' ticked' : '';
   const at = (i) => (sub ? ' data-index="' + parent + '" data-sub="' + i + '"' : ' data-index="' + i + '"');
   let n = 0;
   // A note says why the disabled entries before it, up to the separator
@@ -834,39 +1124,28 @@ function renderEntries(entries, { open = null, parent = null } = {}) {
   return entries.map((e, i) => {
     const noteId = e.disabled ? noteFor(i) : '';
     if (e.sep) return '<div class="menu-sep" role="separator"></div>';
-    if (e.heading) return '<div class="menu-heading" role="presentation">' + esc(e.heading) + '</div>';
-    if (e.note) return '<div class="menu-note" role="none" id="menu-note-' + i + '">' + esc(e.note) + '</div>';
-    if (e.status) return '<div class="menu-status" role="none" id="menu-status">' + statusMark(e.marker) + '<span>' + esc(e.status) + '</span></div>';
+    if (e.heading) return '<div class="menu-heading' + ticked + '" role="presentation">' + esc(e.heading) + '</div>';
+    if (e.note) return '<div class="menu-note' + ticked + '" role="none" id="menu-note-' + i + '">' + esc(e.note) + '</div>';
+    if (e.status) return '<div class="menu-status' + ticked + '" role="none" id="menu-status">' + statusMark(e.marker) + '<span>' + esc(e.status) + '</span></div>';
     const key = e.disabled ? (sub ? 'menu-sub-disabled-' : 'menu-disabled-') + i : prefix + (n++);
     if (e.submenu) {
       const expanded = open === e.id;
       return '<button type="button" class="menu-item has-sub" role="menuitem" aria-haspopup="menu" aria-expanded="' + expanded + '"'
         + (expanded ? ' id="menu-parent" aria-controls="menu-sub"' : '')
         + ' data-action="menu-sub" data-index="' + i + '" data-key="' + key + '">'
-        + '<span class="menu-label">' + esc(e.label) + '</span><span class="menu-sub-mark" aria-hidden="true">' + ICONS.chevron + '</span></button>';
-    }
-    if (e.row) {
-      const first = !entries[i - 1] || entries[i - 1].row !== e.row;
-      const last = !entries[i + 1] || entries[i + 1].row !== e.row;
-      const name = e.label + (e.detail ? ' (' + e.detail.toLowerCase() + ')' : '');
-      return (first ? '<div class="menu-row" role="group" aria-label="' + esc(e.under || '') + '">'
-          + '<span class="menu-row-label" aria-hidden="true">' + esc(e.under || '') + '</span>' : '')
-        + (e.gap ? '<span class="menu-row-gap" aria-hidden="true"></span>' : '')
-        + '<button type="button" class="menu-item menu-icon' + (e.text ? ' text' : '') + '" role="menuitem" data-action="menu-run"' + at(i)
-        + ' data-key="' + key + '" aria-label="' + esc(name) + '" title="' + esc(e.label) + '"' + (e.disabled ? ' disabled' : '') + '>'
-        + (e.text ? esc(e.text) : e.icon) + '</button>'
-        + (last ? '</div>' : '');
+        + slot + '<span class="menu-label">' + esc(e.label) + '</span><span class="menu-sub-mark" aria-hidden="true">' + ICONS.chevron + '</span></button>';
     }
     const label = e.detail
       ? '<span class="menu-label stacked"><span class="menu-main">' + esc(e.label) + '</span><span class="menu-detail">' + esc(e.detail) + '</span></span>'
       : '<span class="menu-label' + (e.wrap ? ' wrap' : '') + '">' + esc(e.label) + '</span>';
     const choice = typeof e.checked === 'boolean';
-    const role = choice ? 'menuitemradio" aria-checked="' + e.checked : 'menuitem';
-    const tick = choice ? '<span class="menu-tick">' + (e.checked ? ICONS.check : '') + '</span>' : '';
+    const kind = e.checkbox ? 'menuitemcheckbox' : 'menuitemradio';
+    const role = choice ? kind + '" aria-checked="' + e.checked : 'menuitem';
+    const tick = choice ? '<span class="menu-tick">' + (e.checked ? ICONS.check : '') + '</span>' : slot;
     return '<button type="button" class="menu-item" role="' + role + '" data-action="menu-run"' + at(i) + ' data-key="' + key + '"'
       + (e.detail ? ' aria-label="' + esc(e.label + ': ' + e.detail) + '"' : '')
       + (e.disabled ? ' disabled' + (noteId ? ' aria-describedby="' + noteId + '"' : '') : '') + '>'
-      + tick + statusMark(e.marker) + label + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
+      + tick + statusMark(e.marker) + (e.dot ? tabDot({ colour: e.dot }) : '') + label + (e.keys ? '<kbd>' + esc(e.keys) + '</kbd>' : '') + '</button>';
   }).join('');
 }
 
@@ -881,8 +1160,9 @@ function menuStyle(m) {
 // renderNotices returns the list of notices, each with its buttons, such
 // as Reload for a config.toml changed outside Bench, then the recent
 // messages: the toasts and the notices that have gone, each with when it
-// came, its whole text, and Copy. A notice's button calls the bound method
-// that Go names for it (runNoticeAction).
+// came, its whole text, and Copy, after the toast's Undo or Keep over Bench
+// while it still applies. A notice's button calls the bound method that Go
+// names for it (runNoticeAction).
 function renderNotices(view, m) {
   const notices = view.notices || [];
   const messages = recentMessages(view);
@@ -902,7 +1182,7 @@ function renderNotices(view, m) {
       + '<div class="message-head"><time datetime="' + esc(new Date(msg.time).toISOString()) + '">' + esc(clockTime(msg.time)) + '</time>'
       + (msg.kind === 'notice' ? '<span>Notice</span>' : '')
       + (msg.count > 1 ? '<span>' + msg.count + ' times</span>' : '')
-      + messageUndo(view, msg)
+      + messageUndo(view, msg) + messageKeep(view, msg, i)
       + '<button type="button" class="btn small" data-action="message-copy" data-index="' + i + '" data-key="message-' + i + '"'
       + ' aria-label="' + esc('Copy the message from ' + clockTime(msg.time)) + '">Copy</button></div>'
       + '<div class="message-text">' + esc(msg.text) + '</div></div>').join('')
@@ -911,14 +1191,40 @@ function renderNotices(view, m) {
 
 // messageUndo returns the HTML of a recent message's Undo, while the
 // change that its toast's Undo takes back is still the latest that Go can
-// take back (View.undo): its toast may have gone, or be under the list
-// (keepToastOffList). It says what it takes back, as the menu bar's Tab ▸
-// Undo does.
+// take back (View.undo), or is Bench's move back to the display that the
+// user chose, while Go can still take that back (View.wentBack), which
+// isn't one of the changes that Tab ▸ Undo takes back: its toast may have
+// gone, or be under the list (keepToastOffList). It says what it takes
+// back, as the menu bar's Tab ▸ Undo does.
 function messageUndo(view, msg) {
-  const undo = view.undo;
-  if (!msg.undo || !undo || undo.step !== msg.undo) return '';
-  return '<button type="button" class="btn small" data-action="message-undo" data-step="' + msg.undo + '" data-key="message-undo"'
+  if (!msg.undo) return '';
+  const undo = [view.undo, view.wentBack].find((u) => u && u.step === msg.undo);
+  if (!undo) return '';
+  const key = undo === view.undo ? 'message-undo' : 'message-undo-back';
+  return '<button type="button" class="btn small" data-action="message-undo" data-step="' + msg.undo + '" data-key="' + key + '"'
     + ' aria-label="' + esc('Undo ' + (undo.name || '')) + '" title="' + esc(sentence(undoHint(undo) || 'Undo the change')) + '">Undo</button>';
+}
+
+// messageKeep returns the HTML of recent message i's Keep over Bench, as
+// its toast had, while Go can still keep that app's windows over Bench
+// (View.keepOver): the toast shows for a few seconds, and Bench says once
+// for each app that it put the app's windows out of sight. View.keepOver
+// has lower-case bundle IDs, and the toast the app's as macOS gives it,
+// such as com.apple.Preview, which the button passes on for the rule.
+function messageKeep(view, msg, i) {
+  if (!msg.keep || !(view.keepOver || []).includes(msg.keep.toLowerCase())) return '';
+  return '<button type="button" class="btn small" data-action="message-keep" data-item="' + esc(msg.keep) + '" data-key="message-keep-' + i + '"'
+    + ' aria-label="' + esc('Keep over Bench, for the message from ' + clockTime(msg.time)) + '"'
+    + ' title="Let this app\'s windows stay over Bench. Bench adds a rule to config.toml.">Keep over Bench</button>';
+}
+
+// keepMessage keeps an app's windows over Bench, for a recent message's
+// Keep over Bench, as its toast's button does. The list stays open, and
+// shows what Go says at its top; the keyboard goes back to the list, as
+// the button goes.
+export function keepMessage(bundleID) {
+  store.ui.pendingFocus = 'notices-list';
+  act('KeepOverBench', bundleID);
 }
 
 // undoMessage takes back the change of a recent message's Undo, step. The
@@ -1046,9 +1352,8 @@ function placeSubmenu(el, m) {
 }
 
 // maxHeightBelow returns the CSS max-height of a window or tab menu whose
-// top is at top: the room down to the window's bottom, less a margin. A
-// web page's menu, with its Page group, needs most of a laptop's window
-// (decision 50).
+// top is at top: the room down to the window's bottom, less a margin: a
+// menu taller than that scrolls.
 function maxHeightBelow(top) {
   return Math.max(0, windowElement().clientHeight - 8 - top) + 'px';
 }

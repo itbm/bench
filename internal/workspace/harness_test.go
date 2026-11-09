@@ -54,10 +54,19 @@ type recEmitter struct {
 	actions  []ToastAction
 	seconds  []*ToastAction
 	commands []Command
-	data     []TermData
-	popped   []string
-	closed   []string
-	bars     []MenuBar
+	// commandAt holds, for each command, how many states came before it.
+	commandAt []int
+	data      []TermData
+	popped    []string
+	closed    []string
+	bars      []MenuBar
+	// drops holds each ShowDropdown and HideDropdown call, as "show w12
+	// 40" or "hide w12", and dropErr is ShowDropdown's error. windows
+	// holds the CloseTerminalWindow and ShowDropdown calls together, in
+	// turn, as "close w12" and "show w12".
+	drops   []string
+	dropErr error
+	windows []string
 	// shortcuts counts the ShortcutsChanged calls, fills the FillScreen
 	// calls, forwards the BringForward calls, quits the Quit calls, and
 	// relaunches the Relaunch calls.
@@ -67,8 +76,10 @@ type recEmitter struct {
 	quits      int
 	relaunches int
 	popErr     error
-	// onPop runs as a terminal's window opens, without the lock.
-	onPop func(id string)
+	// onPop runs as a terminal's window opens, without the lock, and
+	// onCommand as a command is sent, without mu.
+	onPop     func(id string)
+	onCommand func(c Command)
 	// pauses holds each PauseShortcuts call's argument, and checked the
 	// tables CheckShortcuts was asked about; check, if set, answers it.
 	pauses  []bool
@@ -76,6 +87,15 @@ type recEmitter struct {
 	check   func(fields map[string]string) []ShortcutView
 	// looks holds each Appearance call's argument.
 	looks []string
+	// moves holds each MoveToScreen call.
+	moves []benchMove
+}
+
+// benchMove is a MoveToScreen call: where the shell was to move Bench's
+// window, and whether it was to fill the screen there.
+type benchMove struct {
+	content layout.Rect
+	fill    bool
 }
 
 func (r *recEmitter) State(v View) {
@@ -135,8 +155,13 @@ func (r *recEmitter) lastHasAction() bool {
 
 func (r *recEmitter) Command(c Command) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.commands = append(r.commands, c)
+	r.commandAt = append(r.commandAt, len(r.states))
+	on := r.onCommand
+	r.mu.Unlock()
+	if on != nil {
+		on(c)
+	}
 }
 
 func (r *recEmitter) TermData(d TermData) {
@@ -162,6 +187,42 @@ func (r *recEmitter) CloseTerminalWindow(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.closed = append(r.closed, id)
+	r.windows = append(r.windows, "close "+id)
+}
+
+func (r *recEmitter) ShowDropdown(id, title string, height int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.dropErr != nil {
+		return r.dropErr
+	}
+	r.drops = append(r.drops, fmt.Sprintf("show %s %d", id, height))
+	r.windows = append(r.windows, "show "+id)
+	return nil
+}
+
+func (r *recEmitter) HideDropdown(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.drops = append(r.drops, "hide "+id)
+}
+
+// windowCalls returns the CloseTerminalWindow and ShowDropdown calls, in
+// turn.
+func (r *recEmitter) windowCalls() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.windows)
+}
+
+// dropdownCalls returns the ShowDropdown and HideDropdown calls, in turn,
+// and forgets them.
+func (r *recEmitter) dropdownCalls() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := r.drops
+	r.drops = nil
+	return out
 }
 
 func (r *recEmitter) MenuBar(m MenuBar) {
@@ -225,6 +286,19 @@ func (r *recEmitter) FillScreen() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.fills++
+}
+
+func (r *recEmitter) MoveToScreen(content layout.Rect, fill bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.moves = append(r.moves, benchMove{content, fill})
+}
+
+// benchMoves returns the MoveToScreen calls so far.
+func (r *recEmitter) benchMoves() []benchMove {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.moves)
 }
 
 func (r *recEmitter) Quit() {
@@ -469,6 +543,9 @@ type setup struct {
 	noStart bool
 	// screen is the screen; the zero Screen means the monitor.
 	screen platform.Screen
+	// dir is the support folder; "" means a new one from t.TempDir, whose
+	// path can be too long for a socket on macOS.
+	dir string
 }
 
 // harness runs an engine against a Fake platform and a Fake clock. Events
@@ -537,7 +614,10 @@ func newHarness(t *testing.T, s setup) *harness {
 	p.SetScreens(screen)
 	content := screen.Visible
 	p.SetContentFrame(content)
-	h := &harness{t: t, clk: clk, p: p, em: &recEmitter{}, terms: newFakeTerms(), dir: t.TempDir()}
+	h := &harness{t: t, clk: clk, p: p, em: &recEmitter{}, terms: newFakeTerms(), dir: s.dir}
+	if h.dir == "" {
+		h.dir = t.TempDir()
+	}
 	h.bench = p.AddApp(benchID, "Bench", platform.AppNotInstalled())
 	p.AddWindow(benchID, "Bench")
 	p.SetOwnApp(benchID)

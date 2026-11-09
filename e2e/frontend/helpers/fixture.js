@@ -237,22 +237,25 @@ const DEFAULT_SETTINGS = {
   hideOtherApps: false,
   newWindows: 'app-pane',
   followFocus: 'switch-tab',
+  coveringWindows: 'hide',
   livePreviews: false,
   dragToAdd: true,
   terminalFontSize: 12.5,
   terminalOptionAsMeta: false,
   notifyTerminals: true,
   keepTerminalOutput: true,
+  dropdownHeight: 40,
   launchTimeout: '15s',
+  allowScripts: false,
   launchers: [],
 };
 
 // STARTER_TABS are the tabs that Go's StarterTabs suggests on a Mac with
-// Slack, Mail, VS Code, and Obsidian installed.
+// Slack, Mail, VS Code, and Obsidian installed, with their colours.
 const STARTER_TABS = [
-  { name: 'Comms', apps: [{ bundleId: 'com.tinyspeck.slackmacgap', name: 'Slack', mono: 'Sl' }, { bundleId: 'com.apple.mail', name: 'Mail', mono: 'Ma' }] },
-  { name: 'Code', apps: [{ bundleId: 'com.microsoft.VSCode', name: 'Visual Studio Code', mono: 'VS' }, { name: 'Terminal', mono: '>_' }] },
-  { name: 'Plan', apps: [{ bundleId: 'md.obsidian', name: 'Obsidian', mono: 'Ob' }] },
+  { name: 'Comms', colour: 'blue', apps: [{ bundleId: 'com.tinyspeck.slackmacgap', name: 'Slack', mono: 'Sl' }, { bundleId: 'com.apple.mail', name: 'Mail', mono: 'Ma' }] },
+  { name: 'Code', colour: 'green', apps: [{ bundleId: 'com.microsoft.VSCode', name: 'Visual Studio Code', mono: 'VS' }, { name: 'Terminal', mono: '>_' }] },
+  { name: 'Plan', colour: 'purple', apps: [{ bundleId: 'md.obsidian', name: 'Obsidian', mono: 'Ob' }] },
 ];
 
 // monoOf makes a monogram of a name, roughly as Go's apps.Mono does: the
@@ -303,6 +306,7 @@ const DEFAULT_KEYS = {
   previousLayout: '',
   addFrontWindow: '',
   undo: '',
+  dropdown: '',
 };
 
 // SHORTCUTS are the fields of the [shortcuts] table, in config order, as
@@ -328,6 +332,7 @@ const SHORTCUTS = [
   { field: 'previous_layout', key: 'previousLayout', label: 'Previous layout', default: '' },
   { field: 'add_front_window', key: 'addFrontWindow', label: 'Add front window to this pane', default: '' },
   { field: 'undo', key: 'undo', label: 'Undo the latest change', default: '' },
+  { field: 'dropdown', key: 'dropdown', label: 'Show or hide the drop-down', default: '' },
 ];
 
 // SHORTCUT_MODS are the modifiers' symbols and their names in config.toml,
@@ -405,8 +410,10 @@ function shortcutRows(world) {
 // tabs that Reopen Closed Tab can bring back, latest first), lastTab (the
 // index of the tab used before the current one), arrange (what Go says the
 // keys that arrange the panes would do now, as display.arrange). FakeGo
-// keeps the web pages and terminals closed since in world.closedItems, and
-// the latest change that Undo can take back in world.undo.
+// keeps the web pages and terminals closed since in world.closedItems, the
+// latest change that Undo can take back in world.undo, and Bench's move
+// back to the display that the user chose, while Undo can take it back,
+// in world.wentBack.
 function defaultWorld(opts = {}) {
   const items = {
     w1: item('w1', 'web', 'Slack', 'Sl', '# general', { url: 'https://app.slack.com/client', host: 'app.slack.com', site: 'slack.com' }),
@@ -454,6 +461,11 @@ function defaultWorld(opts = {}) {
     // installsUpdates is set when Bench has Sparkle, which installs new
     // versions.
     installsUpdates: Boolean(opts.installsUpdates),
+    // nativeMenus is set for the app, which shows Bench's menus as native
+    // macOS menus (ShowMenu), and menuChoice is the ID of the entry that
+    // the user chooses in one, or '' to close it.
+    nativeMenus: Boolean(opts.nativeMenus),
+    menuChoice: '',
     // starterTabs are the tabs Go would suggest for the welcome guide's
     // starting set-up, as StarterTabs returns them, before it leaves out
     // those whose name a tab has.
@@ -586,6 +598,9 @@ function buildView(world) {
         sendShortcut: world.keys.sendToTab && i < 9 ? world.keys.sendToTab + (i + 1) : '',
         preset: t.preset,
         smallScreens: t.smallScreens,
+        // A world's tab has a colour if it's given one; the default
+        // world's have none.
+        colour: t.colour || '',
         root: clone(t.root),
         focus: t.focus,
         apps: ids.map((id) => world.items[id].app).filter((a, k, all) => all.indexOf(a) === k),
@@ -642,6 +657,7 @@ function buildView(world) {
     appearance: preview.appearance || world.settings.appearance || 'system',
     systemScrollBars: Boolean(world.systemScrollBars),
     voiceOver: Boolean(world.voiceOver),
+    ...(world.windowTools && world.windowTools.length ? { windowTools: [...world.windowTools] } : {}),
     keys: { ...world.keys },
     shortcuts: shortcutRows(world),
     permissions: { ...world.permissions },
@@ -653,11 +669,18 @@ function buildView(world) {
     openAtLogin: world.openAtLogin,
     ...(world.loginApproval ? { loginApproval: true } : {}),
     ...(world.installsUpdates ? { installsUpdates: true } : {}),
+    ...(world.nativeMenus ? { nativeMenus: true } : {}),
     ...(Object.keys(world.dialogs || {}).length ? { dialogs: clone(world.dialogs) } : {}),
     ...(world.demo ? { demo: { ...world.demo } } : {}),
     ...((world.closedTabs || []).length ? { closedTabs: world.closedTabs.slice() } : {}),
     ...((world.closedItems || []).length ? { closedItems: world.closedItems.map((c) => ({ id: c.id, kind: c.kind, label: c.label, tab: c.tab })) } : {}),
     ...(world.undo ? { undo: { ...world.undo } } : {}),
+    ...(world.wentBack ? { wentBack: { ...world.wentBack } } : {}),
+    ...((world.keepOver || []).length ? { keepOver: world.keepOver.slice() } : {}),
+    // dropdown is the drop-down terminal, as Go's DropdownView: { id,
+    // shown, inPage }. Its item is one of world.floating: one that has
+    // come back into a tab is no drop-down, as in Go.
+    ...(world.dropdown && world.floating.some((f) => f.id === world.dropdown.id) ? { dropdown: { ...world.dropdown } } : {}),
   };
 }
 

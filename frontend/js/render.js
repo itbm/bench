@@ -3,17 +3,20 @@
 // focus, the caret, and scroll positions, as the prototype does.
 
 import {
-  actLatest, canRestore, isDemo, keepToastOffList, placeToast, recentMessages, store, syncOverlay,
+  act, actLatest, canRestore, isDemo, keepToastOffList, menuOpen, placeToast, recentMessages, shownCurrent, store, syncOverlay,
 } from './state.js';
 import {
-  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, contentRect, currentTab, esc, focusKey, hostParts, ICONS, inCurrentTab, isPage,
+  activeOf, alsoInOf, attentionOf, badgeOf, bellMark, colourAttr, contentRect, currentTab, demoToolOn, DROPDOWN_HIDE_KEYS, esc, focusKey, hostParts,
+  ICONS, inCurrentTab, isPage,
   itemOf, isTabKey, joinNames, keysOf, labelOf, LAYOUT_MODES, layoutText, markerOf, needsYouText, notReady, px, radioState, RELEASE_WAIT, sameRect,
   scrollBarsShown, sentence, shownInFocus, STATUS_SHORT, statusBarShown, statusMark, statusText, tabKey, unreadMark, unreadNote, unreadText,
   unreadTip, withKeys,
 } from './util.js';
 import { placeholderFor } from './placeholders.js';
-import { attentionKey, fitMenu, renderMenu } from './menu.js';
-import { captureMarks, captureNotes, focusPageFind, forgetPageFinds, pageFindBar, tabCaptureMark, tabCaptureText } from './pages.js';
+import { fitMenu, renderMenu, staleMenu } from './menu.js';
+import {
+  captureMarks, captureNotes, focusPageFind, forgetPageFinds, NOT_LOADED, pageFindBar, tabCaptureMark, tabCaptureText,
+} from './pages.js';
 import {
   fillPalette, isList, renderPalette, renderRows, syncSelection, syncSplit,
 } from './palette.js';
@@ -37,6 +40,7 @@ import { recheck as recheckPreview } from './preview.js';
 import { syncRoving } from './roving.js';
 import { syncStrips } from './strips.js';
 import * as terminals from './terminals.js';
+import { dropAttrs } from './drops.js';
 import { setAppearance } from './theme.js';
 import { tile } from './tiles.js';
 
@@ -45,6 +49,14 @@ const SCREENS = [
   { id: 'monitor', label: 'Monitor · 2,560 pt' },
   { id: 'laptop', label: 'Laptop · 1,512 pt' },
 ];
+
+// DEMO_UNPLUG and DEMO_PLUG are the label and title of the demo bar's
+// Simulate ▸ Unplug monitor, and of Plug in monitor, which takes its place
+// while the monitor is unplugged (decision 70).
+const DEMO_UNPLUG = ['Unplug monitor',
+  'Pretend that you unplug the monitor, as on a Mac: Bench goes to the laptop\'s screen. Choose Monitor first'];
+const DEMO_PLUG = ['Plug in monitor',
+  'Pretend that you plug the monitor in again, as on a Mac: once the screens settle, Bench goes back to it, and says so'];
 
 // SLIM_BELOW is the width, in points, of a title bar too narrow for the
 // whole layout control and Jump to… beside the tabs (see syncSlim).
@@ -195,7 +207,7 @@ function applyTermFocus() {
   if (!want || !view) return;
   // The wait for the terminal to be drawn starts again once the menu or
   // dialog, or the field that renames a tab or sub-tab, has closed.
-  if (ui.menu || ui.overlay || ui.rename) {
+  if (menuOpen() || ui.overlay || ui.rename) {
     want.until = 0;
     return;
   }
@@ -250,6 +262,9 @@ export function render() {
   // The terminals follow Settings' text size and Option key, before any new
   // one is made.
   terminals.configure(view);
+  // The drop-down goes first, so that a terminal that comes out of it into
+  // a pane, or goes into it, is drawn in one place.
+  syncDropdown(view);
   const panes = $('panes');
   const tab = currentTab(view);
   panes.setAttribute('aria-label', tab ? tab.name + ' tab' : 'Panes');
@@ -265,9 +280,9 @@ export function render() {
   let focusedTerm = '';
   const inEmpty = emptyFocus();
   setRegion(panes, renderPanes(view), {
-    before: () => { focusedTerm = terminals.park(); },
+    before: () => { focusedTerm = terminals.park(panes); },
     after: () => {
-      terminals.attach(panes);
+      terminals.attach(panes, $('dropdown'));
       terminals.unpark(focusedTerm && (!moved || focusedTerm === shown) ? focusedTerm : '');
       if (inEmpty) keepEmptyFocus(panes, inEmpty);
     },
@@ -277,7 +292,7 @@ export function render() {
   if (moved) {
     const el = document.activeElement;
     const host = el && el.closest ? el.closest('.term-host[data-term-host]') : null;
-    if (host && host.dataset.termHost !== shown) el.blur();
+    if (host && host.dataset.termHost !== shown && !host.closest('#dropdown')) el.blur();
   }
   applyTermFocus();
 
@@ -349,6 +364,88 @@ export function render() {
   measure();
 }
 
+// dropShown is the item ID of the drop-down that the page shows, or ''.
+let dropShown = '';
+// dropReturn is the element that had the focus before the drop-down
+// showed, which gets it back when it hides.
+let dropReturn = null;
+
+// syncDropdown draws the drop-down terminal in the page, in the browser
+// preview, which has no panel for it (DropdownView.InPage): over the top
+// of the window, as the panel covers the top of the screen, as tall as
+// Settings ▸ Terminals says, with a bar that has its name, Back to Bench,
+// and Hide. It slides down as it shows, except with Reduce Motion
+// (styles.css). Its terminal gets the keyboard as it shows, and gives it
+// back as it hides.
+function syncDropdown(view) {
+  const sheet = $('dropdown');
+  const body = $('dropdown-body');
+  if (!sheet || !body) return;
+  const d = view.dropdown;
+  const id = d && d.inPage && d.shown && itemOf(view, d.id) ? d.id : '';
+  if (!id) {
+    if (!dropShown) return;
+    const had = sheet.contains(document.activeElement);
+    dropShown = '';
+    sheet.hidden = true;
+    body.removeAttribute('data-term');
+    if (had) giveFocusBack(view);
+    return;
+  }
+  const height = Number((view.settings || {}).dropdownHeight) || 40;
+  sheet.style.height = height + '%';
+  setRegion($('dropdown-bar'), dropdownBar(view, id));
+  if (dropShown === id) return;
+  if (!dropShown) dropReturn = document.activeElement;
+  dropShown = id;
+  sheet.hidden = false;
+  body.dataset.term = id;
+  terminals.attach($('panes'), sheet);
+  focusDropdown(id, Date.now() + TERM_FOCUS_WAIT);
+}
+
+// dropdownBar returns the HTML of the in-page drop-down's bar. Hide's
+// tooltip has the key that hides it from its terminal, as in its panel.
+function dropdownBar(view, id) {
+  return '<span class="term-window-note">' + esc('Drop-down: ' + labelOf(view, id)) + '</span>'
+    + '<span class="term-window-actions">'
+    + '<button type="button" class="btn small" data-action="dropdown-back-to-bench" data-item="' + esc(id) + '" data-key="dropdown-back-to-bench"'
+    + ' title="' + esc('Put this terminal back in Bench, in the focused pane') + '">' + esc('Back to Bench') + '</button>'
+    + '<button type="button" class="btn small" data-action="hide-dropdown" data-key="hide-dropdown"'
+    + ' title="' + esc(withKeys('Hide the drop-down', DROPDOWN_HIDE_KEYS)) + '">' + esc('Hide') + '</button></span>';
+}
+
+// pressOutsideDropdown hides the browser preview's drop-down for a press of
+// the pointer outside it, as the panel hides when a click elsewhere takes
+// the keyboard from it (terminal-window.js). A press while a dialog or menu
+// is open belongs to that, such as Settings opened with ⌘, from the
+// drop-down.
+export function pressOutsideDropdown(target) {
+  const sheet = $('dropdown');
+  if (!dropShown || !sheet || store.ui.overlay || menuOpen()) return;
+  if (!(target instanceof Node) || sheet.contains(target)) return;
+  act('HideDropdown');
+}
+
+// focusDropdown gives the drop-down's terminal the keyboard once it's
+// ready, while it shows, until a time.
+function focusDropdown(id, until) {
+  if (dropShown !== id || terminals.focus(id) || Date.now() > until) return;
+  setTimeout(() => focusDropdown(id, until), 50);
+}
+
+// giveFocusBack gives the keyboard back as the drop-down hides: to what had
+// it before, or else to the focused pane's terminal.
+function giveFocusBack(view) {
+  const back = dropReturn;
+  dropReturn = null;
+  if (back && back.isConnected && back !== document.body && !back.closest('#dropdown')) {
+    back.focus({ preventScroll: true });
+    if (document.activeElement === back) return;
+  }
+  if (!terminals.focus(shownInFocus(view)) && document.activeElement) document.activeElement.blur();
+}
+
 // focusedTabKey returns the data-key of the tab button in the title bar
 // that has the focus, or null.
 function focusedTabKey() {
@@ -371,40 +468,16 @@ function followTabKey(view, key) {
   return view.tabs.length < drawnTabs.length ? tabKey(view.current) : key;
 }
 
-// syncExpanded marks the control whose menu is open. It's set on the
-// elements rather than in the HTML, so that opening a menu doesn't redraw
-// the panes.
+// syncExpanded marks the control whose menu is open, in HTML or natively.
+// It's set on the elements rather than in the HTML, so that opening a menu
+// doesn't redraw the panes.
 function syncExpanded(ui) {
-  const m = ui.menu;
+  const m = ui.menu || ui.nativeMenu;
   document.querySelectorAll('[aria-expanded="true"]:is([data-action="menu"], [data-action="notices"], [data-action="attention"], [data-action="layout-menu"])')
     .forEach((el) => el.setAttribute('aria-expanded', 'false'));
   if (!m || !m.opener) return;
   const el = document.querySelector('[data-key="' + CSS.escape(m.opener) + '"]');
   if (el && el.hasAttribute('aria-expanded')) el.setAttribute('aria-expanded', 'true');
-}
-
-// staleMenu reports whether an open menu's subject has gone: a window
-// menu's window has closed or left the pane it was opened in, or Go has
-// switched tabs; a tab's menu's tab has been deleted (it follows its tab
-// when others are added or deleted, as Tab properties does); an empty
-// pane's menu's pane has closed or isn't empty any more, or Go has
-// switched tabs; or the windows that need attention have changed, or Go
-// has switched tabs, so that the list's entries don't move under the
-// pointer. The layout menu's subject never goes, nor do the notices', which
-// keep the recent messages once the notices have gone.
-function staleMenu(view, m) {
-  if (m.kind === 'layout') return false;
-  if (m.kind === 'notices') return false;
-  if (m.kind === 'attention') return m.tab !== view.current || attentionKey(view) !== m.key;
-  if (m.kind === 'tab') return !followTab(m, view);
-  const panes = (view.display && view.display.panes) || [];
-  if (m.kind === 'pane') {
-    const pane = panes.find((p) => p.id === m.paneId);
-    return m.tab !== view.current || !pane || (pane.items || []).length > 0;
-  }
-  if (!itemOf(view, m.itemId) || m.tab !== view.current) return true;
-  const pane = panes.find((p) => p.id === m.shownIn);
-  return !pane || !(pane.items || []).includes(m.itemId);
 }
 
 // inTab reports whether an item is in tab ti.
@@ -569,10 +642,22 @@ function applyFrame(view) {
       '<button type="button" data-action="screen" data-screen="' + s.id + '" data-key="screen-' + s.id + '"' + radioState(screen === s.id) + '>'
       + esc(s.label) + '</button>').join(''));
     // The preview pretends that VoiceOver is on, as a Mac would report it,
-    // with its button pressed.
+    // with its button pressed; and so for its window tool, Rectangle.
     const vo = $('demo-voiceover');
     if (vo) vo.setAttribute('aria-pressed', String(Boolean(view.voiceOver)));
-    setRegion($('demo-hint'), esc(demoHint(view)));
+    const tool = $('demo-window-tool');
+    if (tool) tool.setAttribute('aria-pressed', String(demoToolOn(view)));
+    // Unplug monitor becomes Plug in monitor while the monitor is
+    // unplugged.
+    const monitor = $('demo-monitor');
+    if (monitor) {
+      const [label, title] = view.demo.unplugged ? DEMO_PLUG : DEMO_UNPLUG;
+      if (monitor.textContent !== label) monitor.textContent = label;
+      if (monitor.title !== title) monitor.title = title;
+    }
+    const hint = demoHint(view);
+    setRegion($('demo-hint'), esc(hint));
+    if ($('demo-hint').title !== hint) $('demo-hint').title = hint;
   }
 }
 
@@ -657,6 +742,10 @@ function tabKeysShown(view) {
 // and the name a screen reader reads still have the total. A tab's × closes
 // it (closeCross), in its shortcut's place, or in an empty slot of its own
 // on a tab that doesn't show one, so that it never covers the tab's name.
+// The tab that a switch is on its way to shows as current at once, before
+// the View that has it current (shownCurrent, decision 67). A tab with a
+// colour has an underline in it, under its name (decision 74), and the
+// tab that shows as current has its full underline in it.
 //
 // For a screen reader, the tabs are a tablist, and the current tab controls
 // the panes (#panes, named after it). A tab's name starts with its own, as
@@ -669,11 +758,12 @@ function renderTitlebar(view) {
   const paneInTitle = Boolean(titlePaneOf(view));
   const traffic = isDemo() ? '<div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>' : '';
   const close = closeTabTip(view);
+  const current = shownCurrent(view);
   const tabs = view.tabs.map((t, i) => (renamingTab(i)
-    ? '<div class="tab renaming" role="presentation" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '">'
+    ? '<div class="tab renaming" role="presentation" data-index="' + i + '" data-drop-tab="' + i + '" data-current="' + (i === view.current) + '"' + colourAttr(t) + '>'
       + renameField(view, store.ui.rename) + '</div>'
     : '<button type="button" class="tab" role="tab" data-action="tab" data-index="' + i + '" data-drop-tab="' + i + '" data-key="' + tabKey(i) + '"'
-    + tabState(i === view.current, 'panes')
+    + colourAttr(t) + tabState(i === current, 'panes')
     + ' title="' + esc(withKeys(t.name, t.shortcut) + (unreadText(t.unread) ? '\n' + unreadText(t.unread) : '')
       + (tabCaptureText(t) ? '\n' + tabCaptureText(t) : '') + (t.attention ? '\n' + needsYouText(t.attention) : '')) + '">'
     + '<span class="tab-name">' + esc(t.name) + '</span>'
@@ -694,7 +784,8 @@ function renderTitlebar(view) {
   const jumpLabel = esc(jump ? 'Jump to… ' + jump : 'Jump to…');
   return traffic
     + '<div class="tabs" role="tablist" aria-label="Workspace tabs" data-scroll="tabs">' + tabs + '</div>'
-    + '<button type="button" class="icon-btn new-tab" data-action="new-tab" data-key="new-tab" data-drop-new aria-label="New tab" title="New tab">' + ICONS.plus + '</button>'
+    + '<button type="button" class="icon-btn new-tab" data-action="new-tab" data-key="new-tab" data-drop-new' + dropAttrs('new-tab')
+    + ' aria-label="New tab" title="New tab">' + ICONS.plus + '</button>'
     + titlePane(view)
     + '<div class="titlebar-end">'
     + '<div class="seg layout-seg" role="radiogroup" aria-label="Layout" data-activate="manual" title="' + reason + '">' + modes + '</div>'
@@ -716,7 +807,7 @@ function titlePane(view) {
   const p = titlePaneOf(view);
   if (!p) return '';
   const active = activeOf(p);
-  return '<div class="title-pane" data-pane-id="' + esc(p.id) + '">'
+  return '<div class="title-pane" data-pane-id="' + esc(p.id) + '"' + dropAttrs('pane', p.id) + '>'
     + subtabStrip(view, p, active, 'Windows in this tab')
     + paneControls(view, p, active)
     + '</div>';
@@ -774,7 +865,7 @@ function boxStyle(r, area) {
 // has none: the "tabs" view's pane, whose header is in the title bar
 // (titlePane), and a pane whose one App window's own title bar stands in
 // for it (pane_headers). Its body starts just inside its border, as Go's
-// does.
+// does. In a tab with a colour, its header has a band of it along its top.
 function renderPane(view, p, area) {
   const d = view.display;
   const active = activeOf(p);
@@ -783,12 +874,12 @@ function renderPane(view, p, area) {
   let headerHTML = '';
   let flag = '';
   if (header > 0) {
-    headerHTML = '<div class="pane-header">' + subtabStrip(view, p, active, 'Windows in this pane') + paneControls(view, p, active) + '</div>';
+    headerHTML = '<div class="pane-header"' + dropAttrs('pane', p.id) + '>' + subtabStrip(view, p, active, 'Windows in this pane') + paneControls(view, p, active) + '</div>';
   } else {
     flag = ' data-header="' + (p.id === 'compact' ? 'title-bar' : 'none') + '"';
   }
   const focused = p.id === d.focus;
-  return '<section class="pane" data-pane-id="' + esc(p.id) + '" data-focused="' + focused + '"' + flag
+  return '<section class="pane" data-pane-id="' + esc(p.id) + '" data-focused="' + focused + '"' + flag + colourAttr(currentTab(view))
     + ' aria-label="' + esc(item ? labelOf(view, active) : 'Empty pane') + '"'
     + ' style="' + boxStyle(p.rect, area) + '; --pane-header: ' + px(header) + '">'
     + headerHTML
@@ -850,14 +941,19 @@ function subtabStrip(view, p, active, label) {
     // is wider by them, so that the title keeps its room, and the × and
     // its fade stay over the title's end (styles.css).
     const capture = captureNotes(it);
-    const notes = [short.toLowerCase(), unreadNote(it.unread), ...capture.map((c) => c.toLowerCase()), why ? 'needs you' : '',
-      alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
+    // A web page that Bench hasn't loaded yet, such as one in a tab not
+    // shown since Bench opened, posts no notifications and has no unread
+    // count until it's shown, and says so, rather than seem to have none
+    // (decision 76).
+    const notLoaded = it.notLoaded ? NOT_LOADED : '';
+    const notes = [short.toLowerCase(), notLoaded.toLowerCase(), unreadNote(it.unread), ...capture.map((c) => c.toLowerCase()),
+      why ? 'needs you' : '', alsoIn.length ? 'also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // The tooltip has the whole of a title cut short, with its app, then
     // the title its shell or page gives it, under a name of the user's
-    // own, why the item isn't ready, how many unread, why it needs you, and
-    // which other tabs it's in, a line each.
+    // own, why the item isn't ready, that a page isn't loaded yet, how many
+    // unread, why it needs you, and which other tabs it's in, a line each.
     const auto = it.label && it.autoTitle ? 'Automatic title: ' + it.autoTitle : '';
-    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', unreadTip(it.unread), ...capture, why,
+    const tip = [labelOf(view, id), auto, short ? sentence(statusText(it)) : '', notLoaded, unreadTip(it.unread), ...capture, why,
       alsoIn.length ? 'Also in ' + joinNames(alsoIn) : ''].filter(Boolean);
     // A sub-tab being renamed has the field in place of its title
     // (rename.js), and keeps its place to drop on.
@@ -1008,12 +1104,14 @@ function panelOf(view, p, active) {
 // renderBody draws a pane's body, with attrs, its tab panel's (panelOf):
 // what it shows, or why it shows nothing. A web page whose find bar is open
 // (ItemView's finding) has the bar at the top, where Go leaves room above
-// its web view (pages.js).
+// its web view (pages.js). A terminal takes files dropped from the Finder,
+// to type their paths, and an empty pane, or one whose item isn't ready,
+// takes folders and apps, as its header does (drops.js).
 function renderBody(view, p, item, attrs = '') {
   const body = '<div class="pane-body"' + attrs;
-  if (!item) return body + '>' + contentEmpty(view, p) + '</div>';
-  if (notReady(item)) return body + '>' + statusBody(p, item) + '</div>';
-  if (item.kind === 'builtin') return body + ' data-term="' + esc(item.id) + '"></div>';
+  if (!item) return body + dropAttrs('pane', p.id) + '>' + contentEmpty(view, p) + '</div>';
+  if (notReady(item)) return body + dropAttrs('pane', p.id) + '>' + statusBody(p, item) + '</div>';
+  if (item.kind === 'builtin') return body + ' data-term="' + esc(item.id) + '"' + dropAttrs('terminal', item.id) + '></div>';
   const finding = item.kind === 'web' && item.finding;
   const bar = finding ? pageFindBar(item) : '';
   const flag = finding ? ' data-finding="true"' : '';
@@ -1051,22 +1149,22 @@ function contentEmpty(view, p) {
 }
 
 // emptyHint says how to bring a window into an empty pane, with the move
-// window shortcut as configured.
+// window shortcut as configured, and that a folder or app from the Finder
+// can go there too (drops.js).
 function emptyHint(view) {
   const move = keysOf(view).moveWindow;
-  const text = move
-    ? 'Drag a sub-tab here, or press ' + move + ' and an arrow to move the shown window here.'
-    : 'Drag a sub-tab here.';
+  const drag = 'Drag a sub-tab here, or a folder or app from the Finder.';
+  const text = move ? drag + ' Or press ' + move + ' and an arrow to move the shown window here.' : drag;
   return '<span class="empty-hint">' + esc(text) + '</span>';
 }
 
 // statusBody explains an item that isn't ready, in pane p, with buttons for
-// what can be done about it: dock a moved window again, show a minimised one
-// again or take it out of the tab, or open the app of a sub-tab that has no
-// window, or forget it.
+// what can be done about it: dock a moved window again, or one that its app
+// or a window tool kept moving, show a minimised one again or take it out
+// of the tab, or open the app of a sub-tab that has no window, or forget it.
 function statusBody(p, item) {
   let button = '';
-  if (item.status === 'undocked') {
+  if (item.status === 'undocked' || item.status === 'moving') {
     button = '<button type="button" class="btn" data-action="redock" data-item="' + esc(item.id) + '" data-key="redock-' + esc(item.id) + '">Dock again</button>';
   } else if (item.status === 'minimised') {
     button = '<span class="empty-actions">'

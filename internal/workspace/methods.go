@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/itbm/bench/internal/apps"
 	"github.com/itbm/bench/internal/layout"
@@ -17,7 +18,7 @@ import (
 // SetPaneArea records the pane area (between the title bar and the status
 // bar, in content coordinates) and docks the current tab's windows in it.
 func (e *Engine) SetPaneArea(area layout.Rect) error {
-	e.lock()
+	e.lockFor(reasonPaneArea)
 	defer e.unlock()
 	if e.area == area {
 		return nil
@@ -30,8 +31,13 @@ func (e *Engine) SetPaneArea(area layout.Rect) error {
 // SwitchTab switches to tab index (counting from 0). Switching to the
 // current tab arranges it again.
 func (e *Engine) SwitchTab(index int) error {
-	e.lock()
+	e.lockFor(reasonTab)
 	defer e.unlock()
+	return e.switchTabLocked(index)
+}
+
+// switchTabLocked is SwitchTab with the lock held.
+func (e *Engine) switchTabLocked(index int) error {
 	if e.model.Tab(index) == nil {
 		return errNoTab(index)
 	}
@@ -53,14 +59,22 @@ func (e *Engine) switchToLocked(index int) {
 
 // StepTab switches to the next (1) or previous (-1) tab, wrapping.
 func (e *Engine) StepTab(step int) error {
-	e.lock()
+	e.lockFor(reasonTab)
 	defer e.unlock()
+	if i := e.stepTargetLocked(step); i >= 0 {
+		e.switchToLocked(i)
+	}
+	return nil
+}
+
+// stepTargetLocked returns the tab that StepTab switches to, or -1 if
+// there are no tabs.
+func (e *Engine) stepTargetLocked(step int) int {
 	n := len(e.model.Tabs)
 	if n == 0 {
-		return nil
+		return -1
 	}
-	e.switchToLocked(((e.model.Current+step)%n + n) % n)
-	return nil
+	return ((e.model.Current+step)%n + n) % n
 }
 
 // LastTab switches back to the tab that was current before this one, for
@@ -71,8 +85,13 @@ func (e *Engine) StepTab(step int) error {
 // hold.go). A hold starts before Bench has switched tabs too, as there are
 // tabs to choose from.
 func (e *Engine) LastTab() error {
-	e.lock()
+	e.lockFor(reasonTab)
 	defer e.unlock()
+	return e.goToLastTabLocked()
+}
+
+// goToLastTabLocked is LastTab with the lock held.
+func (e *Engine) goToLastTabLocked() error {
 	if e.hold != nil {
 		e.stepHoldLocked(1)
 		return nil
@@ -810,18 +829,31 @@ func (e *Engine) setSizesLocked(splitID string, sizes []float64) error {
 	return nil
 }
 
-// Rearrange arranges the current tab again.
+// Rearrange arranges the current tab again. It docks again the tab's
+// windows that their app or a window tool kept moving out of their panes
+// (keptMoving), with all their tries, as Dock again does, but not those
+// that the user dragged out.
 func (e *Engine) Rearrange() error {
-	e.lock()
+	e.lockFor(reasonRearrange)
 	defer e.unlock()
 	t := e.model.CurrentTab()
+	for _, id := range t.ItemIDs() {
+		if it := e.model.Items[id]; it != nil && it.keptMoving {
+			it.Undocked, it.keptMoving = false, false
+			delete(e.redocks, it.WindowID)
+			it.Status, it.StatusText = StatusReady, ""
+		}
+	}
 	e.recheckUnavailableLocked(t)
 	e.arrangeLocked(arrangeOpts{hideOtherApps: true})
 	e.toastLocked("Rearranged " + t.Name)
 	return nil
 }
 
-// Redock docks a window the user dragged out of its pane again.
+// Redock docks a window again that the user dragged out of its pane, or
+// that its app or a window tool kept moving out of it (keptMoving). Bench
+// puts the window back again as many times as at first, should the app
+// move it again (redockSoonLocked).
 func (e *Engine) Redock(itemID string) error {
 	e.lock()
 	defer e.unlock()
@@ -832,7 +864,8 @@ func (e *Engine) Redock(itemID string) error {
 	if !it.Undocked {
 		return errNotUndocked
 	}
-	it.Undocked = false
+	it.Undocked, it.keptMoving = false, false
+	delete(e.redocks, it.WindowID)
 	it.Status, it.StatusText = StatusReady, ""
 	// The user may have minimised it while it was out of its pane.
 	showAgain(it)
@@ -881,14 +914,22 @@ func (e *Engine) setOverlayLocked(open bool) {
 	e.focusWebLaterLocked()
 	e.pressCloseLaterLocked()
 	if refocus {
-		if e.jumpTimer != nil {
-			e.jumpTimer.Stop()
-		}
-		e.jumpTimer = e.after(jumpRefocusDelay, func() {
-			e.jumpTimer = nil
-			e.refocusAfterJumpLocked()
-		})
+		e.refocusLaterLocked()
 	}
+}
+
+// refocusLaterLocked gives the keyboard back to the App window noted when
+// the jump shortcut opened the palette (refocusAfterJumpLocked), in a
+// moment (jumpRefocusDelay), once Bench is lowered or a native menu has
+// closed.
+func (e *Engine) refocusLaterLocked() {
+	if e.jumpTimer != nil {
+		e.jumpTimer.Stop()
+	}
+	e.jumpTimer = e.after(jumpRefocusDelay, func() {
+		e.jumpTimer = nil
+		e.refocusAfterJumpLocked()
+	})
 }
 
 // noteJumpLocked notes, as the jump shortcut opens the palette, whether the
@@ -902,9 +943,9 @@ func (e *Engine) setOverlayLocked(open bool) {
 // Web item's view and a terminal get it back without this: Bench's window
 // remembers the view that had it, and the frontend the terminal. The
 // shortcut pressed while the palette is open, which closes it, keeps the
-// note.
+// note, and so does the shortcut pressed while a native menu is open.
 func (e *Engine) noteJumpLocked() {
-	if e.overlay {
+	if e.menuOrDialogLocked() {
 		return
 	}
 	e.jump = jumpNote{}
@@ -938,9 +979,11 @@ func (e *Engine) frontmostLocked(bundleID string) bool {
 // window, the user hasn't clicked one, and no other app has come forward.
 // The focused pane must still show the window. If Bench has been raised
 // again, by a dialog that the palette opened, such as Settings, the note
-// waits until it's lowered.
+// waits until it's lowered, and while a native menu is open, such as the
+// one that the palette's Window Options… opens, until it closes
+// (closeMenuLocked).
 func (e *Engine) refocusAfterJumpLocked() {
-	if e.overlay {
+	if e.menuOrDialogLocked() {
 		return
 	}
 	note := e.jump
@@ -1032,10 +1075,13 @@ func (e *Engine) HidePreview() error {
 // on the tab being left first. The other shortcuts wait for Bench to come
 // back before they move or focus windows (decision 16).
 func (e *Engine) Shortcut(action, arg string) {
+	// What a tab's shortcut arranges is timed from now (see timing.go).
+	start := e.clk.Now()
 	// During a hold after last_tab's shortcut, another shortcut lands the
 	// quick tap's switch first, and while the hold shows the tabs, the
-	// shortcuts that its modifiers make with other keys work on it.
-	e.lock()
+	// shortcuts that its modifiers make with other keys work on it: the
+	// switches they make are a tab shortcut's.
+	e.lockAt(start, reasonTabShortcut)
 	held := e.holdShortcutLocked(action, arg)
 	e.unlock()
 	if held {
@@ -1046,8 +1092,9 @@ func (e *Engine) Shortcut(action, arg string) {
 	case shortcuts.ActionTab, shortcuts.ActionNextTab, shortcuts.ActionPreviousTab, shortcuts.ActionLastTab:
 		e.lock()
 		show := e.showOnTabShortcutLocked()
+		to := e.shortcutTargetLocked(action, arg)
 		e.unlock()
-		err = e.tabShortcut(action, arg)
+		err = e.switchShowing(to, start, reasonTabShortcut, func() error { return e.tabShortcutLocked(action, arg) })
 		e.lock()
 		holding := e.hold != nil
 		e.unlock()
@@ -1103,6 +1150,10 @@ func (e *Engine) Shortcut(action, arg string) {
 		if hidden {
 			e.em.BringForward()
 		}
+	case shortcuts.ActionDropdown:
+		// It never brings Bench forward: the drop-down shows over the
+		// app in front.
+		err = e.ToggleDropdown()
 	case shortcuts.ActionSendToTab:
 		var n int
 		if n, err = tabNumber(arg); err == nil {
@@ -1116,22 +1167,92 @@ func (e *Engine) Shortcut(action, arg string) {
 	}
 }
 
-// tabShortcut switches tabs for a tab shortcut: to tab arg for ActionTab,
-// to the next or previous tab, or back to the tab used before this one.
-func (e *Engine) tabShortcut(action, arg string) error {
+// The bench:commands for a tab's shortcut that switchShowing sends around
+// the switch: switching, with the tab it's about to switch to, which the
+// title bar shows as current at once, before the View that has it current,
+// and switch-refused, if the switch is refused, or ends on another tab,
+// which puts the title bar back as the View has it (decision 67).
+const (
+	switchingCommand     = "switching"
+	switchRefusedCommand = "switch-refused"
+)
+
+// switchShowing switches tabs for a tab's shortcut, or as a hold after
+// last_tab's ends (pollHold), with sw, which runs with the lock held, and
+// is timed for reason, as a tab shortcut's, or a link's or script's
+// (carryOut), from at. For tab to, if it's 0 or more, the
+// title bar shows it as current at once: switchShowing sends switching
+// first, then switch-refused after sw if sw refused the switch, or the
+// switch ended on another tab, as it does when a click on a tab comes in
+// between the holds of the lock (decision 67). It returns sw's error.
+func (e *Engine) switchShowing(to int, at time.Time, reason string, sw func() error) error {
+	if to >= 0 {
+		e.em.Command(Command{Name: switchingCommand, Tab: to})
+	}
+	e.lockAt(at, reason)
+	err := sw()
+	current := e.model.Current
+	e.unlock()
+	if to >= 0 && (err != nil || current != to) {
+		e.em.Command(Command{Name: switchRefusedCommand})
+	}
+	return err
+}
+
+// tabShortcutLocked switches tabs for a tab shortcut: to tab arg for
+// ActionTab, to the next or previous tab, or back to the tab used before
+// this one.
+func (e *Engine) tabShortcutLocked(action, arg string) error {
 	switch action {
-	case shortcuts.ActionNextTab:
-		return e.StepTab(1)
-	case shortcuts.ActionPreviousTab:
-		return e.StepTab(-1)
+	case shortcuts.ActionNextTab, shortcuts.ActionPreviousTab:
+		step := 1
+		if action == shortcuts.ActionPreviousTab {
+			step = -1
+		}
+		if i := e.stepTargetLocked(step); i >= 0 {
+			e.switchToLocked(i)
+		}
+		return nil
 	case shortcuts.ActionLastTab:
-		return e.LastTab()
+		return e.goToLastTabLocked()
 	}
 	n, err := tabNumber(arg)
 	if err != nil {
 		return err
 	}
-	return e.SwitchTab(n - 1)
+	return e.switchTabLocked(n - 1)
+}
+
+// shortcutTargetLocked returns the tab that a tab's shortcut is about to
+// switch to, for the title bar to show as current at once, or -1: for the
+// current tab, which it arranges again, a tab that isn't there, a hold
+// after last_tab's shortcut, and last_tab's shortcut when it starts a
+// hold, as it does while its keys are held, as they are as it's pressed:
+// the hold shows the tab it switches to once they're let go of (pollHold,
+// decision 60).
+func (e *Engine) shortcutTargetLocked(action, arg string) int {
+	if !e.started || e.hold != nil {
+		return -1
+	}
+	to := -1
+	switch action {
+	case shortcuts.ActionNextTab:
+		to = e.stepTargetLocked(1)
+	case shortcuts.ActionPreviousTab:
+		to = e.stepTargetLocked(-1)
+	case shortcuts.ActionTab:
+		if n, err := tabNumber(arg); err == nil && e.model.Tab(n-1) != nil {
+			to = n - 1
+		}
+	case shortcuts.ActionLastTab:
+		if e.holdModifiersLocked() == 0 {
+			to = e.lastTabLocked()
+		}
+	}
+	if to == e.model.Current {
+		return -1
+	}
+	return to
 }
 
 // tabNumber reads a tab shortcut's argument, "1" to "9".

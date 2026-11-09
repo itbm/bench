@@ -52,6 +52,7 @@ type Fake struct {
 	// focusedWebView is the web view last given the keyboard focus.
 	focusedWebView string
 	demoScreen     string
+	demoUnplugged  bool
 	demoFit        float64
 
 	apps    map[string]*fakeApp
@@ -83,6 +84,9 @@ type Fake struct {
 	systemKeys SystemKeys
 	// stageManager is what StageManager reports.
 	stageManager bool
+	// toolPrefs holds what ToolPreferences reports, by lower-case bundle
+	// ID (SetToolPreferences).
+	toolPrefs map[string]ToolPreferences
 	// held is what HeldModifiers reports, and mouseHeld what MouseHeld
 	// does.
 	held      Modifiers
@@ -113,15 +117,22 @@ type Fake struct {
 	badge         int
 	openedURLs    []OpenedURL
 	// webPages describes the page at an address, for the WebURL events
-	// that ShowWebView sends (see SetWebPages), or is nil.
+	// that ShowWebView and LoadWebView send (see SetWebPages), or is nil.
 	webPages func(address string) Page
 	// webTitles gives the title of the page at an address, for the
-	// WebTitle events that ShowWebView sends (see SetWebTitles), or is nil.
+	// WebTitle events that ShowWebView and LoadWebView send (see
+	// SetWebTitles), or is nil.
 	webTitles func(address string) string
+	// webMade lists the web views made, in order (see WebViewsMade).
+	webMade []string
 
 	emitOwnMoves bool
 	errs         map[string]error
 	windowErrs   map[windowErrKey]error
+	// hiddenFixed is set while SetFrame and Park leave a hidden app's
+	// windows where they are, answering hiddenErr (see FixHiddenWindows).
+	hiddenFixed bool
+	hiddenErr   error
 
 	calls []Call
 	// history is how many calls, opened URLs, previews, and notifications
@@ -493,6 +504,22 @@ func (f *Fake) SetStageManager(on bool) {
 	f.stageManager = on
 }
 
+// SetToolPreferences sets the preferences that ToolPreferences reports for a
+// window tool, by its bundle ID, whatever its case. Tools have none by
+// default.
+func (f *Fake) SetToolPreferences(bundleID string, p ToolPreferences) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.toolPrefs == nil {
+		f.toolPrefs = map[string]ToolPreferences{}
+	}
+	f.toolPrefs[strings.ToLower(bundleID)] = ToolPreferences{
+		Shortcuts: maps.Clone(p.Shortcuts),
+		Numbers:   maps.Clone(p.Numbers),
+		Texts:     maps.Clone(p.Texts),
+	}
+}
+
 // SetDockBadge sets the badge that an app shows on its Dock icon while it
 // runs, as DockBadges reports it: a count such as "3", other text such as
 // "•", or "" for none. The app needn't be running yet: like a real app, it
@@ -579,6 +606,26 @@ func (f *Fake) SetEmitOwnMoves(on bool) {
 	f.emitOwnMoves = on
 }
 
+// FixHiddenWindows makes SetFrame and Park leave the windows of a hidden
+// app where they are, and answer err, as the Accessibility API might on a
+// Mac (decision 67): nil stands for a move that's said to be made but
+// isn't. FixHiddenWindows(false, nil) moves them again.
+func (f *Fake) FixHiddenWindows(on bool, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hiddenFixed, f.hiddenErr = on, err
+}
+
+// fixedLocked reports whether SetFrame and Park leave a window where it
+// is, as its app is hidden (see FixHiddenWindows).
+func (f *Fake) fixedLocked(fw *fakeWindow) bool {
+	if !f.hiddenFixed {
+		return false
+	}
+	a := f.apps[fw.w.BundleID]
+	return a != nil && a.hidden
+}
+
 // SetHistoryLimit makes the Fake keep only the newest n of the calls it has
 // logged (see Calls), and likewise of the URLs, previews, and notifications
 // it records, so that a Fake that runs for a long time, as the browser
@@ -590,8 +637,8 @@ func (f *Fake) SetHistoryLimit(n int) {
 	f.history = max(n, 0)
 }
 
-// SetWebPages makes ShowWebView send a WebURL event when it gives a web
-// view an address to load, as the real web view does once the page comes
+// SetWebPages makes ShowWebView and LoadWebView send a WebURL event when
+// they give a web view an address to load, as the real web view does once the page comes
 // into view, with the address in Body and the Page that describe gives for
 // it. The Fake's web views load nothing, so it's for the browser preview,
 // whose placeholders then show each page's host. describe is called with
@@ -603,8 +650,8 @@ func (f *Fake) SetWebPages(describe func(address string) Page) {
 	f.webPages = describe
 }
 
-// SetWebTitles makes ShowWebView send a WebTitle event when it gives a web
-// view an address to load, after its WebURL event, with the title that
+// SetWebTitles makes ShowWebView and LoadWebView send a WebTitle event
+// when they give a web view an address to load, after its WebURL event, with the title that
 // title gives for the address, as the real web view does once the page
 // has loaded. A "" title sends nothing. The Fake's web views load nothing,
 // so it's for the browser preview, whose pages then have titles. title is
@@ -1074,7 +1121,8 @@ type Call struct {
 	// or ShowPreview's anchor.
 	Rect layout.Rect
 	// Arg holds any other argument as text: OpenApp's URL, Park's screen
-	// ID, a web view ID, SetRaised's and Trusted's flag, Notify's item ID,
+	// ID, a web view ID, with KeepWebViewRunning's flag after a space,
+	// SetRaised's and Trusted's flag, Notify's item ID,
 	// SetBadge's count, OpenTextFile's and ShowInFinder's path,
 	// ChooseToAdd's folder, or OpenSettings' pane.
 	Arg string

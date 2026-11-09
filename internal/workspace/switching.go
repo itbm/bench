@@ -44,6 +44,7 @@ type waitState struct {
 // again) or the launch timeout ends. A newer switch cancels an older wait.
 func (e *Engine) switchLocked(i int, o switchOpts) {
 	m := e.model
+	e.because(reasonSwitch)
 	e.cancelWaitLocked()
 	// Another switch ends a hold after last_tab's shortcut, whose tabs
 	// start with the current one.
@@ -223,7 +224,7 @@ func (e *Engine) launchingNow(bundleID string) bool {
 func (e *Engine) scheduleCheckLocked(d time.Duration) {
 	w := e.wait
 	gen := w.gen
-	w.timer = e.after(d, func() { e.checkWaitLocked(gen) })
+	w.timer = e.afterFor(reasonAppsOpened, d, func() { e.checkWaitLocked(gen) })
 }
 
 // checkWaitLocked looks for the windows a switch is waiting for. When they
@@ -246,7 +247,7 @@ func (e *Engine) checkWaitLocked(gen int) {
 			e.arrangeLocked(arrangeOpts{})
 		}
 		e.focusWaitedLocked(w)
-		w.timer = e.after(settleWait, func() { e.settleWaitLocked(gen) })
+		w.timer = e.afterFor(reasonAppsOpened, settleWait, func() { e.settleWaitLocked(gen) })
 	case e.clk.Now().Sub(w.start) >= e.launchTimeout():
 		for _, it := range waiting {
 			key := strings.ToLower(it.BundleID)
@@ -283,12 +284,13 @@ func (e *Engine) focusWaitedLocked(w *waitState) {
 // waitFocusDueLocked reports whether a switch's put-off focus may be made
 // now. That can be seconds after the switch, so only while the pane focused
 // then still is, and still shows the same item, and no menu or dialog is
-// open. Focus by any other route, or the user turning to another app, drops
-// it for good (see newFocusLocked and anotherAppActivatedLocked): keystrokes
-// meant for something else could otherwise land in the app, or in a
-// terminal's shell.
+// open (menuOrDialogLocked): focusing an app's window would close a native
+// menu. Focus by any other route, the user turning to another app, or a
+// native menu opening drops it for good (see newFocusLocked,
+// anotherAppActivatedLocked, and openMenuLocked): keystrokes meant for
+// something else could otherwise land in the app, or in a terminal's shell.
 func (e *Engine) waitFocusDueLocked(w *waitState) bool {
-	if !w.focus || e.benchHidden || e.overlay || e.model.IndexOf(w.tab) != e.model.Current {
+	if !w.focus || e.benchHidden || e.menuOrDialogLocked() || e.model.IndexOf(w.tab) != e.model.Current {
 		return false
 	}
 	pane, item := e.focusTargetLocked()

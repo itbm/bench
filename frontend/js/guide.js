@@ -6,7 +6,7 @@
 // (StarterTabs); then four tips. Help ▸ Show Welcome Guide opens it again.
 
 import { act, closeOverlay, isDemo, openerKey, store, update } from './state.js';
-import { esc, fmt, ICONS, joinNames, keysOf, LAYOUT_MODES } from './util.js';
+import { anyColoured, esc, fmt, ICONS, joinNames, keysOf, LAYOUT_MODES, tabDot } from './util.js';
 import { GRIP } from './dialogs.js';
 import { tile } from './tiles.js';
 import { openEditor } from './editor.js';
@@ -333,7 +333,8 @@ function setupPage(view, g) {
   return windows + suggested + startersHTML(g);
 }
 
-// startersHTML returns the suggested tabs, each with its apps and Remove.
+// startersHTML returns the suggested tabs, each with its apps and Remove,
+// and the dot of the colour it will have.
 function startersHTML(g) {
   if (!g.starters) return '<p class="guide-loading">Looking for your apps…</p>';
   if (!g.starters.length) return '';
@@ -344,8 +345,9 @@ function startersHTML(g) {
       + '<div class="guide-action guide-loading"><button type="button" class="btn" data-action="guide-restore" data-key="guide-restore">Put them back</button></div>';
   }
   const off = g.busy ? ' disabled' : '';
+  const dots = anyColoured({ tabs });
   return '<div class="starters">' + tabs.map((t) => '<div class="starter" role="group" aria-label="' + esc(t.name + ' tab') + '">'
-    + '<span class="starter-name">' + esc(t.name) + '</span>'
+    + '<span class="starter-name">' + (dots ? tabDot(t) : '') + esc(t.name) + '</span>'
     + '<span class="starter-apps">' + (t.apps || []).map((a) => '<span class="starter-app">' + tile(a.mono, a.icon)
       + esc(a.name) + '</span>').join('') + '</span>'
     + '<button type="button" class="btn small" data-action="guide-remove" data-name="' + esc(t.name) + '" data-key="starter-remove-' + esc(t.name) + '"'

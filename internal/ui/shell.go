@@ -127,7 +127,8 @@ const jumpLabel = "Jump to…"
 // made, and a new density reaches the title bar when Bench next opens.
 //
 // It opens with the appearance setting's look (windowLook), as macOS is
-// for "system", which systemDark says.
+// for "system", which systemDark says. Files, folders, and apps dropped on
+// it from Finder go to the engine (watchDrops).
 func mainWindowOptions(start workspace.WindowStart, systemDark bool) application.WebviewWindowOptions {
 	titleBar := application.MacTitleBarHiddenInset
 	if start.CompactTitleBar {
@@ -144,6 +145,7 @@ func mainWindowOptions(start workspace.WindowStart, systemDark bool) application
 		MinHeight:        mainMinHeight,
 		URL:              "/",
 		BackgroundColour: look.background(),
+		EnableFileDrop:   true,
 		Mac: application.MacWindow{
 			TitleBar:           titleBar,
 			Appearance:         look.macAppearance(),
@@ -174,7 +176,8 @@ func mainPlace(content layout.Rect) (x, y, width, height int) {
 // window, which loads the frontend showing just that terminal, with a look.
 // The app menu leaves ⌘W to Web items, so the window binds it itself, as
 // Acknowledgements does: closing it asks first while the terminal is
-// running something, as the close button does (keepTerminalOpen).
+// running something, as the close button does (keepTerminalOpen). Files
+// dropped on it are typed into the terminal (watchDrops).
 func terminalWindowOptions(itemID, title string, look windowLook) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:             "terminal:" + itemID,
@@ -185,6 +188,7 @@ func terminalWindowOptions(itemID, title string, look windowLook) application.We
 		MinHeight:        termMinHeight,
 		URL:              terminalURL(itemID),
 		BackgroundColour: look.background(),
+		EnableFileDrop:   true,
 		Mac: application.MacWindow{
 			Appearance:         look.macAppearance(),
 			CollectionBehavior: application.MacWindowCollectionBehaviorFullScreenNone,
@@ -198,6 +202,52 @@ func terminalWindowOptions(itemID, title string, look windowLook) application.We
 // terminalURL is the page a popped-out terminal's window loads.
 func terminalURL(itemID string) string {
 	return "/?" + url.Values{"terminal": {itemID}}.Encode()
+}
+
+// dropdownWindowOptions returns the options for the drop-down terminal's
+// window (decision 72): the popped-out terminal's page, in its drop-down
+// form, in a panel with no title bar, which floats over other windows and
+// doesn't make Bench active as it takes the keyboard, so that the app in
+// front stays in front. It's on every Space, over full-screen apps too,
+// and out of the windows that ⌘` goes through. It starts hidden: the
+// platform puts it at the top of the screen and slides it into sight
+// (Options.SlideDown), at the height the setting gives, so it can't be
+// resized. ⌘W closes it, as a popped-out terminal's window. Files dropped
+// on it are typed into the terminal, as for a popped-out one.
+func dropdownWindowOptions(itemID, title string, look windowLook) application.WebviewWindowOptions {
+	return application.WebviewWindowOptions{
+		Name:             "dropdown:" + itemID,
+		Title:            title,
+		Width:            termWidth,
+		Height:           termHeight,
+		URL:              dropdownURL(itemID),
+		Hidden:           true,
+		Frameless:        true,
+		DisableResize:    true,
+		BackgroundColour: look.background(),
+		EnableFileDrop:   true,
+		Mac: application.MacWindow{
+			Appearance:  look.macAppearance(),
+			WindowClass: application.MacWindowClassPanel,
+			PanelPreferences: application.MacPanelPreferences{
+				FloatingPanel: true,
+				NonActivating: true,
+			},
+			CornerType: application.MacWindowCornerTypeSquare,
+			CollectionBehavior: application.MacWindowCollectionBehaviorCanJoinAllSpaces |
+				application.MacWindowCollectionBehaviorFullScreenAuxiliary |
+				application.MacWindowCollectionBehaviorIgnoresCycle,
+		},
+		KeyBindings: map[string]func(application.Window){
+			"CmdOrCtrl+W": func(w application.Window) { w.Close() },
+		},
+	}
+}
+
+// dropdownURL is the page the drop-down terminal's window loads: the
+// popped-out terminal's, in its drop-down form.
+func dropdownURL(itemID string) string {
+	return "/?" + url.Values{"terminal": {itemID}, "dropdown": {"1"}}.Encode()
 }
 
 // acknowledgementsWindowOptions returns the options for the Acknowledgements
@@ -234,12 +284,15 @@ type previewShell struct {
 	registerShortcuts func()
 }
 
-func (*previewShell) bringForward()                       {}
-func (*previewShell) popOutTerminal(string, string) error { return nil }
-func (*previewShell) closeTerminalWindow(string)          {}
-func (*previewShell) setMenuBar(workspace.MenuBar)        {}
-func (*previewShell) fillScreen()                         {}
-func (*previewShell) setAppearance(string)                {}
+func (*previewShell) bringForward()                          {}
+func (*previewShell) popOutTerminal(string, string) error    { return nil }
+func (*previewShell) closeTerminalWindow(string)             {}
+func (*previewShell) showDropdown(string, string, int) error { return nil }
+func (*previewShell) hideDropdown(string)                    {}
+func (*previewShell) setMenuBar(workspace.MenuBar)           {}
+func (*previewShell) fillScreen()                            {}
+func (*previewShell) moveToScreen(layout.Rect, bool)         {}
+func (*previewShell) setAppearance(string)                   {}
 
 // shortcutsChanged checks the global shortcuts again, on a goroutine of its
 // own, as the app registers them: the preview's run nothing, as the
@@ -296,10 +349,27 @@ type appShell struct {
 	// shell calls as the user closes a terminal's window, before it closes.
 	// Set before the app runs.
 	askToCloseTerminal func(itemID string) bool
+	// dropFiles is the engine's DropFiles, which the shell calls with
+	// what's dropped on a window from the Finder (watchDrops), and command
+	// the emitter's Command, which sends a refusal of a drop on a
+	// terminal's own window to that window (dropped). Set before the app
+	// runs.
+	dropFiles func(target workspace.DropTarget, paths []string) error
+	command   func(c workspace.Command)
 	// tagPopOut, if not nil, is given each terminal's window's NSWindow,
 	// with the terminal's item ID, once it has one (Options.TagPopOut).
 	// Set before the app runs.
 	tagPopOut func(nsWindow unsafe.Pointer, itemID string)
+	// slideDown and slideUp show and hide the drop-down terminal's window
+	// (Options.SlideDown and SlideUp), and toggleDropdown is the engine's
+	// ToggleDropdown, for the menu bar item's menu. Set before the app
+	// runs.
+	slideDown      func(nsWindow unsafe.Pointer, fraction float64)
+	slideUp        func(nsWindow unsafe.Pointer)
+	toggleDropdown func() error
+	// drop is the drop-down terminal's window, which terms holds too, or
+	// nil. Guarded by termMu.
+	drop *dropdownWindow
 	// askToQuit and askToQuitNow are the engine's AskToQuit and
 	// AskToQuitNow, and loggingOut the platform's LoggingOut, which
 	// shouldQuit asks. Set before the app runs.
@@ -329,6 +399,7 @@ type appShell struct {
 	tray       *application.SystemTray
 	trayItems  []*application.MenuItem // One for each tab.
 	trayTotal  *application.MenuItem   // The unread total, or nil.
+	trayDrop   *application.MenuItem   // Show Drop-down.
 	trayMenu   workspace.MenuBar       // What the tray's menu was built for.
 	trayHidden bool                    // Hidden since it was added.
 	// trayStarted is set once the app runs, so the menu bar item can be
@@ -353,6 +424,55 @@ type appShell struct {
 	// background that follows the appearance in use (Options.Appearance).
 	// It doesn't wait for the main thread. Set before the app runs, or nil.
 	applyAppearance func(nsWindow unsafe.Pointer, appearance string)
+	// place moves the main window's NSWindow to another display in one
+	// step, without animation, then fills that display with fill
+	// (Options.Place). It doesn't wait for the main thread. Set before the
+	// app runs, or nil, for Wails' window API to move it.
+	place func(nsWindow unsafe.Pointer, x, y, width, height int, fill bool)
+
+	// moves runs the main window's moves and zooms (fillScreen and
+	// moveToScreen) one at a time, in the order the engine asks for them.
+	moves serial
+}
+
+// serial runs functions one at a time, on a goroutine of its own, in the
+// order they come, without making the caller wait: the main window's
+// moves and zooms each wait for the main thread several times, and one
+// that started before another ended would leave the window where neither
+// put it, or zoom it and then back, as AppKit's zoom: goes back and forth.
+// The zero value is ready to use.
+type serial struct {
+	mu      sync.Mutex
+	queue   []func()
+	running bool
+}
+
+// run runs f once the functions before it have run.
+func (q *serial) run(f func()) {
+	q.mu.Lock()
+	q.queue = append(q.queue, f)
+	start := !q.running
+	q.running = true
+	q.mu.Unlock()
+	if start {
+		go q.drain()
+	}
+}
+
+// drain runs the queued functions until there are none.
+func (q *serial) drain() {
+	for {
+		q.mu.Lock()
+		if len(q.queue) == 0 {
+			q.running = false
+			q.mu.Unlock()
+			return
+		}
+		f := q.queue[0]
+		q.queue = q.queue[1:]
+		q.mu.Unlock()
+		f()
+	}
 }
 
 // newAppShell returns the shell for app. It opens nothing until openMain.
@@ -433,7 +553,50 @@ func (s *appShell) openMain(start workspace.WindowStart, attach, fill func(*appl
 	w.OnWindowEvent(events.Common.WindowDidResize, func(*application.WindowEvent) {
 		s.keepMinimum(w)
 	})
+	s.watchDrops(w, "")
 	s.main = w
+}
+
+// watchDrops sends what's dropped on window w from the Finder to the engine
+// (decision 73): Bench's window, or, with itemID, terminal itemID's own
+// window. Wails' runtime in the page finds the element under the drop with
+// a data-file-drop-target attribute, whose attributes say what the drop is
+// on (workspace.DropTargetOf), and Wails calls this on a goroutine of its
+// own.
+func (s *appShell) watchDrops(w *application.WebviewWindow, itemID string) {
+	w.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
+		ctx := e.Context()
+		var attrs map[string]string
+		if d := ctx.DropTargetDetails(); d != nil {
+			attrs = d.Attributes
+		}
+		s.dropped(itemID, attrs, ctx.DroppedFiles())
+	})
+}
+
+// refusedDropCommand asks terminal ItemID's own window to show Text, why
+// Bench refused a drop on it, as its toast (dropped).
+const refusedDropCommand = "drop-refused"
+
+// dropped hands paths dropped on the element with attributes attrs to the
+// engine, and shows why it refused them, if it did, in the window that got
+// the drop, where the user is looking: a toast in Bench's window, or, for
+// terminal itemID's own window, a popped-out terminal's or the drop-down's,
+// that window's own toast (refusedDropCommand).
+func (s *appShell) dropped(itemID string, attrs map[string]string, paths []string) {
+	if s.dropFiles == nil {
+		return
+	}
+	err := s.dropFiles(workspace.DropTargetOf(attrs), paths)
+	switch {
+	case err == nil:
+	case itemID == "":
+		if s.toast != nil {
+			s.toast(err.Error())
+		}
+	case s.command != nil:
+		s.command(workspace.Command{Name: refusedDropCommand, ItemID: itemID, Text: err.Error()})
+	}
 }
 
 // keepMinimum puts the main window's minimum size back once it no longer
@@ -483,17 +646,49 @@ func (s *appShell) reopen() {
 // fillScreen zooms the main window to fill its screen, unless it fills it
 // already: Wails' Zoom is AppKit's zoom:, which would shrink it back. It
 // does so on a goroutine of its own, since zooming waits for the main
-// thread.
+// thread, after the window's moves and zooms before it (moves).
 func (s *appShell) fillScreen() {
 	w := s.main
 	if w == nil || s.quitting.Load() {
 		return
 	}
-	go func() {
+	s.moves.run(func() {
 		if !w.IsMaximised() {
 			w.Zoom()
 		}
-	}()
+	})
+}
+
+// moveToScreen moves the main window to another display, for its content
+// area to be at content, in global coordinates, as mainPlace places it,
+// then, with fill, zooms it to fill that display's visible area, unless it
+// fills it already, as fillScreen does. With place (Options.Place), the
+// window goes there in one step, which doesn't animate, and fills the
+// display at once, so that it doesn't change size on the display it's
+// leaving first. Otherwise Wails' SetSize, which keeps the window's
+// bottom-left corner where it is, comes before SetPosition, which places
+// its top-left corner, and Wails' Zoom animates. It does so on a goroutine
+// of its own, since each step waits for the main thread, after the
+// window's moves and zooms before it (moves).
+func (s *appShell) moveToScreen(content layout.Rect, fill bool) {
+	w := s.main
+	if w == nil || s.quitting.Load() || content.W <= 0 || content.H <= 0 {
+		return
+	}
+	s.moves.run(func() {
+		x, y, width, height := mainPlace(content)
+		if s.place != nil {
+			if ns := w.NativeWindow(); ns != nil {
+				s.place(ns, x, y, width, height, fill)
+				return
+			}
+		}
+		w.SetSize(width, height)
+		w.SetPosition(x, y)
+		if fill && !w.IsMaximised() {
+			w.Zoom()
+		}
+	})
 }
 
 // popOutTerminal opens a window showing just a terminal, or brings its
@@ -520,6 +715,7 @@ func (s *appShell) popOutTerminal(itemID, title string) error {
 	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		s.terminalClosing(itemID, w)
 	})
+	s.watchDrops(w, itemID)
 	// As for the main window (openMain), whichever event comes first once
 	// the window has an NSWindow tags it.
 	onceNative(w, func(ns unsafe.Pointer) {
@@ -574,17 +770,134 @@ func (s *appShell) forgetTerminal(itemID string, w *application.WebviewWindow) b
 		return false
 	}
 	delete(s.terms, itemID)
+	s.forgetDropdownLocked(w)
 	return true
 }
 
-// closeTerminalWindow closes a terminal's window, if it has one.
+// closeTerminalWindow closes a terminal's window, if it has one: its
+// popped-out window, or the drop-down's.
 func (s *appShell) closeTerminalWindow(itemID string) {
 	s.termMu.Lock()
 	w := s.terms[itemID]
 	delete(s.terms, itemID)
+	s.forgetDropdownLocked(w)
 	s.termMu.Unlock()
 	if w != nil {
 		w.Close()
+	}
+}
+
+// dropdownWindow is the drop-down terminal's window: w, and its NSWindow,
+// once it has one. want is the height, as a fraction of the screen's, that
+// it's to show at once it has one, or 0 to stay hidden. Its fields are
+// guarded by appShell.termMu.
+type dropdownWindow struct {
+	w    *application.WebviewWindow
+	ns   unsafe.Pointer
+	want float64
+}
+
+// forgetDropdownLocked forgets the drop-down's window if it's w. termMu
+// is held.
+func (s *appShell) forgetDropdownLocked(w *application.WebviewWindow) {
+	if s.drop != nil && s.drop.w == w {
+		s.drop = nil
+	}
+}
+
+// showDropdown shows the drop-down terminal's window, sliding it down from
+// the top of the screen, height percent of the screen's height tall, with
+// the keyboard, while the app in front stays in front (decision 72). The
+// first time, it makes the window (dropdownWindowOptions), which shows
+// once it has an NSWindow. A terminal's popped-out window, if it had one,
+// closes.
+func (s *appShell) showDropdown(itemID, title string, height int) error {
+	if s.slideDown == nil {
+		return errors.New("this build of Bench has no drop-down window")
+	}
+	fraction := float64(height) / 100
+	s.termMu.Lock()
+	if d := s.drop; d != nil && s.terms[itemID] == d.w {
+		ns := d.ns
+		if ns == nil {
+			d.want = fraction
+		}
+		s.termMu.Unlock()
+		d.w.SetTitle(title)
+		if ns != nil {
+			s.slideDown(ns, fraction)
+		}
+		return nil
+	}
+	s.termMu.Unlock()
+
+	w := s.app.Window.NewWithOptions(dropdownWindowOptions(itemID, title, s.look()))
+	d := &dropdownWindow{w: w, want: fraction}
+	// As for a popped-out terminal's window (popOutTerminal): ⌘W asks
+	// first while the terminal runs something, and closing it closes the
+	// terminal.
+	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if s.keepTerminalOpen(itemID, w) {
+			e.Cancel()
+		}
+	})
+	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+		s.terminalClosing(itemID, w)
+	})
+	s.watchDrops(w, itemID)
+	// The window is hidden, so its page loading the Wails runtime is what
+	// gives it its NSWindow.
+	onceNative(w, func(ns unsafe.Pointer) { s.dropdownReady(d, ns) })
+	s.termMu.Lock()
+	old := s.terms[itemID]
+	s.terms[itemID] = w
+	s.drop = d
+	ns, want := d.ns, d.want
+	if ns != nil {
+		d.want = 0
+	}
+	s.termMu.Unlock()
+	if old != nil {
+		old.Close()
+	}
+	if ns != nil && want > 0 {
+		s.slideDown(ns, want)
+	}
+	return nil
+}
+
+// dropdownReady notes the drop-down's NSWindow, once Wails has made it,
+// and slides it down if a show has asked for that meanwhile (want), unless
+// a hide has come since, or another window has taken its place.
+func (s *appShell) dropdownReady(d *dropdownWindow, ns unsafe.Pointer) {
+	s.keepLook(ns)
+	s.termMu.Lock()
+	d.ns = ns
+	want := 0.0
+	if s.drop == d {
+		want, d.want = d.want, 0
+	}
+	s.termMu.Unlock()
+	if want > 0 {
+		s.slideDown(ns, want)
+	}
+}
+
+// hideDropdown slides the drop-down terminal's window up out of sight, and
+// the keyboard goes back to the app that had it. A window made just now
+// that hasn't shown yet doesn't show.
+func (s *appShell) hideDropdown(itemID string) {
+	s.termMu.Lock()
+	d := s.drop
+	if d == nil || s.terms[itemID] != d.w {
+		s.termMu.Unlock()
+		return
+	}
+	d.want = 0
+	ns := d.ns
+	s.termMu.Unlock()
+	if ns != nil && s.slideUp != nil {
+		s.slideUp(ns)
 	}
 }
 
@@ -781,6 +1094,9 @@ func (s *appShell) updateTrayLocked() {
 	if label := s.bar.UnreadLabel(); s.trayTotal != nil && s.trayTotal.Label() != label {
 		s.trayTotal.SetLabel(label)
 	}
+	if label := s.bar.Dropdown.Label(); s.trayDrop != nil && s.trayDrop.Label() != label {
+		s.trayDrop.SetLabel(label)
+	}
 	for i, item := range s.trayItems {
 		if label := s.bar.Tabs[i].Label(); item.Label() != label {
 			item.SetLabel(label)
@@ -792,22 +1108,33 @@ func (s *appShell) updateTrayLocked() {
 // trayLabel returns the text beside the menu bar item's icon: the current
 // tab's name, cut to menuBarNameLength characters, and the unread total
 // over every tab, as in "Code · 15" or "Code •", or nothing when the
-// menu_bar setting shows the icon alone. The text is the item's name for
-// VoiceOver too. Wails can't give the item a tooltip or another name on
-// macOS, so the menu's first line says what the number is (UnreadLabel).
+// menu_bar setting shows the icon alone. While the drop-down terminal
+// needs the user, out of sight, a bell follows, which shows with the icon
+// alone too (dropdownMark). The text is the item's name for VoiceOver too.
+// Wails can't give the item a tooltip or another name on macOS, so the
+// menu's first line says what the number is (UnreadLabel).
 func trayLabel(m workspace.MenuBar) string {
+	mark := ""
+	if m.Dropdown.Attention != "" && !m.Dropdown.Shown {
+		mark = dropdownMark
+	}
 	if m.Show == config.MenuBarIcon {
-		return ""
+		return strings.TrimSpace(mark)
 	}
 	name := shorten(m.TabName(), menuBarNameLength)
 	switch {
 	case m.Unread.Count > 0:
-		return name + " · " + m.Unread.Text()
+		return name + " · " + m.Unread.Text() + mark
 	case m.Unread.Dot:
-		return name + " •"
+		return name + " •" + mark
 	}
-	return name
+	return name + mark
 }
+
+// dropdownMark follows the menu bar item's text while the drop-down
+// terminal needs the user: a bell, which VoiceOver reads as "bell", as its
+// terminal's bell or a finished command marks a sub-tab.
+const dropdownMark = " 🔔"
 
 // shorten cuts text to at most n characters, ending it with an ellipsis
 // where it's cut.
@@ -823,9 +1150,9 @@ func shorten(text string, n int) string {
 // is unread, a line that can't be chosen with the unread total over every
 // tab, which says what the number beside the icon is; the tabs, with their
 // unread counts and shortcuts (choosing one switches to it and shows
-// Bench), then Jump to… and Settings…, which show Bench too, then Show
-// Bench and Quit Bench. The shortcuts are the global shortcuts, which work
-// whether or not the menu is open.
+// Bench), then Jump to…, which shows Bench too, Show Drop-down, which
+// doesn't, and Settings…, then Show Bench and Quit Bench. The shortcuts
+// are the global shortcuts, which work whether or not the menu is open.
 func (s *appShell) trayMenuLocked() *application.Menu {
 	s.trayMenu = s.bar
 	menu := application.NewMenu()
@@ -850,6 +1177,10 @@ func (s *appShell) trayMenuLocked() *application.Menu {
 	if s.bar.Jump != "" {
 		jump.SetAccelerator(s.bar.Jump)
 	}
+	s.trayDrop = menu.Add(s.bar.Dropdown.Label()).OnClick(func(*application.Context) { s.chooseDropdown() })
+	if s.bar.Dropdown.Shortcut != "" {
+		s.trayDrop.SetAccelerator(s.bar.Dropdown.Shortcut)
+	}
 	menu.Add("Settings…").OnClick(func(*application.Context) { s.run(s.openSettings) })
 	menu.AddSeparator()
 	menu.Add("Show " + appName).OnClick(func(*application.Context) { s.bringForward() })
@@ -861,6 +1192,17 @@ func (s *appShell) trayMenuLocked() *application.Menu {
 func (s *appShell) run(f func()) {
 	if f != nil {
 		f()
+	}
+}
+
+// chooseDropdown shows or hides the drop-down terminal from the menu bar
+// item, without showing Bench.
+func (s *appShell) chooseDropdown() {
+	if s.toggleDropdown == nil {
+		return
+	}
+	if err := s.toggleDropdown(); err != nil && s.toast != nil {
+		s.toast(err.Error())
 	}
 }
 

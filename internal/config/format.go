@@ -26,7 +26,8 @@ const maxItemsLine = 100
 //
 // Fields that are empty are left out, except a tab's name and layout and a
 // pane's items. In particular, an empty small_screens is left out, because
-// a tab without it uses stack. A pane with no items is written as
+// a tab without it uses stack, and so is an empty colour, for a tab with
+// none. A pane with no items is written as
 // "items = []". For a config without problems, Parse(Format(c)) returns a
 // config equal to c, except that empty lists come back as nil.
 func Format(c *Config) []byte {
@@ -93,6 +94,7 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "open_missing_apps", formatBool(s.OpenMissingApps), "Open a tab's apps if they aren't running.", col)
 	w.keyValue("", "hide_other_tabs", formatBool(s.HideOtherTabs), "Hide windows that belong to other tabs.", col)
 	w.keyValue("", "hide_other_apps", formatBool(s.HideOtherApps), "Also hide every app Bench doesn't manage.", col)
+	w.keyValue("", "covering_windows", quote(s.CoveringWindows), "hide, or leave: windows over Bench", col)
 	w.keyValue("", "new_windows", quote(s.NewWindows), "app-pane, focused-pane, or float", col)
 	w.keyValue("", "follow_focus", quote(s.FollowFocus), "switch-tab, bring-here, or off", col)
 	w.keyValue("", "drag_to_add", formatBool(s.DragToAdd), "Drag a window onto a pane to add it.", col)
@@ -101,7 +103,9 @@ func (w *writer) settings(s Settings) {
 	w.keyValue("", "terminal_option_as_meta", formatBool(s.TerminalOptionAsMeta), "Option sends Meta in terminals.", col)
 	w.keyValue("", "notify_terminals", formatBool(s.NotifyTerminals), "When a terminal out of view needs you.", col)
 	w.keyValue("", "keep_terminal_output", formatBool(s.KeepTerminalOutput), "Show terminals' output again next time.", col)
+	w.keyValue("", "dropdown_height", strconv.Itoa(s.DropdownHeight), "Percent of the screen, from 20 to 90.", col)
 	w.keyValue("", "launch_timeout", quote(s.LaunchTimeout.String()), "", col)
+	w.keyValue("", "allow_scripts", formatBool(s.AllowScripts), "Let the bench command control Bench.", col)
 }
 
 func (w *writer) shortcuts(s Shortcuts) {
@@ -126,6 +130,7 @@ func (w *writer) shortcuts(s Shortcuts) {
 	w.keyValue("", "previous_layout", quote(s.PreviousLayout), "", col)
 	w.keyValue("", "add_front_window", quote(s.AddFrontWindow), "To the focused pane. Off when empty.", col)
 	w.keyValue("", "undo", quote(s.Undo), "The latest change, from any app. Off when empty.", col)
+	w.keyValue("", "dropdown", quote(s.Dropdown), "The drop-down terminal. Off when empty.", col)
 }
 
 // launcher writes a [[launcher]] entry: its name, then what it opens.
@@ -161,6 +166,9 @@ func (w *writer) tab(t Tab) {
 	}
 	if t.SmallScreens != "" {
 		w.keyValue("", "small_screens", quote(t.SmallScreens), "", 0)
+	}
+	if t.Colour != "" {
+		w.keyValue("", "colour", quote(t.Colour), "", 0)
 	}
 	for _, p := range t.Panes {
 		w.line("")
@@ -211,6 +219,9 @@ func inlineItem(it Item) string {
 	}
 	if it.StartAgain != nil {
 		parts = append(parts, "start_again = "+formatBool(*it.StartAgain))
+	}
+	if it.KeepRunning != nil {
+		parts = append(parts, "keep_running = "+formatBool(*it.KeepRunning))
 	}
 	if len(parts) == 0 {
 		return "{}"

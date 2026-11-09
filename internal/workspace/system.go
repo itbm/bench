@@ -16,11 +16,20 @@ import (
 // permissions, dialogs, and the shell.
 
 // Ready returns the current view. The frontend calls it on load. It lowers
-// Bench's window, in case a previous page load left it raised.
+// Bench's window, in case a previous page load left it raised. The first
+// time, it sends what a link or script that came before the frontend
+// loaded would show (showScriptResult), as a link that opens Bench does.
 func (e *Engine) Ready() (View, error) {
 	e.lock()
 	defer e.unlock()
 	e.setOverlayLocked(false)
+	if !e.readied {
+		e.readied = true
+		command, toast := e.heldCommand, e.heldToast
+		e.heldCommand, e.heldToast = "", ""
+		em := e.em
+		e.later(func() { sendScriptResult(em, command, toast) })
+	}
 	return e.buildViewLocked(), nil
 }
 
@@ -76,10 +85,15 @@ func termError(err error) error {
 }
 
 // TermInput sends keystrokes to a terminal. Only when its session has ended,
-// or the host no longer has it, does it take the engine's lock, so that
-// typing doesn't wait for an arrange: Return in a terminal whose command has
-// finished runs it again.
+// or the host no longer has it, or to hide the drop-down for an Escape
+// alone at its shell's prompt (escapeDropdown), does it take the engine's
+// lock, so that typing doesn't wait for an arrange: Return in a terminal
+// whose command has finished runs it again.
 func (e *Engine) TermInput(itemID, data string) error {
+	data, done := e.escapeDropdown(itemID, data)
+	if done {
+		return nil
+	}
 	err := e.terms.Write(itemID, []byte(data))
 	if errors.Is(err, term.ErrEnded) || errors.Is(err, term.ErrNoSession) {
 		e.lock()
@@ -233,7 +247,8 @@ type demoScreens interface {
 // SetDemoScreen simulates a screen in the browser preview: fit, monitor, or
 // laptop. It needs the preview's platform (platform.NewDemo). The simulated
 // screen changes at once, with nothing for macOS to settle, so Auto
-// chooses the size class for it straight away, afresh.
+// chooses the size class for it straight away, afresh. Choosing a screen
+// is choosing the display for Bench's window (decision 70).
 func (e *Engine) SetDemoScreen(screen string, fitWidth float64) error {
 	ds, ok := e.p.(demoScreens)
 	if !ok || !e.opts.Demo {
@@ -244,7 +259,41 @@ func (e *Engine) SetDemoScreen(screen string, fitWidth float64) error {
 	ds.SetDemoScreen(screen, fitWidth)
 	e.screen = e.p.ScreenOfWindow()
 	e.autoClass = ""
+	e.stopReturnLocked()
+	e.placeOnShow = nil
+	if s := e.screen; s.ID != "" {
+		if !sameDisplay(e.preferred, s) {
+			e.forgetWentBackLocked()
+		}
+		e.setPreferredLocked(&config.ScreenState{ID: s.ID, Name: s.Name, Frame: s.Frame})
+	}
 	e.arrangeLocked(arrangeOpts{})
+	e.touch()
+	return nil
+}
+
+// SetDemoMonitor simulates unplugging the browser preview's monitor, with
+// plugged false, or plugging it in again, as on a laptop with a monitor
+// (platform.Fake.SetDemoMonitor). It needs the preview's platform. As on a
+// Mac, Bench's window goes to the laptop's screen when the monitor goes,
+// and once the monitor is back and the screens have settled, Bench goes
+// back to it, if it's the display chosen for the window, with a toast that
+// says so, whose Undo moves it back (decision 70). Unplugging needs the
+// monitor, as the demo bar's Monitor gives it, and plugging in needs it
+// unplugged.
+func (e *Engine) SetDemoMonitor(plugged bool) error {
+	dd, ok := e.p.(platform.DemoDisplays)
+	if !ok || !e.opts.Demo {
+		return errNoDemo
+	}
+	e.lock()
+	defer e.unlock()
+	if !dd.SetDemoMonitor(plugged) {
+		if plugged {
+			return errDemoPlugged
+		}
+		return errNoDemoMonitor
+	}
 	e.touch()
 	return nil
 }

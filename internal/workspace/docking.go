@@ -236,7 +236,8 @@ func (e *Engine) dockLocked(id string, t *Tab, p *layout.Node, zone layout.Zone)
 		if !it.Undocked {
 			return nil, errNotUndocked
 		}
-		it.Undocked = false
+		it.Undocked, it.keptMoving = false, false
+		delete(e.redocks, it.WindowID)
 		it.Status, it.StatusText = StatusReady, ""
 		switch from := m.PaneIn(ti, id); {
 		case from == nil:

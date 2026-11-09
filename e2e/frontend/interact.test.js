@@ -126,9 +126,7 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     'menu-item:Move Left',
     'menu-item:Move Right',
     'menu-sep:',
-    'menu-heading:Move to Pane',
-    'menu-item:Pane with Terminal — zsh — ~/code/bench',
-    'menu-sep:',
+    'menu-item has-sub:Move to Pane',
     'menu-item has-sub:Move to Tab',
     'menu-item has-sub:Also Show In',
     'menu-sep:',
@@ -157,14 +155,16 @@ test('the ⋯ menu entries call the right methods', async (t) => {
 
   // The tabs stay as they are, for the next entry.
   fake.on('MoveItemToNewTab', () => null);
-  // Move to Tab and Also Show In list every tab, with the tab it's in
-  // already off, and New Tab.
+  // Move to Pane lists the tab's other panes, each named by the window it
+  // shows. Move to Tab and Also Show In list every tab, with the tab it's
+  // in already off, and New Tab.
   const submenu = async (label) => {
     await page.click('#window-menu .menu-item:has-text("' + label + '")');
     await page.waitForSelector('#menu-sub');
     return page.$$eval('#menu-sub > *', (els) => els.map((el) => el.className + ':' + el.textContent + (el.disabled ? ' (off)' : '')));
   };
   await open();
+  assert.deepEqual(await submenu('Move to Pane'), ['menu-item:Pane with Terminal — zsh — ~/code/bench']);
   assert.deepEqual(await submenu('Move to Tab'), [
     // Each with the send modifiers and its number.
     'menu-item:Comms⌃⌥⇧1', 'menu-item:Code⌃⌥⇧2 (off)', 'menu-item:Research⌃⌥⇧3', 'menu-sep:', 'menu-item:New Tab',
@@ -182,7 +182,7 @@ test('the ⋯ menu entries call the right methods', async (t) => {
     ['Split Right', 'MoveItem', ['w3', 1, 'p3', 'right']],
     ['Split Down⌃⌥⇧↓', 'MoveItem', ['w3', 1, 'p3', 'bottom']],
     ['Zoom Pane', 'ZoomPane', ['p3']],
-    ['Pane with Terminal — zsh — ~/code/bench', 'MoveItem', ['w3', 1, 'p4', 'center']],
+    ['Move to Pane ▸ Pane with Terminal — zsh — ~/code/bench', 'MoveItem', ['w3', 1, 'p4', 'center']],
     ['Move to Tab ▸ Comms', 'MoveItemToTab', ['w3', 0]],
     ['Move to Tab ▸ Research', 'MoveItemToTab', ['w3', 2]],
     ['Also Show In ▸ Comms', 'AddItemToTab', ['w3', 0]],
@@ -905,7 +905,7 @@ test('a tab\'s menu renames, rearranges, and resets its tab', async (t) => {
   }), ['Research', 0, 'Research'.length]);
   await page.keyboard.type('Reading');
   await page.keyboard.press('Enter');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'custom', smallScreens: 'tabs' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'custom', smallScreens: 'tabs', colour: '' }]);
   await page.waitForSelector('#rename-input', { state: 'detached' });
 
   // The current tab's Rearrange has its shortcut, and rearranges it.
@@ -967,7 +967,7 @@ test('clicking Tab Properties… in a tab\'s menu opens that tab\'s properties',
   await openTabProperties(page, 2);
   await page.fill('#tab-name', 'Reading');
   await page.click('[data-action="save-tab"]');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'side', smallScreens: 'tabs' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [2, { name: 'Reading', preset: 'side', smallScreens: 'tabs', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await focused(), 'tab-2');
   await settle(page);

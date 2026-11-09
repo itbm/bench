@@ -102,6 +102,12 @@ func applySettings(s *config.Settings, v SettingsView) error {
 		}
 		s.TerminalFontSize = v.TerminalFontSize
 	}
+	if v.DropdownHeight != 0 {
+		if v.DropdownHeight < config.MinDropdownHeight || v.DropdownHeight > config.MaxDropdownHeight {
+			return fmt.Errorf("The drop-down's height must be from %d to %d percent of the screen.", config.MinDropdownHeight, config.MaxDropdownHeight)
+		}
+		s.DropdownHeight = v.DropdownHeight
+	}
 	if v.Gap >= 0 {
 		s.Gap = v.Gap
 	}
@@ -110,6 +116,9 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	}
 	if v.FollowFocus != "" {
 		s.FollowFocus = v.FollowFocus
+	}
+	if v.CoveringWindows != "" {
+		s.CoveringWindows = v.CoveringWindows
 	}
 	if v.MenuBar != "" {
 		s.MenuBar = v.MenuBar
@@ -144,6 +153,7 @@ func applySettings(s *config.Settings, v SettingsView) error {
 	s.TerminalOptionAsMeta = v.TerminalOptionAsMeta
 	s.NotifyTerminals = v.NotifyTerminals
 	s.KeepTerminalOutput = v.KeepTerminalOutput
+	s.AllowScripts = v.AllowScripts
 	s.LaunchTimeout = timeout
 	return nil
 }

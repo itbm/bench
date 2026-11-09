@@ -59,6 +59,8 @@ test('the jump palette lists tabs, windows, floating windows, and actions', asyn
     '# Actions',
     'Show All Tabs | Each tab and its windows at once',
     'Rearrange | Arrange Code again',
+    // With no drop-down yet, it makes one (decision 72).
+    'Show Drop-down | A new terminal that slides down over any app',
     'Zoom Pane | Zed — bench — switch.go',
     'Add to Pane… | A window, app, web page, or terminal in this pane',
     'New Terminal… | In this pane: a command, a name, and a folder',
@@ -568,7 +570,7 @@ test('Tab properties previews presets and saves the tab\'s name, layout, and sma
   await page.click('[data-small="tabs"]');
   await page.click('[data-action="save-tab"]');
   const save = await fake.waitForCall('SaveTab');
-  assert.deepEqual(save.args, [1, { name: 'Coding', preset: 'three', smallScreens: 'tabs' }]);
+  assert.deepEqual(save.args, [1, { name: 'Coding', preset: 'three', smallScreens: 'tabs', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   await fake.waitForLowered();
   // Focus goes back to the tab that was right-clicked.
@@ -595,7 +597,7 @@ test('a tab\'s menu opens Tab properties for that tab, whichever is current', as
   assert.equal(await page.getAttribute('[data-small="tabs"]', 'aria-checked'), 'true');
   await page.click('[data-small="same"]');
   await page.click('[data-action="save-tab"]');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [0, { name: 'Comms', preset: 'side', smallScreens: 'same' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [0, { name: 'Comms', preset: 'side', smallScreens: 'same', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'tab-0');
 
@@ -654,12 +656,12 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     ['Small screens'],
     ['Terminals', 'Use Option as Meta key', 'Notify me when a terminal in another tab needs attention', 'Keep terminal output between launches'],
     ['Launchers'],
-    ['Advanced'],
+    ['Advanced', 'Allow scripts to control Bench'],
   ]);
   assert.deepEqual(boxes, [['openAtLogin', false], ['fillScreen', true], ['showOnTabShortcut', true], ['unreadCounts', true], ['checkForUpdates', false],
     ['confirmQuitBusyTerminals', true], ['confirmClose', true], ['showStatusBar', true], ['paneHeaders', false], ['openMissingApps', true],
     ['hideOtherTabs', true], ['hideOtherApps', false], ['livePreviews', false], ['dragToAdd', true], ['terminalOptionAsMeta', false],
-    ['notifyTerminals', true], ['keepTerminalOutput', true]]);
+    ['notifyTerminals', true], ['keepTerminalOutput', true], ['allowScripts', false]]);
   // A tab's own properties aren't here.
   assert.equal(await page.$('#tab-name'), null);
   assert.equal(await page.$('[data-preset]'), null);
@@ -669,6 +671,15 @@ test('Settings shows the settings for every tab, and saves them with Open at log
   await showSection(page, 'windows');
   await page.click('[data-setting="hideOtherTabs"]');
   await page.click('[data-key="follow-focus-off"]');
+  // What Bench does with windows over it as it comes forward: hide them,
+  // by default, or leave them over its own controls.
+  const covering = () => page.$$eval('[data-choice="coveringWindows"]', (els) => els.map((el) => [el.textContent, el.getAttribute('aria-checked')]));
+  assert.deepEqual(await covering(), [['Hide windows that cover Bench', 'true'], ['Leave them', 'false']]);
+  assert.equal(await page.textContent('#covering-windows-label'), 'When Bench comes forward');
+  assert.match(await page.textContent('#covering-windows-help'), /hides the apps whose windows cover it, or only those windows if the app has others elsewhere/);
+  await page.click('[data-key="covering-windows-leave"]');
+  assert.deepEqual(await covering(), [['Hide windows that cover Bench', 'false'], ['Leave them', 'true']]);
+  assert.match(await page.textContent('#covering-windows-help'), /sit over its own tabs, panes, and buttons/);
   // Bench doesn't have Screen Recording permission, which previews need, so
   // turning them on asks for it at once, and the dialog says so.
   assert.equal(await page.$('#recording-note'), null);
@@ -716,13 +727,16 @@ test('Settings shows the settings for every tab, and saves them with Open at log
     hideOtherApps: false,
     newWindows: 'app-pane',
     followFocus: 'off',
+    coveringWindows: 'leave',
     livePreviews: true,
     dragToAdd: false,
     terminalFontSize: 15,
     terminalOptionAsMeta: true,
     notifyTerminals: false,
     keepTerminalOutput: false,
+    dropdownHeight: 40,
     launchTimeout: '15s',
+    allowScripts: false,
   }]);
   assert.deepEqual((await fake.waitForCall('SetOpenAtLogin')).args, [true]);
   // Open at login waits until Go has accepted the settings.
@@ -1084,6 +1098,44 @@ test('Settings chooses where new windows go, what another tab\'s window does, hi
   assert.deepEqual([again.newWindows, again.followFocus, again.launchTimeout], ['float', 'switch-tab', '30s']);
 });
 
+test('Settings ▸ Advanced lets scripts control Bench, off until you turn it on, from the keyboard', async (t) => {
+  const { page, fake, close } = await openBench();
+  t.after(close);
+  await openSettings(page, 'advanced');
+  const box = '[data-setting="allowScripts"]';
+  assert.equal(await page.isChecked(box), false);
+  // VoiceOver reads the box's name, and the help that says what it allows
+  // and that links work either way.
+  assert.equal(await page.textContent('label.toggle:has(' + box + ') span'), 'Allow scripts to control Bench');
+  assert.equal(await page.getAttribute(box, 'aria-describedby'), 'allow-scripts-help');
+  const help = await page.textContent('#allow-scripts-help');
+  assert.match(help, /^The bench command, in Bench\.app, can then switch tabs, move the shown window to another tab, and start a launcher/);
+  // It says all that bench list shows, which notifications can be in.
+  assert.match(help, /It can also list your tabs, with your windows' and pages' titles and the notifications waiting in them\./);
+  assert.match(help, /Any program that runs as you can then do this\./);
+  assert.match(help, /bench:\/\/ links work either way/);
+  // Tab goes from the wait to the box, and Space ticks it.
+  await page.focus('#launch-wait');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.setting), 'allowScripts');
+  await page.keyboard.press('Space');
+  assert.equal(await page.isChecked(box), true);
+  assert.equal(await page.textContent('[data-key="settings-section-advanced"]'), 'Advanced, changed');
+  await page.click('[data-action="save-settings"]');
+  const save = (await fake.waitForCall('SaveSettings')).args[0];
+  assert.equal(save.allowScripts, true);
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+
+  // Opened again, it's on, and turning it off sends that.
+  await openSettings(page, 'advanced');
+  assert.equal(await page.isChecked(box), true);
+  await page.uncheck(box);
+  await page.click('[data-action="save-settings"]');
+  await page.waitForSelector('.settings-sheet', { state: 'detached' });
+  assert.equal(fake.callsTo('SaveSettings').pop().args[0].allowScripts, false);
+  assert.deepEqual(fake.errors, []);
+});
+
 test('a text selection that ends on the backdrop doesn\'t close the dialog', async (t) => {
   const { page, close } = await openBench();
   t.after(close);
@@ -1123,13 +1175,13 @@ test('Tab properties for a new tab, a custom tab, and deleting or resetting', as
   await page.fill('#tab-name', 'Design');
   await page.keyboard.press('Enter');
   const save = await fake.waitForCall('SaveTab');
-  assert.deepEqual(save.args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack' }]);
+  assert.deepEqual(save.args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
 
   // A custom tab shows its own tree without asking for a preview.
   fake.clearCalls();
   await openTabProperties(page);
-  assert.match(await page.textContent('.editor-row p'), /Custom, from dragging windows/);
+  assert.match(await page.textContent('#layout-text'), /Custom, from dragging windows/);
   assert.equal(await page.$('.preset[aria-checked="true"]'), null);
   assert.equal(await page.$$eval('.mini-pane', (els) => els.length), 2);
   await settle(page);
@@ -1204,7 +1256,7 @@ test('Tab properties says how a taken name will be numbered, and a new tab start
   assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-name');
   // Go numbers the name it's given.
   await page.keyboard.press('Enter');
-  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack' }]);
+  assert.deepEqual((await fake.waitForCall('SaveTab')).args, [-1, { name: 'Design', preset: 'single', smallScreens: 'stack', colour: '' }]);
   await page.waitForSelector('.editor-sheet', { state: 'detached' });
   world.tabs.pop();
   await fake.emitState();

@@ -6,7 +6,7 @@
 // and recording a shortcut in Settings ▸ Keyboard (keyboard-settings.js),
 // which comes before them all.
 
-import { act, closeMenu, isDemo, store } from './state.js';
+import { act, closeMenu, isDemo, stepTarget, store, switchTab } from './state.js';
 import { addTicked, backToList, moveSelection, runListItem, submitURL, tickRow, togglePalette } from './palette.js';
 import { openEditor, save } from './editor.js';
 import { isSettingsNumber, openSettings, saveSettings } from './settings.js';
@@ -65,9 +65,9 @@ function withModifiers(e, modifiers) {
 // configured, or null.
 export function actionFor(e, keys) {
   const tab = withModifiers(e, keys.tabs);
-  if (/^[1-9]$/.test(tab)) return () => act('SwitchTab', Number(tab) - 1);
-  if (matches(e, keys.nextTab)) return () => act('StepTab', 1);
-  if (matches(e, keys.previousTab)) return () => act('StepTab', -1);
+  if (/^[1-9]$/.test(tab)) return () => switchTab(Number(tab) - 1);
+  if (matches(e, keys.nextTab)) return () => switchTab(stepTarget(store.view, 1), 1);
+  if (matches(e, keys.previousTab)) return () => switchTab(stepTarget(store.view, -1), -1);
   if (matches(e, keys.lastTab)) return () => act('LastTab');
   if (matches(e, keys.rearrange)) return () => act('Rearrange');
   if (matches(e, keys.zoomPane)) return () => toggleZoom();
@@ -78,6 +78,7 @@ export function actionFor(e, keys) {
   if (matches(e, keys.previousLayout)) return () => act('StepLayout', -1);
   if (matches(e, keys.addFrontWindow)) return () => act('AddFrontWindow');
   if (matches(e, keys.undo)) return () => act('UndoLatest');
+  if (matches(e, keys.dropdown)) return () => act('ToggleDropdown');
   if (matches(e, keys.nextWindow)) return () => act('CycleSubtab', 1);
   // The previous window is the next window's shortcut with Shift added.
   if (e.shiftKey && matches({ ...pick(e), shiftKey: false }, keys.nextWindow)) return () => act('CycleSubtab', -1);
@@ -209,7 +210,8 @@ function focusedTerminal() {
 // window closes with ⌘W (shell.go). In the field that renames a tab or
 // sub-tab, ⌘, and ⌘T save the name typed first, as a Mac's text field
 // ends editing for a menu command, and the dialog gives the focus back to
-// the tab or sub-tab as it closes.
+// the tab or sub-tab as it closes. In the browser preview's drop-down
+// terminal, ⌘⎋ hides it, as in its panel (terminal-window.js).
 function commandKeys(e) {
   const { ui, view } = store;
   if (!view || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
@@ -227,6 +229,8 @@ function commandKeys(e) {
     run = () => openSettings();
   } else if (key === 't' && !ui.overlay) {
     run = () => openEditor(-1);
+  } else if (key === 'escape' && view.dropdown && view.dropdown.shown && e.target.closest && e.target.closest('#dropdown')) {
+    run = () => act('HideDropdown');
   }
   if (!run) return false;
   e.preventDefault();
@@ -312,15 +316,6 @@ function menuKeys(e) {
   const items = Array.from(document.querySelectorAll(scope + ' .menu-item:not([disabled])'));
   if (!items.length) return;
   const i = items.indexOf(active);
-  // In a row of buttons, such as a web page's Back, Forward, and zooms,
-  // the left and right arrows move along it, as down and up do.
-  const row = active && active.closest ? active.closest('.menu-row') : null;
-  if (row && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
-    const next = items[i + (e.key === 'ArrowRight' ? 1 : -1)];
-    e.preventDefault();
-    if (next && row.contains(next)) next.focus();
-    return;
-  }
   // The focus moves to entry el. In the menu, that closes an open submenu.
   const go = (el) => {
     if (inSub || !ui.menu.sub) {
@@ -346,14 +341,15 @@ function menuKeys(e) {
 }
 
 // noticeKeys moves the focus between the notices' buttons, such as Reload
-// for config.toml, and the recent messages' Undo and Copy buttons, in the
-// order they show: Tab and Shift-Tab, and the arrow keys, which wrap. Tab past the last button, or
-// Shift-Tab before the first, closes the notices, giving the focus back to
-// their button in the status bar, as Tab does in a menu.
+// for config.toml, and the recent messages' Undo, Keep over Bench, and Copy
+// buttons, in the order they show: Tab and Shift-Tab, and the arrow keys,
+// which wrap. Tab past the last button, or Shift-Tab before the first,
+// closes the notices, giving the focus back to their button in the status
+// bar, as Tab does in a menu.
 function noticeKeys(e) {
   const { ui } = store;
   const buttons = Array.from(document.querySelectorAll(
-    '#notices-menu :is([data-action="notice-run"], [data-action="message-undo"], [data-action="message-copy"])',
+    '#notices-menu :is([data-action="notice-run"], [data-action="message-undo"], [data-action="message-keep"], [data-action="message-copy"])',
   ));
   const i = buttons.indexOf(document.activeElement);
   if (e.key === 'Tab') {

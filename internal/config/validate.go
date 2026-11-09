@@ -33,6 +33,22 @@ var presetShapes = map[string]presetShape{
 // presetList is the presets in editor order, for messages.
 const presetList = "single, side, main-side, three, top-bottom, or grid"
 
+// colourList is the tab colours in Tab properties' order, for messages.
+const colourList = "red, yellow, green, cyan, blue, purple, pink, or grey"
+
+// nearestColour returns the tab colour closest to s, if one is close
+// enough to be a likely slip, as suggest does for a field: "grey" for the
+// American "gray", or "purple" for "purpel".
+func nearestColour(s string) string {
+	best, bestDist := "", 3
+	for _, c := range TabColours() {
+		if d := editDistance(strings.ToLower(s), c); d < bestDist && d < len(c) {
+			best, bestDist = c, d
+		}
+	}
+	return best
+}
+
 // Item kinds, by the field that sets them, in the order messages list them.
 const (
 	keyApp      = "app"
@@ -47,6 +63,13 @@ var kindKeys = []string{keyApp, keyWeb, keyVSCode, keyTerminal}
 const (
 	MinTerminalFontSize = 9
 	MaxTerminalFontSize = 24
+)
+
+// The smallest and largest dropdown_height settings, in percent of the
+// screen's height.
+const (
+	MinDropdownHeight = 20
+	MaxDropdownHeight = 90
 )
 
 // MaxGap is the largest gap setting, in points. Panes are laid out with the
@@ -69,15 +92,17 @@ type presence map[itemRef][]string
 // the preset's top-level split (they needn't add up to 100); an item with
 // none, or more than one, of app, web, vscode, and terminal, or with an empty
 // one; fields that don't apply to an item's kind (title and url are for app
-// items, url only with title, profile for web items, command for terminal
-// items, and name for web, vscode, and terminal items); a web address that
+// items, url only with title, profile and keep_running for web items,
+// command for terminal items, and name for web, vscode, and terminal
+// items); a web address that
 // isn't https with a host; an empty or duplicate tab name (ignoring case); a
 // rule with no app, with both or neither of float and tab, or naming a tab
 // that doesn't exist; an unknown menu_bar, tab_shortcut_hints,
-// scroll_bars, appearance, density, pane_headers, new_windows, or
-// follow_focus value; a non-positive compact_below; a gap below 0 or above
+// scroll_bars, appearance, density, pane_headers, covering_windows,
+// new_windows, or follow_focus value; a non-positive compact_below; a gap below 0 or above
 // MaxGap; a terminal_font_size outside MinTerminalFontSize to
-// MaxTerminalFontSize; an app item's url that has no scheme; a
+// MaxTerminalFontSize; a dropdown_height outside MinDropdownHeight to
+// MaxDropdownHeight; an app item's url that has no scheme; a
 // non-positive launch_timeout; a terminal item with both command and run,
 // or start_again without run; a run that isn't one line of text; and a
 // launcher with no name, a name that another has (ignoring case), fields
@@ -129,6 +154,9 @@ func (v *validator) settings(s Settings) {
 	if !(s.TerminalFontSize >= MinTerminalFontSize && s.TerminalFontSize <= MaxTerminalFontSize) {
 		v.add("", "settings.terminal_font_size", "must be from %d to %d points", MinTerminalFontSize, MaxTerminalFontSize)
 	}
+	if s.DropdownHeight < MinDropdownHeight || s.DropdownHeight > MaxDropdownHeight {
+		v.add("", "settings.dropdown_height", "must be from %d to %d percent", MinDropdownHeight, MaxDropdownHeight)
+	}
 	switch s.MenuBar {
 	case MenuBarName, MenuBarIcon, MenuBarHidden:
 	default:
@@ -158,6 +186,11 @@ func (v *validator) settings(s Settings) {
 	case PaneHeadersAlways, PaneHeadersAuto:
 	default:
 		v.add("", "settings.pane_headers", "must be always or auto, not %q", s.PaneHeaders)
+	}
+	switch s.CoveringWindows {
+	case CoveringHide, CoveringLeave:
+	default:
+		v.add("", "settings.covering_windows", "must be hide or leave, not %q", s.CoveringWindows)
 	}
 	switch s.NewWindows {
 	case NewWindowsAppPane, NewWindowsFocusedPane, NewWindowsFloat:
@@ -213,6 +246,16 @@ func (v *validator) tab(c *Config, i int, present presence) {
 	case "", layout.Stack, layout.Tabs, layout.Same:
 	default:
 		v.add(label, "small_screens", "%q isn't a small-screen setting; use stack, tabs, or same", t.SmallScreens)
+	}
+
+	switch near := nearestColour(t.Colour); {
+	case t.Colour == "" || IsTabColour(t.Colour):
+	case IsTabColour(strings.ToLower(t.Colour)):
+		v.add(label, "colour", "%q needs to be in lower case: %q", t.Colour, strings.ToLower(t.Colour))
+	case near != "":
+		v.add(label, "colour", "%q isn't a tab colour; did you mean %q?", t.Colour, near)
+	default:
+		v.add(label, "colour", "%q isn't a tab colour; use %s, or leave colour out for none", t.Colour, colourList)
 	}
 
 	if known {
@@ -341,6 +384,9 @@ func (v *validator) item(label, path string, it Item, kinds []string) {
 	}
 	if kind != keyWeb && it.Profile != "" {
 		v.add(label, field("profile"), "only applies to web items")
+	}
+	if kind != keyWeb && it.KeepRunning != nil {
+		v.add(label, field("keep_running"), "only applies to web items")
 	}
 	if kind != keyTerminal && it.Command != "" {
 		v.add(label, field("command"), "only applies to terminal items")

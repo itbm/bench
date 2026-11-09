@@ -3,6 +3,7 @@ package windows
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1695,6 +1696,98 @@ func TestHideRecordsTheApp(t *testing.T) {
 	}
 }
 
+// TestUnhideShowsAnAppTheManagerHid checks that Unhide shows an app that
+// Hide hid, forgets it, and leaves an app it didn't hide alone.
+func TestUnhideShowsAnAppTheManagerHid(t *testing.T) {
+	w := newWorld(t)
+	w.f.AddApp(finderID, "Finder")
+	w.f.AddApp(zedID, "Zed")
+	if err := w.m.Hide(w.app(finderID)); err != nil {
+		t.Fatal(err)
+	}
+	w.f.Hide(w.app(zedID))
+	if err := w.m.Unhide(w.app(finderID)); err != nil {
+		t.Fatal(err)
+	}
+	if w.f.IsHidden(finderID) || w.m.Hid(w.app(finderID)) {
+		t.Error("Finder should be shown, and no longer the manager's")
+	}
+	if _, ok := w.parkedFile(t); ok {
+		t.Error("the parked file still lists Finder")
+	}
+	if err := w.m.Unhide(w.app(zedID)); err != nil || !w.f.IsHidden(zedID) {
+		t.Errorf("Unhide of an app the manager didn't hide: %v, hidden %v; want nil, and hidden", err, w.f.IsHidden(zedID))
+	}
+}
+
+// TestParkOutsideAPlan checks that Park parks a window as Apply parks one,
+// recorded in the parked file first, so that Unpark, RestoreAll, and
+// RestoreFromFile put it back where it was.
+func TestParkOutsideAPlan(t *testing.T) {
+	w := newWorld(t)
+	win := w.window(finderID, "Downloads", 0)
+	if err := w.m.Park(win, monitor); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, win.ID) != parkedAt(win, monitor) || !w.m.IsParked(win.ID) {
+		t.Fatalf("the window is at %+v, parked %v; want parked", w.frame(t, win.ID), w.m.IsParked(win.ID))
+	}
+	if pf, _ := w.parkedFile(t); len(pf.Windows) != 1 || pf.Windows[0].Frame != startFrame {
+		t.Errorf("parked file = %+v, want the window, from %+v", pf, startFrame)
+	}
+	if err := w.m.Unpark(win.ID); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, win.ID) != startFrame || w.m.IsParked(win.ID) {
+		t.Errorf("Unpark: the window is at %+v; want %+v", w.frame(t, win.ID), startFrame)
+	}
+	// Quitting puts it back.
+	if err := w.m.Park(win, platform.Screen{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.m.RestoreAll(); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, win.ID) != startFrame {
+		t.Errorf("RestoreAll: the window is at %+v; want %+v", w.frame(t, win.ID), startFrame)
+	}
+	// So does the next start, after a crash.
+	if err := w.m.Park(win, monitor); err != nil {
+		t.Fatal(err)
+	}
+	w.m = nil
+	if err := RestoreFromFile(w.f, w.path); err != nil {
+		t.Fatal(err)
+	}
+	if w.frame(t, win.ID) != startFrame {
+		t.Errorf("after a crash: the window is at %+v; want %+v", w.frame(t, win.ID), startFrame)
+	}
+}
+
+// TestParkPassesOverWhatIsOutOfSight checks that Park leaves a minimised
+// window as it is, and passes over one that has closed, keeping no record.
+func TestParkPassesOverWhatIsOutOfSight(t *testing.T) {
+	w := newWorld(t)
+	small := w.window(finderID, "Minimised", 0, platform.WithMinimised())
+	gone := w.window(finderID, "Gone", 1)
+	if err := w.f.CloseWindow(gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	w.f.DrainEvents()
+	w.f.ResetCalls()
+	for _, win := range []platform.Window{small, gone} {
+		if err := w.m.Park(win, monitor); err != nil {
+			t.Errorf("Park(%q) = %v", win.Title, err)
+		}
+		if w.m.IsParked(win.ID) {
+			t.Errorf("%q was recorded as parked", win.Title)
+		}
+	}
+	if calls := w.f.CallsTo("Park", "Minimise"); len(calls) != 0 {
+		t.Errorf("calls %v, want none", calls)
+	}
+}
+
 func TestHideRecordsTheAppBeforeHiding(t *testing.T) {
 	// Hide fails, as when the Accessibility fallback times out, but the
 	// app hides anyway; then Bench crashes.
@@ -2078,6 +2171,27 @@ func TestApplyMinimisesWhenNowhereToParkIsClear(t *testing.T) {
 		}
 	})
 
+	// Before Apply shows a hidden app, it parks only the windows that have
+	// a place to park: minimising a hidden app's window animates, and may
+	// show the app, so the wide window waits until the app is shown, as
+	// it always did (decision 67).
+	t.Run("before showing an app", func(t *testing.T) {
+		w := newWorld(t)
+		w.f.SetScreens(laptop, left, right)
+		wide := w.f.AddWindow(braveID, "wide", platform.WithFrame(layout.Rect{X: 0, Y: 33, W: 1600, H: 800}))
+		narrow := w.f.AddWindow(braveID, "narrow", platform.WithFrame(layout.Rect{X: 100, Y: 100, W: 1000, H: 800}))
+		noErrors(t, w.m.Apply(Plan{Screen: laptop, Hide: []platform.App{w.app(braveID)}}))
+		w.f.ResetCalls()
+		noErrors(t, w.m.Apply(Plan{Screen: laptop, Unhide: []platform.App{w.app(braveID)}, Park: []platform.Window{wide, narrow}}))
+		want := []string{fmt.Sprintf("Park w%d", narrow.ID), "Unhide " + braveID, fmt.Sprintf("Minimise w%d", wide.ID)}
+		if got := moveOrder(w.f.Calls()); !slices.Equal(got, want) {
+			t.Errorf("calls = %v, want %v", got, want)
+		}
+		if got, _ := w.f.WindowState(wide.ID); !got.Minimised {
+			t.Errorf("the wide window is %+v, want it minimised", got)
+		}
+	})
+
 	t.Run("an inactive window too big for its pane stays minimised", func(t *testing.T) {
 		w := newWorld(t)
 		w.f.SetScreens(laptop, left, right)
@@ -2135,5 +2249,213 @@ func TestApplyWritesTheParkedFileAgainIfItHasGone(t *testing.T) {
 	}
 	if w.frame(t, docs.ID) != parkedAt(docs, monitor) || !w.f.IsHidden(finderID) {
 		t.Error("the window and Finder weren't put out of sight again")
+	}
+}
+
+// moveOrder returns the Park, Minimise, Unhide, and SetFrame calls in
+// turn, each as its method and window ID or bundle ID, such as "Park w2".
+func moveOrder(calls []platform.Call) []string {
+	var out []string
+	for _, c := range calls {
+		switch c.Method {
+		case "Park", "Minimise", "SetFrame":
+			out = append(out, fmt.Sprintf("%s w%d", c.Method, c.Window))
+		case "Unhide":
+			out = append(out, "Unhide "+c.BundleID)
+		}
+	}
+	return out
+}
+
+// Showing an app shows every window it has where it is, so its windows
+// that are to go out of sight are parked first: those of other tabs
+// (Park), and those of a pane that shows Bench's own view (Shown == 0).
+// Otherwise they would show over the tab, where another tab docked them,
+// until the rest of the plan parked them (decision 67).
+func TestApplyParksBeforeShowingAnApp(t *testing.T) {
+	w := newWorld(t)
+	docs := w.window(braveID, "Wails v3 docs", 0, platform.WithFrame(leftBody))
+	pr := w.window(braveID, "Pull request #42 · bench", 1)
+	pkgs := w.window(braveID, "Go packages", 2, platform.WithFrame(rightBody))
+	zed := w.window(zedID, "bench", 3)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Hide: []platform.App{w.app(braveID)}}))
+	if !w.f.IsHidden(braveID) {
+		t.Fatal("Brave wasn't hidden")
+	}
+
+	w.f.ResetCalls()
+	res := w.m.Apply(Plan{
+		Screen: monitor,
+		Unhide: []platform.App{w.app(braveID), w.app(zedID)},
+		Stacks: []Stack{
+			{Body: leftBody, Windows: []platform.Window{pr}, Shown: pr.ID},
+			{Body: rightBody, Windows: []platform.Window{pkgs}},
+			{Body: rightBody, Windows: []platform.Window{zed}, Shown: zed.ID},
+		},
+		Park: []platform.Window{docs},
+	})
+	noErrors(t, res)
+	want := []string{
+		fmt.Sprintf("Park w%d", docs.ID), fmt.Sprintf("Park w%d", pkgs.ID),
+		"Unhide " + braveID,
+		fmt.Sprintf("SetFrame w%d", pr.ID), fmt.Sprintf("SetFrame w%d", zed.ID),
+	}
+	if got := moveOrder(w.f.Calls()); !slices.Equal(got, want) {
+		t.Errorf("calls = %v, want %v", got, want)
+	}
+	for _, win := range []platform.Window{docs, pkgs} {
+		if !w.m.IsParked(win.ID) || w.frame(t, win.ID) != parkedAt(win, monitor) {
+			t.Errorf("%q: parked %v at %v", win.Title, w.m.IsParked(win.ID), w.frame(t, win.ID))
+		}
+	}
+	// Zed wasn't hidden, so there was nothing to park before showing it.
+	// Each window the plan changed counts once: the two parked, and the two
+	// docked and raised.
+	if res.Touched != 4 {
+		t.Errorf("Touched = %d, want 4", res.Touched)
+	}
+	if got := res.Status[pkgs.ID]; got != StatusReady {
+		t.Errorf("the parked stack's window has status %q, want ready", got)
+	}
+}
+
+// Where the Accessibility API won't move a hidden app's windows, the
+// windows are parked once the app is shown, as Apply always did, and the
+// failure before isn't reported. One that the platform said it moved, but
+// didn't, is parked then too.
+func TestApplyParksAfterShowingWhereItCant(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+	}{
+		{"the move fails", errors.New("the app didn't do it")},
+		{"the move is said to be made, but isn't", nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWorld(t)
+			docs := w.window(braveID, "Wails v3 docs", 0, platform.WithFrame(leftBody))
+			pr := w.window(braveID, "Pull request #42 · bench", 1)
+			pkgs := w.window(braveID, "Go packages", 2, platform.WithFrame(rightBody))
+			noErrors(t, w.m.Apply(Plan{Screen: monitor, Hide: []platform.App{w.app(braveID)}}))
+			w.f.FixHiddenWindows(true, tt.err)
+
+			w.f.ResetCalls()
+			res := w.m.Apply(Plan{
+				Screen: monitor,
+				Unhide: []platform.App{w.app(braveID)},
+				Stacks: []Stack{{Body: leftBody, Windows: []platform.Window{pr}, Shown: pr.ID}},
+				Park:   []platform.Window{docs, pkgs},
+			})
+			noErrors(t, res)
+			// The first failure leaves the app's other windows for after.
+			want := []string{fmt.Sprintf("Park w%d", docs.ID)}
+			if tt.err == nil {
+				want = append(want, fmt.Sprintf("Park w%d", pkgs.ID))
+			}
+			want = append(want, "Unhide "+braveID, fmt.Sprintf("SetFrame w%d", pr.ID),
+				fmt.Sprintf("Park w%d", docs.ID), fmt.Sprintf("Park w%d", pkgs.ID))
+			if got := moveOrder(w.f.Calls()); !slices.Equal(got, want) {
+				t.Errorf("calls = %v, want %v", got, want)
+			}
+			for _, win := range []platform.Window{docs, pkgs} {
+				if !w.m.IsParked(win.ID) || w.frame(t, win.ID) != parkedAt(win, monitor) {
+					t.Errorf("%q: parked %v at %v", win.Title, w.m.IsParked(win.ID), w.frame(t, win.ID))
+				}
+			}
+		})
+	}
+}
+
+// A window that can't be read before its app is shown is left for after,
+// and isn't forgotten: a hidden app's window may answer only once it's
+// shown.
+func TestApplyKeepsAWindowItCouldntReadBeforeShowing(t *testing.T) {
+	w := newWorld(t)
+	docs := w.window(braveID, "Wails v3 docs", 0, platform.WithFrame(leftBody))
+	pr := w.window(braveID, "Pull request #42 · bench", 1)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Hide: []platform.App{w.app(braveID)}}))
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Unhide: []platform.App{w.app(braveID)}, Park: []platform.Window{docs}}))
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Unpark: []platform.Window{docs}, Hide: []platform.App{w.app(braveID)}}))
+	if w.m.IsParked(docs.ID) || !w.f.IsHidden(braveID) {
+		t.Fatalf("set-up: docs parked %v, Brave hidden %v", w.m.IsParked(docs.ID), w.f.IsHidden(braveID))
+	}
+	w.f.SetWindowErr(docs.ID, "Window", errors.New("no answer"))
+	w.f.ResetCalls()
+	res := w.m.Apply(Plan{
+		Screen: monitor,
+		Unhide: []platform.App{w.app(braveID)},
+		Stacks: []Stack{{Body: leftBody, Windows: []platform.Window{pr}, Shown: pr.ID}},
+		Park:   []platform.Window{docs},
+	})
+	// After the app is shown, the read fails again, and that's reported,
+	// as it always was.
+	if len(res.Errors) != 1 {
+		t.Errorf("errors = %v, want the one read after showing the app", res.Errors)
+	}
+	if got := moveOrder(w.f.Calls()); !slices.Equal(got, []string{"Unhide " + braveID, fmt.Sprintf("SetFrame w%d", pr.ID)}) {
+		t.Errorf("calls = %v", got)
+	}
+	w.f.SetWindowErr(docs.ID, "Window", nil)
+	noErrors(t, w.m.Apply(Plan{Screen: monitor, Park: []platform.Window{docs}}))
+	if !w.m.IsParked(docs.ID) {
+		t.Error("the window was forgotten")
+	}
+}
+
+// A window that has closed, or is on another desktop, before its app is
+// shown doesn't stop the app's other windows from being parked first, as
+// a failure that may be a slow app does: it isn't slow to answer.
+func TestApplyParksPastAGoneWindowBeforeShowing(t *testing.T) {
+	for _, tt := range []struct {
+		name, method string
+		err          error
+	}{
+		{"it can't be read, as it has closed", "Window", platform.ErrNoWindow},
+		{"it can't be read, as it's on another desktop", "Window", platform.ErrOtherDesktop},
+		{"it can't be parked, as it has closed", "Park", platform.ErrNoWindow},
+		{"it can't be parked, as it's on another desktop", "Park", platform.ErrOtherDesktop},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWorld(t)
+			docs := w.window(braveID, "Wails v3 docs", 0, platform.WithFrame(leftBody))
+			pr := w.window(braveID, "Pull request #42 · bench", 1)
+			pkgs := w.window(braveID, "Go packages", 2, platform.WithFrame(rightBody))
+			noErrors(t, w.m.Apply(Plan{Screen: monitor, Hide: []platform.App{w.app(braveID)}}))
+			w.f.SetWindowErr(docs.ID, tt.method, fmt.Errorf("window %d: %w", docs.ID, tt.err))
+			w.f.ResetCalls()
+			w.m.Apply(Plan{
+				Screen: monitor,
+				Unhide: []platform.App{w.app(braveID)},
+				Stacks: []Stack{{Body: leftBody, Windows: []platform.Window{pr}, Shown: pr.ID}},
+				Park:   []platform.Window{docs, pkgs},
+			})
+			got := moveOrder(w.f.Calls())
+			unhide := slices.Index(got, "Unhide "+braveID)
+			if park := slices.Index(got, fmt.Sprintf("Park w%d", pkgs.ID)); unhide < 0 || park < 0 || park > unhide {
+				t.Errorf("calls = %v, want the other window parked before Brave shows", got)
+			}
+			if !w.m.IsParked(pkgs.ID) || w.frame(t, pkgs.ID) != parkedAt(pkgs, monitor) {
+				t.Errorf("the other window: parked %v at %v", w.m.IsParked(pkgs.ID), w.frame(t, pkgs.ID))
+			}
+		})
+	}
+}
+
+// An app that's shown already has nothing parked before it: the plan
+// parks other tabs' windows after docking, as it always did.
+func TestApplyParksAfterDockingForAnAppThatsShown(t *testing.T) {
+	w := newWorld(t)
+	docs := w.window(braveID, "Wails v3 docs", 0)
+	pr := w.window(braveID, "Pull request #42 · bench", 1)
+	w.f.ResetCalls()
+	noErrors(t, w.m.Apply(Plan{
+		Screen: monitor,
+		Unhide: []platform.App{w.app(braveID)},
+		Stacks: []Stack{{Body: leftBody, Windows: []platform.Window{pr}, Shown: pr.ID}},
+		Park:   []platform.Window{docs},
+	}))
+	want := []string{fmt.Sprintf("SetFrame w%d", pr.ID), fmt.Sprintf("Park w%d", docs.ID)}
+	if got := moveOrder(w.f.Calls()); !slices.Equal(got, want) {
+		t.Errorf("calls = %v, want %v", got, want)
 	}
 }

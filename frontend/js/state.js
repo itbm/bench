@@ -17,10 +17,16 @@ export const store = {
     // opened in, index and tabName are the tab a tab's menu is for, top is
     // where fitMenu placed it, which it keeps, and webApp is what Go offers
     // to put a web app in a web page's place (WebAppChoice), once it has
-    // answered.
+    // answered. It's a menu drawn in HTML, which needs raised mode
+    // (overlayOpen).
     menu: null,
     // menuEntries are the open menu's entries as last drawn.
     menuEntries: [],
+    // nativeMenu is the menu that shows as a native macOS menu, in the
+    // app, while it's open, as ui.menu describes one (showNative in
+    // menu.js). It isn't drawn, and doesn't need raised mode, so that the
+    // web pages and docked windows stay in view (decision 71).
+    nativeMenu: null,
     // overlay is the open dialog: null, 'palette', 'add', 'editor' (Tab
     // properties), 'settings', 'guide' (the welcome guide), 'shortcuts'
     // (the Keyboard Shortcuts sheet), 'quit' (the question before
@@ -130,6 +136,10 @@ export const store = {
     // whose find bar gets the keyboard once it's drawn (pages.js).
     pageFind: {},
     findFocus: null,
+    // switching is the tab that a switch is on its way to, { index }, which
+    // the title bar shows as current until the View has it current, or the
+    // switch is refused (showSwitch).
+    switching: null,
   },
 };
 
@@ -173,6 +183,88 @@ export async function act(method, ...args) {
     toast(errorText(err));
     return { ok: false, error: err };
   }
+}
+
+// SWITCH_WAIT_MS is the longest, in milliseconds, that the title bar shows
+// a tab as current before the View has it current (showSwitch): a switch
+// that waits for apps to open can take that long, but a View that never
+// comes mustn't leave the wrong tab shown. SWITCH_SETTLE_MS is how long it
+// waits for that View once Go has answered the switch, which sends it a
+// frame later.
+const SWITCH_WAIT_MS = 5000;
+const SWITCH_SETTLE_MS = 1000;
+
+let switchTimer = 0;
+
+// showSwitch shows tab index as current in the title bar at once, for a
+// switch to it on its way to Go, as Go arranges the tab before its View
+// has it current, which can take a while (decision 67). The View that has
+// it current settles it (settleSwitch), and a refusal puts the title bar
+// back as the View has it (dropSwitch); so does the end of ms. It returns
+// what it shows, or null for the current tab.
+export function showSwitch(index, ms = SWITCH_WAIT_MS) {
+  const { ui, view } = store;
+  if (!view || !view.tabs[index] || (index === view.current && !ui.switching)) return null;
+  const s = { index };
+  ui.switching = s;
+  waitSwitch(s, ms);
+  update();
+  return s;
+}
+
+// waitSwitch drops what showSwitch shows, s, if it still shows after ms.
+function waitSwitch(s, ms) {
+  clearTimeout(switchTimer);
+  switchTimer = setTimeout(() => {
+    if (store.ui.switching === s) dropSwitch();
+  }, ms);
+}
+
+// dropSwitch puts the title bar back as the View has it.
+export function dropSwitch() {
+  if (!store.ui.switching) return;
+  clearTimeout(switchTimer);
+  store.ui.switching = null;
+  update();
+}
+
+// settleSwitch ends what showSwitch shows once a View has the tab current,
+// or no longer has the tab, before the View is drawn.
+export function settleSwitch(view) {
+  const s = store.ui.switching;
+  if (s && (view.current === s.index || !view.tabs[s.index])) {
+    clearTimeout(switchTimer);
+    store.ui.switching = null;
+  }
+}
+
+// shownCurrent returns the tab that the title bar shows as current: the
+// one a switch is on its way to, or the View's current tab.
+export function shownCurrent(view) {
+  const s = store.ui.switching;
+  return s && view.tabs[s.index] ? s.index : view.current;
+}
+
+// switchTab switches to tab index, as SwitchTab does, or with StepTab and
+// step, for the next or previous tab, which Go counts from its own current
+// tab, and shows the tab as current at once (showSwitch). It resolves as
+// act does.
+export async function switchTab(index, step = 0) {
+  const s = showSwitch(index);
+  const r = step ? await act('StepTab', step) : await act('SwitchTab', index);
+  if (s && store.ui.switching === s) {
+    if (r.ok) waitSwitch(s, SWITCH_SETTLE_MS);
+    else dropSwitch();
+  }
+  return r;
+}
+
+// stepTarget returns the tab that a step to the next (1) or previous (-1)
+// tab goes to, from the one shown as current, wrapping, or -1 without a
+// View.
+export function stepTarget(view, step) {
+  const n = view && view.tabs ? view.tabs.length : 0;
+  return n ? ((shownCurrent(view) + step) % n + n) % n : -1;
 }
 
 // lanes hold calls that must reach Go in order, by key. Go can handle calls
@@ -250,48 +342,72 @@ const MESSAGES = 20;
 
 // messages are the recent toasts and notices, the latest first, for the
 // list of notices to show again, so that a toast that went too soon can be
-// read: { time, text, kind, count, undo }, where time is when it last
-// came, kind is 'toast' or 'notice', count is how many times it came in a
-// row, and undo is the change that its Undo took back, if it had one, by
-// Go's step number: the list offers Undo again while that change is the
-// latest (View.undo).
+// read: { time, text, kind, count, undo, keep, key }, where time is when
+// it last came, kind is 'toast' or 'notice', count is how many times it
+// came in a row, undo is the change that its Undo took back, if it had one,
+// by Go's step number: the list offers Undo again while that change is the
+// latest (View.undo); keep is the app, by bundle ID, whose windows its
+// Keep over Bench kept over Bench, if it had one: the list offers it again
+// while Go can still do it (View.keepOver); and key is a notice's key, if
+// Go gave it one (noticeKey).
 const messages = [];
 
-// noticesSeen are the notices of the last View, by text.
-let noticesSeen = new Set();
+// noticesSeen are the notices of the last View: their text, by noticeKey.
+let noticesSeen = new Map();
+
+// noticeKey names a notice: by the key Go gives a notice whose text can
+// change while it shows, such as a window tool's, which follows Bench's
+// shortcuts; or else by its text.
+function noticeKey(n) {
+  return n.key ? 'key:' + n.key : 'text:' + n.text;
+}
 
 // noteMessage keeps a toast or a notice in the recent messages, with the
-// change that its Undo takes back, undo, if it has one. The same message
-// again, straight after, counts again rather than taking another place.
-export function noteMessage(text, kind, undo = 0) {
+// change that its Undo takes back, undo, and the app that its Keep over
+// Bench keeps over Bench, keep, if it has them. The same message again,
+// straight after, counts again rather than taking another place.
+export function noteMessage(text, kind, undo = 0, keep = '', key = '') {
   if (!text) return;
   const last = messages[0];
   if (last && last.text === text && last.kind === kind) {
     last.time = Date.now();
     last.count++;
     last.undo = undo;
+    last.keep = keep;
+    last.key = key;
     return;
   }
-  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1, undo });
+  messages.unshift({ time: Date.now(), text: String(text), kind, count: 1, undo, keep, key });
   messages.length = Math.min(messages.length, MESSAGES);
 }
 
 // noteNotices keeps the notices of a View that the last didn't have in the
-// recent messages, as they come.
+// recent messages, as they come. A notice with a key whose text changed,
+// as a window tool's does as the user changes Bench's shortcuts, keeps its
+// one place, with its new text, so that no copy of its old text, which
+// may name clashes that have gone, stays among them.
 export function noteNotices(view) {
-  const now = new Set(((view && view.notices) || []).map((n) => n.text));
-  now.forEach((text) => {
-    if (!noticesSeen.has(text)) noteMessage(text, 'notice');
+  const now = new Map(((view && view.notices) || []).map((n) => [noticeKey(n), n]));
+  now.forEach((n, id) => {
+    const was = noticesSeen.get(id);
+    if (was === undefined) {
+      noteMessage(n.text, 'notice', 0, '', n.key || '');
+      return;
+    }
+    if (was === n.text || !n.key) return;
+    const kept = messages.find((m) => m.kind === 'notice' && m.key === n.key);
+    if (kept) kept.text = String(n.text);
+    else noteMessage(n.text, 'notice', 0, '', n.key);
   });
-  noticesSeen = now;
+  noticesSeen = new Map([...now].map(([id, n]) => [id, n.text]));
 }
 
 // recentMessages returns the recent toasts and notices, the latest first,
 // leaving out the notices that the View still has, which the list of
 // notices shows above them.
 export function recentMessages(view) {
-  const current = new Set(((view && view.notices) || []).map((n) => n.text));
-  return messages.filter((m) => m.kind !== 'notice' || !current.has(m.text));
+  const current = new Set(((view && view.notices) || []).map(noticeKey));
+  return messages.filter((m) => m.kind !== 'notice' || !current.has(m.key ? 'key:' + m.key : 'text:' + m.text));
 }
 
 // toast shows a short message at the bottom of the window, or, while the
@@ -307,7 +423,8 @@ export function recentMessages(view) {
 export function toast(text, action = null, second = null) {
   if (!text) return;
   const undo = action && action.method === 'Undo' && Number(action.arg) > 0 ? Number(action.arg) : 0;
-  remember(text, undo);
+  const keep = action && action.method === 'KeepOverBench' && action.item ? String(action.item) : '';
+  remember(text, undo, keep);
   const el = document.getElementById('toast');
   if (!el) return;
   toastActions = [action, second].filter((a) => a && a.label && /^[A-Z][A-Za-z]*$/.test(a.method || ''));
@@ -342,11 +459,12 @@ function readTime(text, where) {
 }
 
 // remember keeps a toast's text in the recent messages, with the change
-// its Undo takes back, if it has one. The first message brings the status
-// bar its button for them, and an open list shows the new one.
-function remember(text, undo = 0) {
+// its Undo takes back, and the app its Keep over Bench keeps over Bench,
+// if it has them. The first message brings the status bar its button for
+// them, and an open list shows the new one.
+function remember(text, undo = 0, keep = '') {
   const redraw = !messages.length || noticesOpen();
-  noteMessage(text, 'toast', undo);
+  noteMessage(text, 'toast', undo, keep);
   if (redraw && store.view) queueMicrotask(update);
 }
 
@@ -553,7 +671,9 @@ export function keepToastOffList() {
 // a Bench left raised by the page before it.
 let overlayReported = null;
 
-// overlayOpen reports whether anything that needs raised mode is open.
+// overlayOpen reports whether anything that needs raised mode is open: a
+// menu drawn in HTML, a dialog, a drag, or the folder picker. A native
+// menu doesn't (ui.nativeMenu).
 export function overlayOpen() {
   const { ui } = store;
   return Boolean(ui.menu || ui.overlay || ui.drag || ui.choosing);
@@ -602,8 +722,14 @@ export function canRestore(key) {
 // that opens now closes: that of the control that opened the open menu,
 // which the dialog replaces, or else that of the focused control.
 export function openerKey() {
-  const m = store.ui.menu;
+  const m = store.ui.menu || store.ui.nativeMenu;
   return m ? m.opener : activeKey();
+}
+
+// menuOpen reports whether a menu is open: one drawn in HTML, or a native
+// one.
+export function menuOpen() {
+  return Boolean(store.ui.menu || store.ui.nativeMenu);
 }
 
 // closeOverlay closes the open dialog and any menu, and puts focus back

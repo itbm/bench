@@ -716,6 +716,34 @@ void benchFillWindow(void *nsWindow) {
 	});
 }
 
+void benchPlaceWindow(void *nsWindow, int x, int y, int width, int height, int fill) {
+	if (nsWindow == NULL) {
+		return;
+	}
+	void *pointer = nsWindow;
+	benchOnMain(^{
+		id object = (__bridge id)pointer;
+		if (![object isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+		NSScreen *primary = [NSScreen screens].firstObject;
+		if (primary == nil) {
+			return;
+		}
+		// The frame that Wails' SetSize and SetPosition give, as AppKit's
+		// screen coordinates have it, up from the primary screen's bottom
+		// left, set at once, without the animation of Wails' SetSize, so
+		// that the window doesn't change size on the display it's leaving
+		// first. Wails' window class stops a zoom that's animating.
+		NSRect frame = NSMakeRect(x, primary.frame.size.height - height - y, width, height);
+		[(NSWindow *)object setFrame:frame display:YES];
+		if (fill) {
+			// It runs at once, on the main thread.
+			benchFillWindow(pointer);
+		}
+	});
+}
+
 // benchSRGB returns an 0xRRGGBB colour with alpha.
 static NSColor *benchSRGB(uint32_t rgb, CGFloat alpha) {
 	return [NSColor colorWithSRGBRed:((rgb >> 16) & 0xFF) / 255.0 green:((rgb >> 8) & 0xFF) / 255.0 blue:(rgb & 0xFF) / 255.0 alpha:alpha];
@@ -795,6 +823,154 @@ void benchSetWindowAppearance(void *nsWindow, int appearance) {
 		// Wails gave the window a fixed background as it made it, the one
 		// for the appearance it opened with.
 		window.backgroundColor = benchWindowBackground();
+	});
+}
+
+// gDropSerial counts the drop-down's shows and hides, so that a hide's
+// slide that ends after the drop-down has shown again doesn't order it
+// out. Main thread only.
+static NSUInteger gDropSerial = 0;
+
+// BenchDropSlide is how long the drop-down takes to slide, or fade, in or
+// out, in seconds.
+static const NSTimeInterval BenchDropSlide = 0.18;
+
+// benchDropScreen is the screen that Bench's window is on, where the
+// drop-down shows. While the window is hidden, it's the screen that holds
+// the middle of the frame it had; without a window, the screen with the
+// keyboard.
+static NSScreen *benchDropScreen(void) {
+	if (gWindow != nil) {
+		if (gWindow.screen != nil) {
+			return gWindow.screen;
+		}
+		NSPoint middle = NSMakePoint(NSMidX(gWindow.frame), NSMidY(gWindow.frame));
+		for (NSScreen *screen in NSScreen.screens) {
+			if (NSPointInRect(middle, screen.frame)) {
+				return screen;
+			}
+		}
+	}
+	if (NSScreen.mainScreen != nil) {
+		return NSScreen.mainScreen;
+	}
+	return NSScreen.screens.firstObject;
+}
+
+// benchDropFrame is where the drop-down shows: across the top of the
+// visible part of screen, below the menu bar, fraction of its height tall.
+static NSRect benchDropFrame(NSScreen *screen, double fraction) {
+	NSRect visible = screen.visibleFrame;
+	CGFloat height = round(visible.size.height * MAX(0.1, MIN(fraction, 1.0)));
+	return NSMakeRect(visible.origin.x, NSMaxY(visible) - height, visible.size.width, height);
+}
+
+// benchDropCanSlide reports whether the drop-down can slide to or from
+// frame above, just above its screen's visible part: no other screen is
+// there, as one arranged above it would be. The panel floats over that
+// screen's windows too, so it fades in place instead.
+static BOOL benchDropCanSlide(NSScreen *screen, NSRect above) {
+	for (NSScreen *other in NSScreen.screens) {
+		if (!NSEqualRects(other.frame, screen.frame) && NSIntersectsRect(other.frame, above)) {
+			return NO;
+		}
+	}
+	return YES;
+}
+
+// benchReduceMotion reports whether Reduce Motion is on.
+static BOOL benchReduceMotion(void) {
+	return NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
+}
+
+void benchShowDropdown(void *nsWindow, double fraction) {
+	if (nsWindow == NULL) {
+		return;
+	}
+	void *pointer = nsWindow;
+	benchOnMain(^{
+		NSWindow *window = benchLiveWindow(pointer);
+		if (window == nil || benchStopped()) {
+			return;
+		}
+		gDropSerial++;
+		NSScreen *screen = benchDropScreen();
+		NSRect shown = benchDropFrame(screen, fraction);
+		NSRect above = NSOffsetRect(shown, 0, shown.size.height);
+		BOOL still = benchReduceMotion();
+		BOOL slide = !still && benchDropCanSlide(screen, above);
+		// Above Bench's own window while it's raised, which floats too,
+		// and below the menu bar, which it slides out from under. It stays
+		// when Bench hides.
+		window.level = NSFloatingWindowLevel + 1;
+		window.canHide = NO;
+		// In its place, or out of sight above the screen to slide from,
+		// before it's ordered front, so that it doesn't show for a moment
+		// where it was, at a size from before, or on another screen. One
+		// that's still sliding up or fading out goes on from where it is.
+		if (!window.isVisible) {
+			[window setFrame:(slide ? above : shown) display:NO];
+			[window setAlphaValue:(slide || still) ? 1.0 : 0.0];
+		} else if (!slide) {
+			[window setFrame:shown display:YES];
+		}
+		if (still) {
+			[window setAlphaValue:1.0];
+		}
+		[window orderFrontRegardless];
+		[window makeKeyWindow];
+		WKWebView *web = benchFindUIWebView(window);
+		if (web != nil) {
+			[window makeFirstResponder:web];
+		}
+		if (still) {
+			return;
+		}
+		[NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+			context.duration = BenchDropSlide;
+			if (slide) {
+				[window.animator setFrame:shown display:YES];
+			}
+			[window.animator setAlphaValue:1.0];
+		} completionHandler:nil];
+	});
+}
+
+void benchHideDropdown(void *nsWindow) {
+	if (nsWindow == NULL) {
+		return;
+	}
+	void *pointer = nsWindow;
+	benchOnMain(^{
+		NSWindow *window = benchLiveWindow(pointer);
+		if (window == nil || !window.isVisible) {
+			return;
+		}
+		NSUInteger serial = ++gDropSerial;
+		if (benchReduceMotion()) {
+			[window orderOut:nil];
+			[window setAlphaValue:1.0];
+			return;
+		}
+		NSRect frame = window.frame;
+		NSRect above = NSOffsetRect(frame, 0, frame.size.height);
+		NSScreen *screen = window.screen != nil ? window.screen : benchDropScreen();
+		BOOL slide = benchDropCanSlide(screen, above);
+		[NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+			context.duration = BenchDropSlide;
+			if (slide) {
+				[window.animator setFrame:above display:YES];
+			} else {
+				[window.animator setAlphaValue:0.0];
+			}
+		} completionHandler:^{
+			// Shown again meanwhile, or closed.
+			NSWindow *still = benchLiveWindow(pointer);
+			if (still != nil && serial == gDropSerial) {
+				[still orderOut:nil];
+				[still setAlphaValue:1.0];
+			}
+		}];
 	});
 }
 

@@ -58,7 +58,9 @@ type Plan struct {
 	// Hide are apps to hide: those whose every item is in other tabs.
 	Hide []platform.App
 	// Unhide are apps with items in this tab. Apply unhides them before
-	// docking, if Bench hid them or they're hidden.
+	// docking, if Bench hid them or they're hidden, and parks their
+	// windows in Park, and in stacks with Shown == 0, before it unhides
+	// them, where it can.
 	Unhide []platform.App
 	// Unpark are windows that aren't in a stack but should be on screen,
 	// such as this tab's undocked windows. Apply puts back the ones the
@@ -73,6 +75,9 @@ type Result struct {
 	Status map[platform.WindowID]string
 	// Errors that didn't stop the rest of the plan.
 	Errors []error
+	// Touched is how many windows Apply asked the platform to change:
+	// to move, park, minimise, restore, or raise.
+	Touched int
 	// FileErr is set while the parked-windows file is out of date because
 	// it couldn't be written, so windows may be parked with no record to
 	// put them back after a crash. Each Apply tries to write it again. A

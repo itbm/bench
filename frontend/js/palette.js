@@ -10,16 +10,19 @@
 // The add dialog's windows can be ticked, to add several at once.
 
 import { call, errorText } from './bridge.js';
-import { act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, store, toast, update } from './state.js';
 import {
-  activeKey, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, LAYOUT_MODES, leaves, realPaneOf, sentence,
-  shownInFocus, undoHint,
+  act, closeOverlay, isDemo, openerKey, overlayOpen, runPaneLater, shownCurrent, store, switchTab, toast, update,
+} from './state.js';
+import {
+  activeKey, anyColoured, contentRect, currentTab, esc, focusedPaneID, ICONS, itemOf, keysOf, labelOf, LAYOUT_MODES, leaves, realPaneOf,
+  sentence, shownInFocus, tabDot, undoHint,
 } from './util.js';
 import { openEditor } from './editor.js';
 import { openOverview } from './overview.js';
 import { GRIP } from './dialogs.js';
 import { openMessages, openWindowMenu, panesCanClose, reopenItemLabel, windowMenuEntries, zoomEntry } from './menu.js';
 import { openSettings } from './settings.js';
+import { outsideTabs } from './fromwindows.js';
 import { closeTab, closeTabLabel } from './close.js';
 import { launcherItems, newTerminalIn, openTerminalForm, renderTerminalStep, runItem } from './launchers.js';
 import { showGuide } from './guide.js';
@@ -150,20 +153,23 @@ export async function makeWebApp(itemId, paneId) {
   waitForWebApp(ui.add, ui.add.make);
 }
 
-// showWindow switches to an item's tab if needed, then shows it in its pane.
+// showWindow switches to an item's tab if needed, then shows it in its pane:
+// if the title bar doesn't show it as current (shownCurrent), as while a
+// switch to another tab is on its way (decision 67).
 async function showWindow(view, tabIndex, paneId, itemId) {
-  if (tabIndex !== view.current) {
-    const r = await act('SwitchTab', tabIndex);
+  if (tabIndex !== shownCurrent(view)) {
+    const r = await switchTab(tabIndex);
     if (!r.ok) return;
   }
   await act('ShowItem', paneId, itemId);
 }
 
 // openWindowOptions opens the ⋯ menu of the item that a pane shows, in the
-// jump palette's place, so that Bench stays raised: below the pane's ⋯
-// button, which the focus goes back to as the menu closes, or, for a pane
-// with no header, inside its top right corner, and the focus goes back to
-// where it was before the palette opened.
+// jump palette's place, so that Bench stays raised for a menu drawn in
+// HTML (a native menu doesn't need it): below the pane's ⋯ button, which
+// the focus goes back to as the menu closes, or, for a pane with no
+// header, inside its top right corner, and the focus goes back to where it
+// was before the palette opened.
 function openWindowOptions(paneId, itemId) {
   const { ui } = store;
   const opener = ui.opener;
@@ -183,8 +189,7 @@ function openWindowOptions(paneId, itemId) {
   // As below a ⋯ button, the menu starts 260 points left of the right end,
   // here 4 points inside the pane.
   const r = contentRect(el);
-  openWindowMenu(el, itemId, paneId, { x: r.x + r.w - 4 - 260, y: r.y + 4 });
-  if (ui.menu) ui.menu.opener = opener;
+  openWindowMenu(el, itemId, paneId, { x: r.x + r.w - 4 - 260, y: r.y + 4 }, opener);
 }
 
 // paneHint names the focused pane in the jump palette by the window it
@@ -201,8 +206,9 @@ function paneHint(view) {
 // nothing typed, or a tab's name typed, jumps, and doesn't start a command.
 // The tab used before this one comes first, so that Return goes back to it
 // at once, as the last_tab shortcut does; the other tabs keep their order
-// in the tab strip, which their shortcuts number. Windows come in the order
-// they were last used (ItemView.used), the latest first.
+// in the tab strip, which their shortcuts number. While a tab has a
+// colour, the tabs' rows have the dots of their colours (tabDot). Windows
+// come in the order they were last used (ItemView.used), the latest first.
 export function paletteItems(view) {
   const items = [];
   const keys = keysOf(view);
@@ -219,10 +225,11 @@ export function paletteItems(view) {
     });
   }
   const last = view.lastTab >= 0 && view.lastTab !== view.current && view.tabs[view.lastTab] ? view.lastTab : -1;
+  const dots = anyColoured(view);
   const tabRow = (t, i) => ({
-    group: 'Tabs', mono: String(i + 1), label: t.name,
+    group: 'Tabs', mono: String(i + 1), label: t.name, ...(dots ? { dot: tabDot(t) } : {}),
     hint: (t.apps || []).join(', ') + (i === view.current ? ' · current' : ''),
-    keys: t.shortcut || '', run: () => act('SwitchTab', i),
+    keys: t.shortcut || '', run: () => switchTab(i),
   });
   if (last >= 0) {
     const row = tabRow(view.tabs[last], last);
@@ -241,7 +248,9 @@ export function paletteItems(view) {
   })));
   // The sort keeps the tabs' order for windows used as long ago.
   items.push(...windows.sort((a, b) => b.used - a.used));
-  (view.floating || []).forEach((it) => items.push({
+  // The drop-down has Show Drop-down, below, and Move into This Pane, in
+  // This window.
+  outsideTabs(view).forEach((it) => items.push({
     group: 'Not in a tab', mono: it.mono, icon: it.icon, label: it.title || it.app, title: labelOf(view, it.id), hint: it.app + ' · add to this tab', keys: '',
     itemId: it.id, run: () => act('AddToPane', focusedPaneID(view), { type: 'floating', id: it.id }),
   }));
@@ -253,12 +262,14 @@ export function paletteItems(view) {
 
 // windowRows lists the jump palette's This window group: what the ⋯ menu
 // offers for the window that the focused pane shows (windowMenuEntries), so
-// that the two can't differ, each with its shortcut. An entry under a
-// heading there, or in a submenu, is named with it, as "Move to Tab ▸
-// Comms". Entries that are off are left out, and so is Zoom Pane, which is
-// the pane's: Actions has it, as an empty pane has it too. Window Options…
-// opens the menu itself, for what joins it once Go answers, such as a web
-// page's web app.
+// that the two can't differ, each with its shortcut. An entry in a submenu
+// there, or with under, is named with it, as "Move to Tab ▸ Comms" and
+// "Page ▸ Find in Page…". Entries that are off are left out, and so is
+// Zoom Pane, which is the pane's: Actions has it, as an empty pane has it
+// too. A checkbox, such as Keep Running in the Background, says after its
+// name whether it's on now, as "(now on)", so that its row doesn't read as
+// what Return does. Window Options… opens the menu itself, for what joins
+// it once Go answers, such as a web page's web app.
 function windowRows(view) {
   const shown = shownInFocus(view);
   if (!shown) return [];
@@ -267,7 +278,10 @@ function windowRows(view) {
   const rows = windowMenuEntries(view, shown, realPaneOf(view, shown, d.focus))
     .flatMap((e) => (e.submenu ? e.submenu.map((s) => ({ ...s, under: e.label })) : [e]))
     .filter((e) => e.label && e.run && !e.disabled && !e.pane)
-    .map((e) => ({ group: 'This window', label: e.under ? e.under + ' ▸ ' + e.label : e.label, hint, keys: e.keys || '', run: e.run }));
+    .map((e) => ({
+      group: 'This window', label: (e.under ? e.under + ' ▸ ' + e.label : e.label) + (e.checkbox ? (e.checked ? ' (now on)' : ' (now off)') : ''),
+      hint, keys: e.keys || '', run: e.run,
+    }));
   rows.push({ group: 'This window', label: 'Window Options…', hint, keys: '', stay: true, run: () => openWindowOptions(d.focus, shown) });
   return rows;
 }
@@ -286,6 +300,11 @@ function actionRows(view) {
   // and "cards" find it too.
   add('Show All Tabs', 'Each tab and its windows at once', () => openOverview(), { keys: keys.showAllTabs || '', stay: true, title: 'show all tabs overview cards' });
   add('Rearrange', cur ? 'Arrange ' + cur + ' again' : '', () => act('Rearrange'), { keys: keys.rearrange || '' });
+  // The drop-down terminal, as View ▸ Show Drop-down shows or hides it, or
+  // makes one in the home folder. "dropdown" finds it too.
+  const drop = view.dropdown;
+  add(drop && drop.shown ? 'Hide Drop-down' : 'Show Drop-down', drop ? labelOf(view, drop.id) : 'A new terminal that slides down over any app',
+    () => act('ToggleDropdown'), { keys: keys.dropdown || '', title: 'show hide drop-down dropdown' });
   // The focused pane can fill the tab for now, as the zoom_pane shortcut
   // makes it, and the tab can show every pane again.
   const zoom = zoomEntry(view);
@@ -872,7 +891,7 @@ function renderList(items, sel, emptyText, ticked = []) {
     html += '<button type="button" class="palette-item" role="option" id="palette-item-' + i + '" aria-selected="' + selected + '" data-action="palette-run" data-index="' + i + '"'
       + (it.tick ? ' aria-checked="' + on + '"' : '')
       + (it.itemId ? ' data-item="' + esc(it.itemId) + '"' : '') + ' tabindex="-1">'
-      + tick + square + '<span class="palette-label">' + esc(it.label) + '</span>'
+      + tick + square + (it.dot || '') + '<span class="palette-label">' + esc(it.label) + '</span>'
       + '<span class="palette-hint">' + esc(it.hint) + '</span>'
       + '<kbd class="palette-keys">' + esc(keys) + '</kbd></button>';
   });

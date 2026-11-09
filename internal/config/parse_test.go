@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -95,6 +96,16 @@ menu_bar = "icon"
 	if cfg.Settings.Density != DensityAuto || cfg.Settings.PaneHeaders != PaneHeadersAlways {
 		t.Errorf("density %q, pane_headers %q; want auto, always", cfg.Settings.Density, cfg.Settings.PaneHeaders)
 	}
+	// A file that leaves covering_windows out, as one that an earlier Bench
+	// wrote does, hides what covers Bench, as that Bench did.
+	if cfg.Settings.CoveringWindows != CoveringHide {
+		t.Errorf("covering_windows %q, want hide", cfg.Settings.CoveringWindows)
+	}
+	cfg = mustParse(t, "[settings]\ncovering_windows = \"leave\"\n"+oneTab)
+	if cfg.Settings.CoveringWindows != CoveringLeave {
+		t.Errorf("covering_windows %q, want leave", cfg.Settings.CoveringWindows)
+	}
+	cfg = mustParse(t, "[settings]\nscroll_bars = \"never\"\n"+oneTab)
 	// A file that leaves the appearance out matches macOS, the default.
 	if cfg.Settings.Appearance != AppearanceSystem {
 		t.Errorf("appearance %q, want system", cfg.Settings.Appearance)
@@ -270,6 +281,34 @@ start_again = false
 	}
 }
 
+// TestParseKeepRunning checks a web item's keep_running: missing, true, or
+// false, which KeepsRunning reads as off, on, and off.
+func TestParseKeepRunning(t *testing.T) {
+	cfg := mustParse(t, oneTab+`
+  [[tab.pane]]
+  items = [
+    { web = "https://app.slack.com/client" },
+    { web = "https://outlook.office.com/mail/", keep_running = true },
+    { web = "https://mail.google.com/mail/", keep_running = false },
+  ]
+`)
+	items := cfg.Tabs[0].Panes[0].Items
+	var got []string
+	for _, it := range items {
+		s := "missing"
+		if it.KeepRunning != nil {
+			s = fmt.Sprint(*it.KeepRunning)
+		}
+		got = append(got, fmt.Sprintf("%s %v", s, it.KeepsRunning()))
+	}
+	if want := []string{"missing false", "true true", "false false"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("keep_running and KeepsRunning = %q, want %q", got, want)
+	}
+	if c := cfg.Clone(); c.Tabs[0].Panes[0].Items[1].KeepRunning == items[1].KeepRunning {
+		t.Error("Clone shares keep_running with the original")
+	}
+}
+
 func TestParseUnknownFields(t *testing.T) {
 	doc := `bogus = 1
 [settings]
@@ -279,7 +318,7 @@ jumpp = "x"
 [[tab]]
 name = "A"
 layout = "side"
-colour = "red"
+color = "red"
   [[tab.pane]]
   items = [{ app = "x", titel = "y" }, { web = "https://a.example", bar = { baz = 2 } }]
   extra = true
@@ -312,7 +351,7 @@ rnu = "claude"
 		{"", "bogus"},
 		{"", "settings.gapp"},
 		{"", "shortcuts.jumpp"},
-		{"A", "colour"},
+		{"A", "color"},
 		{"A", "pane[1].items[1].titel"},
 		{"A", "pane[1].items[2].bar"},
 		{"A", "pane[1].extra"},
@@ -327,7 +366,7 @@ rnu = "claude"
 		"bogus":                  "unknown field (line 1, column 1)",
 		"settings.gapp":          `unknown field (line 3, column 1); did you mean "gap"?`,
 		"shortcuts.jumpp":        `unknown field (line 5, column 1); did you mean "jump"?`,
-		"colour":                 "unknown field (line 9, column 1)",
+		"color":                  `unknown field (line 9, column 1); did you mean "colour"?`,
 		"pane[1].items[1].titel": `unknown field (line 11, column 25); did you mean "title"?`,
 		"pane[1].items[1].nam":   `unknown field (line 23, column 5); did you mean "name"?`,
 		"wat":                    "unknown table (line 18, column 2)",
@@ -431,6 +470,7 @@ func TestParseWrongTypes(t *testing.T) {
 		{"launcher start_again", "[[launcher]]\nname = \"Claude\"\nrun = \"claude\"\nstart_again = \"yes\"\n" + oneTab, where{"", "launcher[1].start_again"}, "must be true or false, not text (line 4, column 15)"},
 		{"launcher name", "[[launcher]]\nname = 3\n" + oneTab, where{"", "launcher[1].name"}, "must be text in quotes, not a number"},
 		{"item start_again", oneTab + "  [[tab.pane]]\n  items = [{ terminal = \"~\", run = \"x\", start_again = 1 }]\n", where{"Code", "pane[1].items[1].start_again"}, "must be true or false, not a number"},
+		{"item keep_running", oneTab + "  [[tab.pane]]\n  items = [{ web = \"https://app.slack.com\", keep_running = \"yes\" }]\n", where{"Code", "pane[1].items[1].keep_running"}, "must be true or false, not text"},
 		{"launcher that isn't a table", "launcher = 3\n" + oneTab, where{"", "launcher"}, "must be"},
 	}
 	for _, tc := range tests {
@@ -537,6 +577,34 @@ tab = "Reading"
 	})
 }
 
+func TestParseTabColour(t *testing.T) {
+	cfg := mustParse(t, oneTab+"colour = \"blue\"\n"+`
+[[tab]]
+name = "Notes"
+layout = "single"
+`)
+	if got := []string{cfg.Tabs[0].Colour, cfg.Tabs[1].Colour}; !reflect.DeepEqual(got, []string{"blue", ""}) {
+		t.Errorf("colours = %q, want blue and none", got)
+	}
+
+	_, problems, err := Parse([]byte(oneTab + "colour = \"Teal\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkWheres(t, problems, []where{{"Code", "colour"}})
+	want := `tab "Code": colour: "Teal" isn't a tab colour; use red, yellow, green, cyan, blue, purple, pink, or grey, or leave colour out for none`
+	if len(problems) == 1 && problems[0].Error() != want {
+		t.Errorf("problem %q, want %q", problems[0].Error(), want)
+	}
+
+	// A colour that isn't a string stops decoding, as other wrong types do.
+	_, problems, err = Parse([]byte(oneTab + "colour = 3\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkWheres(t, problems, []where{{"Code", "colour"}})
+}
+
 func TestParseCRLF(t *testing.T) {
 	doc := strings.ReplaceAll(string(ExampleTOML()), "\n", "\r\n")
 	if got := mustParse(t, doc); !reflect.DeepEqual(got, Example()) {
@@ -576,6 +644,7 @@ func TestSuggest(t *testing.T) {
 		{kindItem, "titel", "title"},
 		{kindItem, "colour", ""},
 		{kindTab, "smallscreens", "small_screens"},
+		{kindTab, "color", "colour"},
 		{kindTop, "settigns", "settings"},
 		{kindNone, "gapp", ""},
 		{kindRule, "x", ""},

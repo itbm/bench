@@ -27,14 +27,14 @@
 // Control-click, which macOS makes a contextmenu event
 // (overviewContextMenu).
 
-import { act, closeOverlay, openerKey, store, update } from './state.js';
+import { act, closeOverlay, openerKey, store, switchTab, update } from './state.js';
 import { renderMini } from './editor.js';
 import { fold } from './palette.js';
-import { captureMarks, captureNotes, tabCaptureMark, tabCaptureText } from './pages.js';
+import { captureMarks, captureNotes, NOT_LOADED, tabCaptureMark, tabCaptureText } from './pages.js';
 import { tile } from './tiles.js';
 import {
-  bellMark, esc, ICONS, itemOf, keysOf, labelOf, leaves, markerOf, needsYouText, sentence, splitShortcut, statusMark, unreadMark,
-  unreadText, unreadTip,
+  anyColoured, bellMark, esc, ICONS, itemOf, keysOf, labelOf, leaves, markerOf, needsYouText, sentence, splitShortcut, statusMark,
+  tabDot, unreadMark, unreadText, unreadTip,
 } from './util.js';
 
 // OTHERS is how many of a pane's other windows its card draws tiles for:
@@ -77,7 +77,7 @@ export function followHold(view, ui, restore) {
   const o = ui.overlay === 'overview' ? ui.overview : null;
   if (hold && hold.id !== ui.closedHold) {
     if (o && o.hold === hold.id) return;
-    if (ui.overlay || ui.menu || ui.drag) return;
+    if (ui.overlay || ui.menu || ui.nativeMenu || ui.drag) return;
     ui.opener = openerKey();
     ui.paneLater = null;
     ui.overlay = 'overview';
@@ -206,7 +206,7 @@ export function chooseTab(index) {
   // opened the overview doesn't take it back.
   ui.opener = null;
   closeOverlay();
-  act('SwitchTab', index);
+  switchTab(index);
 }
 
 // overviewContextMenu handles a Control-click in the open overview, as a
@@ -336,11 +336,14 @@ export function renderCards(view, ui) {
 }
 
 // card returns a tab's card. A screen reader reads its name first, as it
-// shows, then what's in it and its marks.
+// shows, then what's in it and its marks, with how many of its pages
+// aren't loaded yet, which have no counts (decision 76). While a tab has a
+// colour, each name has the dot of its tab's colour before it (tabDot).
 function card(view, i, chosen, ratio) {
   const t = view.tabs[i];
   const ids = windowsOf(view, t);
   const problems = ids.filter((id) => markerOf(itemOf(view, id)) === 'problem').length;
+  const notLoaded = ids.filter((id) => (itemOf(view, id) || {}).notLoaded).length;
   const shown = leaves(t.root).map((p) => shownIn(view, p)).filter(Boolean);
   const notes = [
     i === view.current ? 'current tab' : '',
@@ -348,6 +351,7 @@ function card(view, i, chosen, ratio) {
     ids.length === 1 ? '1 window' : ids.length + ' windows',
     shown.length ? 'showing ' + shown.map((id) => labelOf(view, id)).join(', ') : '',
     unreadText(t.unread).toLowerCase(),
+    notLoaded ? (notLoaded === 1 ? '1 page not loaded yet' : notLoaded + ' pages not loaded yet') : '',
     t.attention ? needsYouText(t.attention) : '',
     problems ? (problems === 1 ? '1 window has a problem' : problems + ' windows have a problem') : '',
     tabCaptureText(t),
@@ -359,7 +363,7 @@ function card(view, i, chosen, ratio) {
     + (problems ? '<span class="overview-problem" aria-hidden="true" title="' + esc(problemText) + '">' + ICONS.warning + '</span>' : '');
   return '<div class="overview-card" role="option" id="overview-card-' + i + '" data-action="overview-tab" data-index="' + i + '"'
     + ' aria-selected="' + chosen + '"' + (i === view.current ? ' data-current="true"' : '') + ' aria-label="' + esc(label) + '">'
-    + '<div class="overview-card-head"><span class="overview-name">' + esc(t.name) + '</span>' + marks
+    + '<div class="overview-card-head">' + (anyColoured(view) ? tabDot(t) : '') + '<span class="overview-name">' + esc(t.name) + '</span>' + marks
     + (i === view.current ? '<span class="overview-current">Current</span>' : '')
     + (t.shortcut ? '<kbd>' + esc(t.shortcut) + '</kbd>' : '') + '</div>'
     + '<div class="mini overview-mini" style="aspect-ratio: ' + ratio + '" aria-hidden="true">' + renderMini(view, t.root, pane) + '</div>'
@@ -398,9 +402,11 @@ function windowTile(it) {
   return tile(it.mono, it.icon, statusMark(markerOf(it)));
 }
 
-// windowTip names a window, with how many unread, how its page uses the
-// camera and the microphone, and why it needs you.
+// windowTip names a window, with that its page isn't loaded yet, how many
+// unread, how its page uses the camera and the microphone, and why it
+// needs you, as its sub-tab's tooltip does.
 function windowTip(view, id) {
   const it = itemOf(view, id);
-  return [labelOf(view, id), unreadTip(it.unread), ...captureNotes(it), it.attention ? sentence(it.attention) : ''].filter(Boolean).join('\n');
+  return [labelOf(view, id), it.notLoaded ? NOT_LOADED : '', unreadTip(it.unread), ...captureNotes(it), it.attention ? sentence(it.attention) : '']
+    .filter(Boolean).join('\n');
 }

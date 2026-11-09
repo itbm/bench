@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -99,6 +100,7 @@ func (e *Engine) snapshotLocked() (*config.State, int) {
 	st.Apps = e.appStatesLocked()
 	st.Ran = e.clk.Now()
 	st.Screen = e.lastScreen
+	st.PreferredScreen = e.preferred
 	st.Dialogs = maps.Clone(e.dialogs)
 	if e.updates != (config.UpdatesState{}) {
 		updates := e.updates
@@ -107,6 +109,8 @@ func (e *Engine) snapshotLocked() (*config.State, int) {
 	for _, c := range e.closedTabs {
 		st.Closed = append(st.Closed, *c)
 	}
+	st.Covering = slices.Sorted(maps.Keys(e.told))
+	st.WindowTools = slices.Sorted(maps.Keys(e.toolsTold))
 	for i := range st.Tabs {
 		if i < len(e.cfg.Tabs) && strings.EqualFold(e.cfg.Tabs[i].Name, st.Tabs[i].Name) {
 			st.Tabs[i].Entries = entryKeys(e.cfg.Tabs[i])

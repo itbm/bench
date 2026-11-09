@@ -23,7 +23,7 @@ func (h *harness) lastMenuBar() MenuBar {
 
 // TestMenuBarSentToShell checks what the shell is told to show in the menu
 // bar item: the setting, the current tab, and the tabs with their
-// shortcuts, as Wails accelerators.
+// shortcuts, as Wails accelerators, and their colours, for the Tab menu.
 func TestMenuBarSentToShell(t *testing.T) {
 	h := newHarness(t, setup{})
 	mustOK(t, h.e.SwitchTab(1))
@@ -32,8 +32,8 @@ func TestMenuBarSentToShell(t *testing.T) {
 		Show:    config.MenuBarName,
 		Current: 1,
 		Tabs: []MenuBarTab{
-			{Name: "Comms", Shortcut: "Ctrl+Option+1", Keys: "⌃⌥1", SendKeys: "⌃⌥⇧1"},
-			{Name: "Code", Shortcut: "Ctrl+Option+2", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2"},
+			{Name: "Comms", Shortcut: "Ctrl+Option+1", Keys: "⌃⌥1", SendKeys: "⌃⌥⇧1", Colour: config.ColourBlue},
+			{Name: "Code", Shortcut: "Ctrl+Option+2", Keys: "⌃⌥2", SendKeys: "⌃⌥⇧2", Colour: config.ColourGreen},
 			{Name: "Research", Shortcut: "Ctrl+Option+3", Keys: "⌃⌥3", SendKeys: "⌃⌥⇧3"},
 		},
 		Jump: "Ctrl+Option+Space",

@@ -31,6 +31,9 @@ const (
 	// unknownWebAppMaker).
 	noAccessibilityForWebApps = "Bench shows this page itself, because it needs Accessibility permission to dock web apps."
 	noBrowserForWebApps       = "Bench couldn't find a browser to make a web app, so it shows the page itself."
+	// otherDisplay names a display that macOS gives no name, in the toasts
+	// about going back to the display that the user chose (returning.go).
+	otherDisplay = "the other display"
 )
 
 // cantMakeWebApps says that the default browser, called browser, can't make
@@ -77,10 +80,15 @@ var (
 	errAppTitle        = errors.New("An app's window takes its title from the app. Only terminals and web pages can be renamed.")
 	errNoLoginItem     = errors.New("Open at login isn't available here.")
 	errNoDemo          = errors.New("Simulated screens are only for the browser preview.")
+	errNoDemoMonitor   = errors.New("Choose Monitor in the demo bar first, then unplug it.")
+	errDemoPlugged     = errors.New("The monitor is plugged in already.")
+	errCantGoBack      = errors.New("That display isn't connected, so Bench can't move back to it.")
 	errNoDemoWindows   = errors.New("Simulated windows are only for the browser preview.")
 	errNoDemoKeys      = errors.New("Simulated keys are only for the browser preview.")
 	errNoDemoVoiceOver = errors.New("Simulated VoiceOver is only for the browser preview.")
 	errNoMinimise      = errors.New("The focused pane doesn't show an app's window to minimise.")
+	errNoDemoTools     = errors.New("Simulated window tools are only for the browser preview.")
+	errNoToolMove      = errors.New("The focused pane doesn't show an app's window in the pane to move.")
 	errBadSource       = errors.New("Bench can't add that.")
 	errNotRunning      = errors.New("Bench isn't running any more.")
 	errNotWebPage      = errors.New("Only a web page can become a web app.")
@@ -94,6 +102,13 @@ var (
 	// errNoLastTabToSend refuses SendToLastTab until Bench has switched
 	// tabs, as errNoLastTab refuses LastTab.
 	errNoLastTabToSend = errors.New("There's no last used tab to send the window to yet. Switch tabs first.")
+	// errCantKeepOver refuses KeepOverBench for an app whose windows Bench
+	// hasn't put out of sight because they covered it.
+	errCantKeepOver = errors.New("Bench hasn't put that app's windows out of sight, so there's nothing to keep over it.")
+	// errKeepOverInTabs refuses KeepOverBench for an app with windows in
+	// the tabs, or a rule that sends them to one: a float rule for the app
+	// would keep its windows out of them.
+	errKeepOverInTabs = errors.New("Bench can't keep that app's windows over it: the app has windows in your tabs, or a rule in config.toml that puts them in a tab.")
 	// errConfigProblems and errNoConfigProblems refuse OverwriteConfig and
 	// UseConfigBackup.
 	errConfigProblems   = errors.New("config.toml has problems, so Bench doesn't save over it. Fix them and reload it, or use the backup.")
@@ -175,6 +190,17 @@ func errNoWebApp(host string) error { return fmt.Errorf("Bench can't find a web 
 // its port, if any.
 func insecureAddress(host string) error {
 	return fmt.Errorf("%w Try https://%s.", errInsecure, host)
+}
+
+// errCantGoBackTo refuses Undo of Bench's move back to the display that
+// the user chose once the display that the window was on, called name, has
+// gone too, as when the lid has closed (errCantGoBack for one without a
+// name).
+func errCantGoBackTo(name string) error {
+	if name == "" {
+		return errCantGoBack
+	}
+	return fmt.Errorf("%s isn't connected, so Bench can't move back to it.", name)
 }
 
 // errNoTab says there's no tab at index i (counting from 0).
@@ -357,6 +383,30 @@ func notInstalledText(app string) string { return app + " isn't installed" }
 func noWindowText(app string) string     { return app + " has no window open for this" }
 func couldNotOpenText(app string) string {
 	return "Bench couldn't open " + app
+}
+
+// keepsMovingText explains a window that kept moving out of its pane
+// (keptMoving): its app did it, or a window tool that's running, which it
+// names, or another tool. Bench can't tell which.
+func keepsMovingText(app string, tools []string) string {
+	if len(tools) == 0 {
+		return app + " or another tool keeps moving this window"
+	}
+	return joinOr(append([]string{app}, tools...)) + " keeps moving this window"
+}
+
+// joinOr joins names into a list of choices: "Zed", "Zed or Rectangle", or
+// "Zed, Rectangle, or Magnet".
+func joinOr(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " or " + names[1]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + ", or " + names[len(names)-1]
 }
 
 const (

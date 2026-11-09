@@ -56,6 +56,12 @@ var headerConstants = map[string]int64{
 	"BENCH_EV_SCREEN_UNLOCKED":      evScreenUnlocked,
 	"BENCH_EV_DESKTOP_CHANGED":      evDesktopChanged,
 
+	"BENCH_PREF_NUMBER":      prefNumber,
+	"BENCH_PREF_TEXT":        prefText,
+	"BENCH_PREF_SHORTCUT":    prefShortcut,
+	"BENCH_PREF_NO_SHORTCUT": prefNoShortcut,
+	"BENCH_PREF_OTHER":       prefOther,
+
 	"BENCH_MOD_CONTROL": heldControl,
 	"BENCH_MOD_OPTION":  heldOption,
 	"BENCH_MOD_SHIFT":   heldShift,
@@ -106,10 +112,10 @@ var headerConstants = map[string]int64{
 	"BENCH_APPEARANCE_LIGHT":            appearanceLight,
 	"BENCH_APPEARANCE_DARK":             appearanceDark,
 
-	"BENCH_NEW_WINDOW_OTHER":   newWindowOther,
 	"BENCH_NEW_WINDOW_EXACT":   newWindowExact,
-	"BENCH_CLOSE_WINDOW_PLAIN": closeWindowPlain,
+	"BENCH_NEW_WINDOW_BEST":    newWindowExactKey,
 	"BENCH_CLOSE_WINDOW_EXACT": closeWindowExact,
+	"BENCH_CLOSE_WINDOW_BEST":  closeWindowExactKey,
 
 	"BENCH_SYNTHETIC_BASE": syntheticBase,
 }

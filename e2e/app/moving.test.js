@@ -130,13 +130,14 @@ test('the ⋯ menu moves a window to another pane, named by its shown window', a
     'Reload Page', 'Rename…', 'Close Page',
     'Split Right⌃⌥⇧→', 'Split Down⌃⌥⇧↓',
     'Split Right with an Empty Pane', 'Split Down with an Empty Pane', 'Zoom Pane⌃⌥↩',
-    'Move to Pane', 'Pane with Outlook',
-    'Move to Tab', 'Also Show In',
-    'Page100%', 'Find in Page…', 'Copy Page Link', 'Stop Sound and Video',
+    'Move to Pane', 'Move to Tab', 'Also Show In',
+    'Page', 'Find in Page…', 'Copy Page Link', 'Stop Sound and Video', 'Keep Running in the Background',
     'Open in Browser', 'Pop Out of Bench',
     'Use the Slack Web App from Brave',
   ]);
-  await page.locator('#window-menu .menu-item', { hasText: 'Pane with Outlook' }).click();
+  // Move to Pane is a submenu, as Move to Tab is.
+  await page.locator('#window-menu .menu-item.has-sub', { hasText: 'Move to Pane' }).click();
+  await page.locator('#menu-sub .menu-item', { hasText: 'Pane with Outlook' }).click();
   v = await waitView(page, (x) => x.display.panes.length === 1);
   assert.deepEqual(itemsOf(v, 'Comms'), [[{ app: 'Outlook', title: 'Outlook' }, { app: 'Slack', title: 'Slack' }]]);
   assert.equal(v.display.panes[0].active, itemID(v, 'Slack'));

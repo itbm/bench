@@ -16,6 +16,7 @@ import { WebLinksAddon } from '../vendor/xterm-addon-web-links/addon-web-links.m
 import { call, clipboardText, setClipboardText } from './bridge.js';
 import { act, actLatest, announce, toast } from './state.js';
 import { ICONS, itemOf } from './util.js';
+import { setDropTarget } from './drops.js';
 
 // sessions holds each terminal by item ID.
 const sessions = new Map();
@@ -29,6 +30,11 @@ const ACK_EVERY = 64 * 1024;
 // 1004) as the terminal gets and loses the keyboard focus.
 const FOCUS_IN = '\x1b[I';
 const FOCUS_OUT = '\x1b[O';
+// ESCAPE is what the Escape key sends. It goes to Go on its own, so that Go
+// can tell it from keys that send Escape with more, such as the arrows and
+// Option as Meta: an Escape alone hides the drop-down terminal at its
+// shell's prompt (escapeDropdown in dropdown.go).
+const ESCAPE = '\x1b';
 
 // ENDED is written after the output of a terminal whose command has
 // finished. It isn't part of the output, so each view writes it itself. It's
@@ -184,6 +190,8 @@ function create(id) {
   const host = document.createElement('div');
   host.className = 'term-host';
   host.dataset.termHost = id;
+  // Files dropped on it from the Finder are typed into it (drops.js).
+  setDropTarget(host, 'terminal', id);
   const handler = links(host);
   const term = new Terminal({
     fontFamily: "'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace",
@@ -213,7 +221,8 @@ function create(id) {
   // { at, bytes }; seen is the offset the output written so far ends at,
   // drawn how far xterm.js has drawn it, and acked how far Go has been told
   // about. replaying is set while the snapshot is drawn. typed holds input
-  // waiting to be sent, and sending is set while some is on its way. ended
+  // waiting to be sent, in pieces (see send), and sending is set while some
+  // is on its way. ended
   // follows the item's ended, and noted is set once ENDED is written.
   // While the terminal moves, hadFocus says whether it had the focus
   // before, findHad whether its find bar's field had it, and focusHeld is
@@ -222,7 +231,7 @@ function create(id) {
   // once it has one (findBar).
   const s = {
     id, host, term, fit, search, opened: false, ready: false, early: [], cols: 0, rows: 0, frame: 0, ro: null,
-    seen: 0, drawn: 0, acked: 0, replaying: false, typed: '', sending: false, ended: false, noted: false,
+    seen: 0, drawn: 0, acked: 0, replaying: false, typed: [], sending: false, ended: false, noted: false,
     hadFocus: false, findHad: false, focusHeld: false, size: 0, find: null,
   };
   term.attachCustomKeyEventHandler((e) => ownKeys(s, e));
@@ -686,21 +695,25 @@ function closeFind(s) {
 }
 
 // menuEntries lists what item id's terminal's right-click menu offers, as
-// menu entries (menu.js): Copy, with text selected, and Paste, as ⌘C and ⌘V
-// do; Find…, which opens the find bar; Clear, which clears the screen and
-// what has scrolled off it; and Select All. A right-click on a word that
-// isn't selected selects it first, as in Terminal.
+// menu entries (menu.js), each with its id: Copy, with text selected, and
+// Paste, as ⌘C and ⌘V do; Find…, which opens the find bar; Clear, which
+// clears the screen and what has scrolled off it; and Select All. A
+// right-click on a word that isn't selected selects it first, as in
+// Terminal. Their keys work in the terminal, not everywhere, as Bench's
+// global shortcuts do (localKeys): a native menu leaves them out, as Mac
+// context menus show no keys (plainEntries).
 export function menuEntries(id) {
   const s = sessions.get(id);
   if (!s || !s.opened) return [];
+  const localKeys = true;
   return [
-    { label: 'Copy', keys: '⌘C', disabled: !s.term.hasSelection(), run: () => copy(s) },
-    { label: 'Paste', keys: '⌘V', run: () => paste(s) },
+    { id: 'copy', label: 'Copy', keys: '⌘C', localKeys, disabled: !s.term.hasSelection(), run: () => copy(s) },
+    { id: 'paste', label: 'Paste', keys: '⌘V', localKeys, run: () => paste(s) },
     { sep: true },
-    { label: 'Find…', keys: '⌘F', run: () => openFind(s) },
+    { id: 'find', label: 'Find…', keys: '⌘F', localKeys, run: () => openFind(s) },
     { sep: true },
-    { label: 'Clear', keys: '⌘K', run: () => clear(s) },
-    { label: 'Select All', keys: '⌘A', run: () => s.term.selectAll() },
+    { id: 'clear', label: 'Clear', keys: '⌘K', localKeys, run: () => clear(s) },
+    { id: 'select-all', label: 'Select All', keys: '⌘A', localKeys, run: () => s.term.selectAll() },
   ];
 }
 
@@ -728,6 +741,16 @@ async function paste(s) {
   if (text && sessions.get(s.id) === s) s.term.paste(text);
 }
 
+// pasteText types text into item id's terminal, as a paste, if this window
+// shows it, for Go's paste-terminal command: the paths of files dropped on
+// it. xterm.js marks it as pasted for a program that asks, as for ⌘V.
+export function pasteText(id, text) {
+  const s = sessions.get(id);
+  if (!s || !s.opened || !text) return false;
+  s.term.paste(text);
+  return true;
+}
+
 // input handles what xterm.js sends the program: what's typed, and its
 // answers to the program's queries. While it draws a snapshot, its answers
 // are to queries from long ago, which nothing is waiting for, so they're
@@ -744,16 +767,15 @@ function input(s, data) {
 
 // send sends input to the terminal's session, in order. Go can handle calls
 // out of order, so one TermInput is on its way at a time, and what's typed
-// meanwhile goes together in the next.
+// meanwhile goes together in the next, except that an Escape alone goes
+// alone (ESCAPE).
 async function send(s, data) {
-  s.typed += data;
+  const last = s.typed.length - 1;
+  if (last >= 0 && data !== ESCAPE && s.typed[last] !== ESCAPE) s.typed[last] += data;
+  else s.typed.push(data);
   if (s.sending) return;
   s.sending = true;
-  while (s.typed) {
-    const chunk = s.typed;
-    s.typed = '';
-    await act('TermInput', s.id, chunk);
-  }
+  while (s.typed.length) await act('TermInput', s.id, s.typed.shift());
   s.sending = false;
 }
 
@@ -844,11 +866,13 @@ function fitNow(s) {
   actLatest('resize:' + s.id, 'TermResize', s.id, s.cols, s.rows);
 }
 
-// park moves every terminal out of the pane bodies, ahead of a render that
-// replaces them. It returns the ID of the terminal that had focus, if any,
-// in itself or its find bar. The terminal loses the focus as it moves, so
-// its focus reports are held back until unpark.
-export function park() {
+// park moves every terminal out of the pane bodies in root, ahead of a
+// render that replaces them: a terminal drawn elsewhere, such as the
+// browser preview's drop-down, stays where it is. It returns the ID of the
+// terminal that had focus, if any, in itself or its find bar, of those it
+// moves. The terminal loses the focus as it moves, so its focus reports
+// are held back until unpark.
+export function park(root = document) {
   const lot = document.getElementById('term-park');
   let focused = '';
   moving = true;
@@ -856,8 +880,9 @@ export function park() {
     s.hadFocus = s.host.contains(document.activeElement);
     s.findHad = Boolean(s.find) && s.find.input === document.activeElement;
     s.focusHeld = false;
+    if (s.host.parentElement === lot || (s.host.isConnected && !root.contains(s.host))) continue;
     if (s.hadFocus) focused = s.id;
-    if (s.host.parentElement !== lot) lot.appendChild(s.host);
+    lot.appendChild(s.host);
   }
   return focused;
 }
@@ -886,13 +911,13 @@ export function unpark(id) {
 }
 
 // attach puts each terminal into its pane body (an element with data-term
-// set to its item ID), making the terminal the first time. A terminal left
-// out forgets the size it last sent: while it's hidden, its session can be
-// resized elsewhere, such as by the terminal's own window when it's popped
-// out, so it sends its size again when it's next shown.
-export function attach(root) {
+// set to its item ID) in roots, making the terminal the first time. A
+// terminal left out forgets the size it last sent: while it's hidden, its
+// session can be resized elsewhere, such as by the terminal's own window
+// when it's popped out, so it sends its size again when it's next shown.
+export function attach(...roots) {
   const shown = new Set();
-  for (const body of root.querySelectorAll('[data-term]')) {
+  for (const body of roots.flatMap((root) => Array.from(root.querySelectorAll('[data-term]')))) {
     const id = body.dataset.term;
     const s = sessions.get(id) || create(id);
     shown.add(s);
@@ -924,10 +949,13 @@ export function hasFocus() {
 
 // inTab reports whether an item is in one of view's tabs, as the main
 // window's terminals must be: one that's popped out, or not in a tab, is
-// drawn by its own window or not at all.
+// drawn by its own window or not at all. The browser preview draws the
+// drop-down in the page (DropdownView.InPage), and keeps it while it's
+// out of sight, as its session goes on.
 function inTab(view, id) {
   const it = view && view.items && view.items[id];
-  return Boolean(it) && it.tab >= 0;
+  const drop = view && view.dropdown;
+  return Boolean(it) && (it.tab >= 0 || Boolean(drop && drop.inPage && drop.id === id));
 }
 
 // prune ends the terminals that this window no longer draws: by default,

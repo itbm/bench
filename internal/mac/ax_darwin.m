@@ -1385,41 +1385,93 @@ static BOOL benchIsEnabled(AXUIElementRef element) {
 	return err != kAXErrorSuccess || enabled;
 }
 
-// benchFindNewWindowItem finds the enabled New Window menu item in an app's
-// menu bar: the one titled New Window (in any case), or else the first
-// other "New … Window" item, such as Finder's New Finder Window (see
-// newWindowRank). It looks in the File menu first, where most apps keep it,
-// and then the others (Terminal keeps it in Shell). If the item opens a
-// submenu, as Terminal's does, it returns the submenu's first item.
-static id benchFindNewWindowItem(AXUIElementRef menuBar) {
+// benchCopyMenuKey reads a menu item's key equivalent: its character, or nil
+// for none, and its modifier keys into *modifiers, where 0 is Command alone,
+// or -1 if the app doesn't say.
+static NSString *benchCopyMenuKey(AXUIElementRef element, int *modifiers) {
+	*modifiers = -1;
+	NSString *key = benchCopyString(element, kAXMenuItemCmdCharAttribute, NULL);
+	if (key.length == 0) {
+		return nil;
+	}
+	CFTypeRef value = NULL;
+	AXError err = AXUIElementCopyAttributeValue(element, kAXMenuItemCmdModifiersAttribute, &value);
+	if (err == kAXErrorSuccess && value != NULL && CFGetTypeID(value) == CFNumberGetTypeID()) {
+		int number = 0;
+		if (CFNumberGetValue((CFNumberRef)value, kCFNumberIntType, &number)) {
+			*modifiers = number;
+		}
+	}
+	if (value != NULL) {
+		CFRelease(value);
+	}
+	return key;
+}
+
+// benchMenusFileFirst returns the items of an app's menu bar, without the
+// Apple menu, with the File menu first: the item that benchFileMenuRank
+// ranks highest, which is one titled File, in English, or else the one
+// after the app's own menu, whatever its title (see fileMenuRank).
+static NSArray *benchMenusFileFirst(AXUIElementRef menuBar) {
 	NSArray *barItems = benchCopyElements(menuBar, kAXChildrenAttribute, NULL);
 	NSMutableArray *ordered = [NSMutableArray arrayWithCapacity:barItems.count];
+	NSUInteger file = 0;
+	int fileRank = 0;
 	for (NSUInteger i = 1; i < barItems.count; i++) { // Item 0 is the Apple menu.
 		id barItem = barItems[i];
 		NSString *title = benchCopyString((__bridge AXUIElementRef)barItem, kAXTitleAttribute, NULL);
-		if ([title isEqualToString:@"File"]) {
-			[ordered insertObject:barItem atIndex:0];
-		} else {
-			[ordered addObject:barItem];
+		int rank = benchFileMenuRank((int)i, (char *)benchUTF8(title));
+		if (rank > fileRank) {
+			file = ordered.count;
+			fileRank = rank;
 		}
+		[ordered addObject:barItem];
 	}
+	if (file > 0) {
+		id fileItem = ordered[file];
+		[ordered removeObjectAtIndex:file];
+		[ordered insertObject:fileItem atIndex:0];
+	}
+	return ordered;
+}
+
+// benchFindNewWindowItem finds the enabled New Window menu item in an app's
+// menu bar: the one that newWindowRank ranks highest, from its title, in
+// English or another language, and its key equivalent, such as New Window
+// with Command-N, or else another "New … Window" item, such as Finder's New
+// Finder Window. Of two items with the same rank, the first wins. It looks
+// in the File menu first, where most apps keep it, and then the others
+// (Terminal keeps it in Shell), and stops after the menu in which it finds
+// an item titled New Window, in any language it knows. If the item opens a
+// submenu, as Terminal's does, it returns the submenu's first item.
+static id benchFindNewWindowItem(AXUIElementRef menuBar) {
 	id best = nil;
 	int bestRank = 0;
-	for (id barItem in ordered) {
+	for (id barItem in benchMenusFileFirst(menuBar)) {
 		for (id menuItem in benchSubmenuItems((__bridge AXUIElementRef)barItem)) {
 			AXUIElementRef element = (__bridge AXUIElementRef)menuItem;
 			NSString *title = benchCopyString(element, kAXTitleAttribute, NULL);
-			int rank = title.length > 0 ? benchNewWindowRank((char *)benchUTF8(title)) : 0;
+			// A key equivalent only raises a rank, and Command-N raises it
+			// most, so the item's own key is read only if the title with
+			// Command-N could beat the best so far.
+			if (title.length == 0 || benchNewWindowRank((char *)benchUTF8(title), (char *)"N", 0) <= bestRank) {
+				continue;
+			}
+			int modifiers = -1;
+			NSString *key = benchCopyMenuKey(element, &modifiers);
+			int rank = benchNewWindowRank((char *)benchUTF8(title), (char *)benchUTF8(key), modifiers);
 			if (rank <= bestRank || !benchIsEnabled(element)) {
 				continue;
 			}
 			best = menuItem;
 			bestRank = rank;
-			if (rank == BENCH_NEW_WINDOW_EXACT) {
+			if (rank == BENCH_NEW_WINDOW_BEST) {
 				break;
 			}
 		}
-		if (bestRank == BENCH_NEW_WINDOW_EXACT) {
+		// An exact title ends the search after its menu, so a key
+		// equivalent breaks ties only within that menu.
+		if (bestRank >= BENCH_NEW_WINDOW_EXACT) {
 			break;
 		}
 	}
@@ -1506,38 +1558,39 @@ int benchPressClose(uint32_t windowID, int32_t pidHint) {
 }
 
 // benchFindCloseWindowItem finds the enabled menu item that closes an app's
-// main window: the one titled Close Window (in any case), or else Close (see
-// closeWindowRank). It looks in the File menu first, where apps keep it, and
-// then the others. Items that open a submenu don't count.
+// main window: the one that closeWindowRank ranks highest, from its title, in
+// English or another language, and its key equivalent, such as Close Window
+// with Command-W, or else Close. Of two items with the same rank, the first
+// wins. It looks in the File menu first, where apps keep it, and then the
+// others, and stops after the menu in which it finds an item titled Close
+// Window, in any language it knows. Items that open a submenu don't count.
 static id benchFindCloseWindowItem(AXUIElementRef menuBar) {
-	NSArray *barItems = benchCopyElements(menuBar, kAXChildrenAttribute, NULL);
-	NSMutableArray *ordered = [NSMutableArray arrayWithCapacity:barItems.count];
-	for (NSUInteger i = 1; i < barItems.count; i++) { // Item 0 is the Apple menu.
-		id barItem = barItems[i];
-		NSString *title = benchCopyString((__bridge AXUIElementRef)barItem, kAXTitleAttribute, NULL);
-		if ([title isEqualToString:@"File"]) {
-			[ordered insertObject:barItem atIndex:0];
-		} else {
-			[ordered addObject:barItem];
-		}
-	}
 	id best = nil;
 	int bestRank = 0;
-	for (id barItem in ordered) {
+	for (id barItem in benchMenusFileFirst(menuBar)) {
 		for (id menuItem in benchSubmenuItems((__bridge AXUIElementRef)barItem)) {
 			AXUIElementRef element = (__bridge AXUIElementRef)menuItem;
 			NSString *title = benchCopyString(element, kAXTitleAttribute, NULL);
-			int rank = title.length > 0 ? benchCloseWindowRank((char *)benchUTF8(title)) : 0;
+			// As in benchFindNewWindowItem, the item's own key is read only
+			// if the title with Command-W could beat the best so far.
+			if (title.length == 0 || benchCloseWindowRank((char *)benchUTF8(title), (char *)"W", 0) <= bestRank) {
+				continue;
+			}
+			int modifiers = -1;
+			NSString *key = benchCopyMenuKey(element, &modifiers);
+			int rank = benchCloseWindowRank((char *)benchUTF8(title), (char *)benchUTF8(key), modifiers);
 			if (rank <= bestRank || !benchIsEnabled(element) || benchSubmenuItems(element).count > 0) {
 				continue;
 			}
 			best = menuItem;
 			bestRank = rank;
-			if (rank == BENCH_CLOSE_WINDOW_EXACT) {
+			if (rank == BENCH_CLOSE_WINDOW_BEST) {
 				break;
 			}
 		}
-		if (bestRank == BENCH_CLOSE_WINDOW_EXACT) {
+		// An exact title ends the search after its menu, so a key
+		// equivalent breaks ties only within that menu.
+		if (bestRank >= BENCH_CLOSE_WINDOW_EXACT) {
 			break;
 		}
 	}

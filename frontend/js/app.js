@@ -3,31 +3,32 @@
 
 import { call, errorText, on, onConnected } from './bridge.js';
 import {
-  act, closeMenu, closeOverlay, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer, store, toast,
-  update, watchToast,
+  act, closeMenu, closeOverlay, dropSwitch, isDemo, noteNotices, overlaySent, resendOverlay, runToastAction, setCommander, setRenderer,
+  settleSwitch, showSwitch, store, toast, update, watchToast,
 } from './state.js';
-import { contentPoint, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
-import { focusTerminal, installRenderDeferral, measure, render, syncSlim } from './render.js';
+import { contentPoint, demoToolOn, focusedPaneID, itemOf, sentence, shownInFocus, tabsOf } from './util.js';
+import { focusTerminal, installRenderDeferral, measure, pressOutsideDropdown, render, syncSlim } from './render.js';
 import { installDrag } from './drag.js';
 import { installDialogs } from './dialogs.js';
 import { installStrips, syncStrips } from './strips.js';
 import { installTiles } from './tiles.js';
 import { hidePreview, installPreviews } from './preview.js';
 import { installKeyboard } from './keyboard.js';
+import { installSimulate, showSimulate, simulateAction } from './simulate.js';
 import { installRoving } from './roving.js';
 import {
   copyMessage, installMenuHover, openAttention, openLayoutMenu, openMessages, openNotices, openPaneMenu, openSubmenu, openTabMenu,
-  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction, undoMessage,
+  openTerminalMenu, openWindowMenu, runMenuEntry, runNoticeAction, undoMessage, keepMessage, whenNoNativeMenu,
 } from './menu.js';
 import {
   addTicked, backToList, clickRow, openAdd, openPalette, showInBench, submitURL, tickRow, togglePalette, typeURL,
 } from './palette.js';
 import {
-  deleteTab, openEditor, resetLayout, save, setName, setPlace, setPreset, setSmallScreens, setStart,
+  deleteTab, openEditor, resetLayout, save, setColour, setName, setPlace, setPreset, setSmallScreens, setStart,
 } from './editor.js';
 import { tickApp, tickWindow, toggleOthers } from './fromwindows.js';
 import {
-  openSettings, resendPreview, saveSettings, setChoice, setFontSize, setLaunchWait, setSetting, setThreshold, showKeyboardSettings, showSection,
+  openSettings, resendPreview, saveSettings, setChoice, setDropdownHeight, setFontSize, setLaunchWait, setSetting, setThreshold, showKeyboardSettings, showSection,
 } from './settings.js';
 import { afterAsking, discardChanges, dismissOverlay, keepEditing, saveChanges } from './discard.js';
 import {
@@ -48,7 +49,8 @@ import {
   setLauncherTick, setTerminalField, setTerminalTick, submitTerminal,
 } from './launchers.js';
 import * as terminals from './terminals.js';
-import { bootTerminalWindow, terminalID } from './terminal-window.js';
+import { bootTerminalWindow, isDropdown, terminalID } from './terminal-window.js';
+import { installDrops } from './drops.js';
 import { PAGE_ACTIONS, pageCommand, setFindText } from './pages.js';
 
 // stateEvents counts bench:state events, so that ready can tell whether one
@@ -62,13 +64,32 @@ let readyAsked = false;
 // width.
 let demoWidthSent = false;
 
+// early holds the bench:command and bench:toast events that come before
+// the first View, such as a bench:// link's that opened Bench: Go sends them
+// once the UI has asked for the View (Ready), maybe before Ready's answer.
+// They run once there's a View, in order, the last few only.
+const early = [];
+const EARLY_MAX = 4;
+
+// whenViewed runs f now if there's a View, or once there is.
+function whenViewed(f) {
+  if (store.view) {
+    f();
+    return;
+  }
+  early.push(f);
+  if (early.length > EARLY_MAX) early.shift();
+}
+
 // setView draws a View from Go.
 function setView(v) {
   if (!v || !Array.isArray(v.tabs) || !v.tabs.length) return;
   store.view = v;
+  settleSwitch(v);
   noteNotices(v);
   update();
   sendDemoWidth(v);
+  for (const f of early.splice(0)) f();
 }
 
 // onState draws a bench:state event's View.
@@ -112,10 +133,26 @@ function focusPane(id) {
 // ACTIONS run the controls with a data-action.
 const ACTIONS = {
   'screen': (t) => act('SetDemoScreen', t.dataset.screen, window.innerWidth),
-  // The demo bar's Minimise window, as Command-M in the app.
-  'demo-minimise': () => act('DemoMinimise'),
-  // The demo bar's VoiceOver, which pretends that VoiceOver is on.
-  'demo-voiceover': () => act('SetDemoVoiceOver', !store.view.voiceOver),
+  // The demo bar's Simulate, which shows or hides the things below that
+  // the preview can pretend happen (simulate.js).
+  'demo-simulate': () => showSimulate(),
+  // Its Minimise window, as Command-M in the app.
+  'demo-minimise': simulateAction(() => act('DemoMinimise')),
+  // Its Post notification, as a page does for a new message.
+  'demo-notify': simulateAction(() => act('DemoNotify')),
+  // Its Bring Bench forward, as a click on Bench while another app is in
+  // front: Bench hides the windows that cover it.
+  'demo-come-forward': simulateAction(() => act('DemoComeForward')),
+  // Its Unplug monitor, which unplugs the simulated monitor, and Plug in
+  // monitor, which takes its place while the monitor is unplugged.
+  'demo-monitor': simulateAction(() => act('SetDemoMonitor', Boolean(store.view.demo && store.view.demo.unplugged))),
+  // Its VoiceOver, which pretends that VoiceOver is on.
+  'demo-voiceover': simulateAction(() => act('SetDemoVoiceOver', !store.view.voiceOver)),
+  // Its Rectangle, which starts or stops a window tool, and Keep moving
+  // window, which has something keep moving the shown window out of its
+  // pane.
+  'demo-window-tool': simulateAction(() => act('SetDemoWindowTool', !demoToolOn(store.view))),
+  'demo-tool-moves': simulateAction(() => act('DemoToolMoves')),
   // The second click of a double-click doesn't switch again: the
   // double-click renames the tab (onDoubleClick), and switching again would
   // focus the tab's window, taking the keyboard from the field.
@@ -137,10 +174,12 @@ const ACTIONS = {
     const { ok } = await act('MoveItem', t.dataset.item, store.view.current, t.dataset.pane, 'right');
     if (!ok) focusPane(t.dataset.pane);
   },
+  // The click in the pane focuses it once the menu closes, if nothing
+  // chosen does (onClick sets ui.paneLater).
   'menu': (t) => {
     const m = store.ui.menu;
     if (m && m.kind === 'window' && m.shownIn === t.dataset.pane) closeMenu(true);
-    else openWindowMenu(t, t.dataset.item, t.dataset.pane);
+    else openWindowMenu(t, t.dataset.item, t.dataset.pane, null, t.dataset.key || null, store.ui.paneLater);
   },
   'menu-run': (t) => runMenuEntry(Number(t.dataset.index), t.dataset.sub != null ? Number(t.dataset.sub) : null),
   // An entry with a submenu, such as Move to Tab, opens it: from the
@@ -155,6 +194,8 @@ const ACTIONS = {
   'message-copy': (t) => copyMessage(t, Number(t.dataset.index)),
   // A recent message's Undo, while its change is the latest.
   'message-undo': (t) => undoMessage(Number(t.dataset.step)),
+  // A recent message's Keep over Bench, while Go can still do it.
+  'message-keep': (t) => keepMessage(t.dataset.item),
   // A toast's button, such as Undo, or its second, such as Go there.
   'toast-run': (t) => runToastAction(Number(t.dataset.index) || 0),
   'layout-reason': (t) => toast(sentence(t.title)),
@@ -198,6 +239,7 @@ const ACTIONS = {
   'draft-start': (t) => setStart(t.dataset.start),
   'win-others': () => toggleOthers(),
   'draft-small': (t) => setSmallScreens(t.dataset.small),
+  'draft-colour': (t) => setColour(t.dataset.colour),
   'save-tab': () => save(),
   'save-settings': () => saveSettings(),
   // A section in Settings' list of sections.
@@ -249,6 +291,10 @@ const ACTIONS = {
   'close-item': (t) => quickClose(t.dataset.item),
   'close-run': () => confirmClose(),
   'question-details': () => toggleCloseDetails(),
+  // The browser preview's drop-down terminal: its bar's Back to Bench and
+  // Hide (syncDropdown in render.js).
+  'dropdown-back-to-bench': (t) => act('BackToBench', t.dataset.item),
+  'hide-dropdown': () => act('HideDropdown'),
   // A web page's find bar: its arrows, and its ×.
   ...PAGE_ACTIONS,
 };
@@ -274,8 +320,11 @@ const OWN_FOCUS = new Set(['activate', 'show-again', 'split-right', 'open-item',
 // well, because a click goes to what the press and release have in common.
 let pressTarget = null;
 
+// onPointerDown notes where a press goes down, and hides the browser
+// preview's drop-down for a press outside it.
 function onPointerDown(e) {
   pressTarget = e.target;
+  pressOutsideDropdown(e.target);
 }
 
 // onBackdropDown keeps the focus where it is in a dialog when the button
@@ -388,8 +437,7 @@ function onContextMenu(e) {
     hidePreview();
     const pane = termPane.dataset.paneId;
     const item = host.dataset.termHost;
-    openTerminalMenu(host, item, pane, pointerIn(e, host));
-    store.ui.paneLater = { paneId: pane, itemId: item };
+    openTerminalMenu(host, item, pane, pointerIn(e, host), { paneId: pane, itemId: item });
     return;
   }
   const sub = e.target.closest('.subtab');
@@ -400,8 +448,7 @@ function onContextMenu(e) {
     e.preventDefault();
     hidePreview();
     const { pane, item } = more.dataset;
-    openWindowMenu(more, item, pane, pointerIn(e, header));
-    store.ui.paneLater = { paneId: pane, itemId: item };
+    openWindowMenu(more, item, pane, pointerIn(e, header), more.dataset.key || null, { paneId: pane, itemId: item });
     return;
   }
   // An empty pane has no ⋯ button: its header and body open its own menu.
@@ -410,8 +457,7 @@ function onContextMenu(e) {
     e.preventDefault();
     hidePreview();
     const pane = paneEl.dataset.paneId;
-    openPaneMenu(paneEl.querySelector('.pane-header') || paneEl, pane, addPane(pane), pointerIn(e, paneEl));
-    store.ui.paneLater = { paneId: pane };
+    openPaneMenu(paneEl.querySelector('.pane-header') || paneEl, pane, addPane(pane), pointerIn(e, paneEl), { paneId: pane });
     return;
   }
   if (!sub) return;
@@ -423,8 +469,7 @@ function onContextMenu(e) {
     act('ShowItem', pane, item);
     return;
   }
-  openWindowMenu(button, item, pane, pointerIn(e, sub));
-  store.ui.paneLater = { paneId: pane, itemId: item };
+  openWindowMenu(button, item, pane, pointerIn(e, sub), button.dataset.key || null, { paneId: pane, itemId: item });
 }
 
 // middle is the tab or sub-tab that the middle button went down on, for
@@ -500,6 +545,8 @@ function onInput(e) {
     setThreshold(t.value);
   } else if (t.id === 'terminal-font-size') {
     setFontSize(t.value);
+  } else if (t.id === 'dropdown-height') {
+    setDropdownHeight(t.value);
   } else if (t.id === 'launch-wait') {
     setLaunchWait(t.value);
   } else if (isTerminalField(t.id)) {
@@ -532,14 +579,29 @@ function editing(index) {
   return ui.overlay === 'editor' && Boolean(ui.editor) && ui.editor.index === index;
 }
 
+// AFTER_NATIVE_MENU are the commands that open or close Jump to… and
+// every tab, which wait for a native menu on its way or open to close
+// (whenNoNativeMenu): from a bench:// link, the jump and show_all_tabs
+// shortcuts, or the app menu.
+const AFTER_NATIVE_MENU = new Set(['toggle-palette', 'open-palette', 'show-all-tabs', 'toggle-all-tabs']);
+
 // runCommand does what a bench:command asks, such as opening the palette
-// for the jump shortcut. A command that opens a dialog in the place of one
+// for the jump shortcut. One that comes before the first View waits for it
+// (whenViewed), and Jump to… and every tab wait for a native menu to close
+// (AFTER_NATIVE_MENU). A command that opens a dialog in the place of one
 // with changes that aren't saved, or closes it, asks first, and runs once
 // they're saved or discarded (afterAsking).
 function runCommand(cmd) {
-  if (!store.view) return;
+  if (!store.view) {
+    whenViewed(() => runCommand(cmd));
+    return;
+  }
   const { ui } = store;
   const name = cmd && typeof cmd === 'object' ? cmd.name : cmd;
+  if (ui.nativeMenu && AFTER_NATIVE_MENU.has(name)) {
+    whenNoNativeMenu(() => runCommand(cmd));
+    return;
+  }
   switch (name) {
     case 'toggle-palette': afterAsking(togglePalette); break;
     case 'open-palette': if (ui.overlay !== 'palette') afterAsking(openPalette); break;
@@ -577,6 +639,9 @@ function runCommand(cmd) {
     case 'recent-messages': if (!ui.menu || ui.menu.kind !== 'notices') openMessages(); break;
     case 'first-run': afterAsking(showGuide); break;
     case 'focus-terminal': focusTerminal(cmd.itemId); break;
+    // Files dropped on a terminal from the Finder: their paths, which this
+    // window types, if it shows the terminal (drops.js).
+    case 'paste-terminal': terminals.pasteText(cmd.itemId, cmd.text); break;
     // Go asks before quitting while terminals are running something.
     case 'confirm-quit': openQuit(cmd); break;
     // The Tab and Pane menus' Close Tab… and Close Window, for the current
@@ -588,6 +653,11 @@ function runCommand(cmd) {
     // that the focused pane shows, as its menu's do.
     case 'find-in-page':
     case 'copy-page-link': pageCommand(name, cmd.itemId); break;
+    // A tab's shortcut, from any app, shows its tab as current at once, as
+    // a click does, before Go has arranged it, and puts it back if Go
+    // refuses the switch, or it ends on another tab (decision 67).
+    case 'switching': showSwitch(Number(cmd.tab) || 0); break;
+    case 'switch-refused': dropSwitch(); break;
     default: break;
   }
 }
@@ -602,8 +672,14 @@ function renameCurrentTab() {
 }
 
 // showToast shows Go's toast: its text, or { text, action, second } for one
-// with a button, such as Undo, and maybe a second, such as Go there.
+// with a button, such as Undo, and maybe a second, such as Go there. One
+// that comes before the first View waits for it, as the status bar that
+// it's drawn in does.
 function showToast(msg) {
+  if (!store.view) {
+    whenViewed(() => showToast(msg));
+    return;
+  }
   if (typeof msg === 'string') toast(msg);
   else if (msg && msg.text) toast(msg.text, msg.action, msg.second);
   else if (msg) toast(msg.message);
@@ -723,8 +799,10 @@ async function boot() {
   installTiles();
   installPreviews();
   installKeyboard();
+  installSimulate();
   installRoving();
   installMenuHover();
+  installDrops();
   watchToast();
   onConnected(catchUp);
   try {
@@ -750,7 +828,8 @@ window.bench = {
 };
 
 // A popped-out terminal's window loads this page at /?terminal=<item ID>,
-// to show just that terminal.
+// to show just that terminal, and the drop-down terminal's panel at
+// /?dropdown=1&terminal=<item ID>.
 const popped = terminalID();
-if (popped) bootTerminalWindow(popped);
+if (popped) bootTerminalWindow(popped, isDropdown());
 else boot();

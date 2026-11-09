@@ -399,13 +399,18 @@ func benchWebFound(request C.uint64_t, found C.int) {
 }
 
 //export benchNewWindowRank
-func benchNewWindowRank(title *C.char) C.int {
-	return C.int(newWindowRank(C.GoString(title)))
+func benchNewWindowRank(title, keyChar *C.char, keyModifiers C.int) C.int {
+	return C.int(newWindowRank(C.GoString(title), menuKey{C.GoString(keyChar), int(keyModifiers)}))
 }
 
 //export benchCloseWindowRank
-func benchCloseWindowRank(title *C.char) C.int {
-	return C.int(closeWindowRank(C.GoString(title)))
+func benchCloseWindowRank(title, keyChar *C.char, keyModifiers C.int) C.int {
+	return C.int(closeWindowRank(C.GoString(title), menuKey{C.GoString(keyChar), int(keyModifiers)}))
+}
+
+//export benchFileMenuRank
+func benchFileMenuRank(index C.int, title *C.char) C.int {
+	return C.int(fileMenuRank(int(index), C.GoString(title)))
 }
 
 //export benchNotificationAllowed

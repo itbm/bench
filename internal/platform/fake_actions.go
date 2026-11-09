@@ -2,6 +2,7 @@ package platform
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/itbm/bench/internal/layout"
 )
@@ -45,6 +46,40 @@ func (f *Fake) QuitApp(bundleID string) error {
 	app.Active, app.Hidden = false, false
 	f.emitLocked(Event{Kind: AppTerminated, App: app})
 	f.badgesChangedSinceLocked(badges)
+	return nil
+}
+
+// StartAgent starts an installed app that isn't regular (AppNotRegular),
+// such as a window tool that lives in the menu bar, as it starts at login
+// or from Finder. As on a Mac, it sends no event: macOS doesn't announce
+// such an app, so only RunningApps shows that it runs. It returns an error
+// for an app that isn't installed, is regular, or is already running.
+func (f *Fake) StartAgent(bundleID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a := f.apps[bundleID]
+	switch {
+	case a == nil || !a.installed:
+		return fmt.Errorf("starting %s: no app with that bundle ID is installed", bundleID)
+	case a.regular:
+		return fmt.Errorf("starting %s: it's a regular app; use LaunchApp", bundleID)
+	case a.running:
+		return fmt.Errorf("starting %s: it's already running", bundleID)
+	}
+	f.startLocked(a)
+	return nil
+}
+
+// StopAgent quits an app that StartAgent started, or that AddApp set up as
+// running and not regular. As on a Mac, it sends no event.
+func (f *Fake) StopAgent(bundleID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a := f.apps[bundleID]
+	if a == nil || !a.running || a.regular {
+		return fmt.Errorf("stopping %s: it isn't running, or it's a regular app", bundleID)
+	}
+	f.stopLocked(a)
 	return nil
 }
 
@@ -380,4 +415,52 @@ func (f *Fake) emitDragLocked(kind EventKind, ev Event, start layout.Rect, point
 	ev.Kind, ev.Start, ev.Pointer = kind, start, pointer
 	ev.Window = Window{ID: ev.Window.ID, PID: ev.Window.PID, Frame: ev.Window.Frame}
 	f.emitLocked(ev)
+}
+
+// UnplugScreen disconnects a display, by ID, as the user does by unplugging
+// it, or as macOS does while it sleeps. If Bench's window was on it, macOS
+// moves the window to the top left of the primary display's visible area,
+// as large as it was but no larger than that area. It sends ScreensChanged,
+// then, if the window moved, BenchMoved. If the display was primary, the
+// first one left becomes primary. It returns an error for a display that
+// isn't connected.
+func (f *Fake) UnplugScreen(id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	i := slices.IndexFunc(f.screens, func(s Screen) bool { return s.ID == id })
+	if i < 0 {
+		return fmt.Errorf("unplugging display %s: it isn't connected", id)
+	}
+	on := f.benchScreenLocked().ID == id
+	f.setScreensLocked(slices.Delete(slices.Clone(f.screens), i, i+1))
+	if f.benchScreen == id {
+		f.benchScreen = ""
+	}
+	f.emitLocked(Event{Kind: ScreensChanged})
+	if !on {
+		return nil
+	}
+	if f.contentSet && f.content.W > 0 && f.content.H > 0 {
+		vis := f.primaryLocked().Visible
+		f.content = layout.Rect{X: vis.X, Y: vis.Y, W: min(f.content.W, vis.W), H: min(f.content.H, vis.H)}
+	}
+	f.emitLocked(Event{Kind: BenchMoved})
+	return nil
+}
+
+// PlugScreen connects a display, as the user does by plugging it in, or as
+// macOS does as it wakes, in place of one with the same ID. Bench's window
+// stays where it is, as macOS 26 leaves it. It sends ScreensChanged. If
+// the display is primary, the others aren't any more.
+func (f *Fake) PlugScreen(s Screen) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	screens := slices.DeleteFunc(slices.Clone(f.screens), func(o Screen) bool { return o.ID == s.ID })
+	if s.Primary {
+		for j := range screens {
+			screens[j].Primary = false
+		}
+	}
+	f.setScreensLocked(append(screens, s))
+	f.emitLocked(Event{Kind: ScreensChanged})
 }

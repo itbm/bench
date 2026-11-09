@@ -36,6 +36,7 @@ func (e *Engine) buildViewLocked() View {
 		Appearance:       e.lookLocked(),
 		SystemScrollBars: e.scrollBars,
 		VoiceOver:        e.voiceOver,
+		WindowTools:      e.windowToolNamesLocked(""),
 		Keys:             keys,
 		Shortcuts:        e.shortcutViewsLocked(),
 		Permissions:      e.permissionsLocked(),
@@ -46,9 +47,13 @@ func (e *Engine) buildViewLocked() View {
 		OpenAtLogin:      e.openAtLogin,
 		LoginApproval:    e.loginApproval,
 		InstallsUpdates:  e.opts.Updater != nil,
+		NativeMenus:      e.opts.ShowMenu != nil,
 		ClosedTabs:       e.closedNamesLocked(),
 		ClosedItems:      e.closedItemsViewLocked(),
 		Undo:             e.latestUndoLocked(),
+		WentBack:         e.wentBackLocked(),
+		KeepOver:         e.keepOverLocked(),
+		Dropdown:         e.dropdownViewLocked(),
 	}
 	if d.tab != nil {
 		v.SizeReason = sizeReason(d.class, m.Mode, d.tab.SmallScreens, v.WindowWidth)
@@ -90,6 +95,9 @@ func (e *Engine) buildViewLocked() View {
 		if ds, ok := e.p.(platform.DemoScreens); ok && ds.DemoScreen() != "" {
 			v.Demo.Screen = ds.DemoScreen()
 		}
+		if dd, ok := e.p.(platform.DemoDisplays); ok {
+			v.Demo.Unplugged = dd.DemoUnplugged()
+		}
 	}
 	return v
 }
@@ -100,6 +108,7 @@ func (e *Engine) tabViewLocked(i int, t *Tab, keys KeysView) TabView {
 		Name:         t.Name,
 		Preset:       t.Preset,
 		SmallScreens: string(t.SmallScreens),
+		Colour:       t.Colour,
 		Root:         layout.Clone(t.Root),
 		Focus:        t.Focus,
 		Apps:         []string{},
@@ -196,6 +205,7 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 	case it.Kind == KindWeb:
 		iv.URL = it.URL
 		iv.Host, iv.Site, iv.OffSite, iv.NotSecure = it.host, it.site, it.offSite, it.notSecure
+		iv.KeepRunning, iv.NotLoaded = it.KeepRunning, e.notLoadedLocked(it)
 	}
 	if it.Kind == KindWeb {
 		iv.Zoom = zoomPercent(it.Zoom)
@@ -237,6 +247,9 @@ func (e *Engine) statusOf(it *Item) (string, string) {
 	}
 	if it.gone {
 		return StatusMissing, noWindowText(it.App)
+	}
+	if it.Undocked && it.keptMoving {
+		return StatusMoving, keepsMovingText(it.App, e.windowToolNamesLocked(it.BundleID))
 	}
 	if it.Undocked {
 		return StatusUndocked, undockedText
@@ -280,7 +293,7 @@ func (e *Engine) floatingViewsLocked() []ItemView {
 
 // noticesLocked returns the status bar's notices: config.toml's and
 // state.json's, with their buttons, missing permission, then each source's,
-// in the order they first came.
+// in the order they first came, then the window tools' (windowtools.go).
 func (e *Engine) noticesLocked() []NoticeView {
 	out := append([]NoticeView{}, e.configNoticesLocked()...)
 	out = append(out, e.setAsideNoticesLocked()...)
@@ -290,7 +303,7 @@ func (e *Engine) noticesLocked() []NoticeView {
 	for _, source := range e.noticeOrder {
 		out = append(out, e.notices[source]...)
 	}
-	return out
+	return append(out, e.windowToolNoticesLocked()...)
 }
 
 // settingsView returns [settings] for the Settings dialog.
@@ -317,13 +330,16 @@ func settingsView(e *Engine) SettingsView {
 		HideOtherApps:            s.HideOtherApps,
 		NewWindows:               s.NewWindows,
 		FollowFocus:              s.FollowFocus,
+		CoveringWindows:          s.CoveringWindows,
 		DragToAdd:                s.DragToAdd,
 		LivePreviews:             s.LivePreviews,
 		TerminalFontSize:         s.TerminalFontSize,
 		TerminalOptionAsMeta:     s.TerminalOptionAsMeta,
 		NotifyTerminals:          s.NotifyTerminals,
 		KeepTerminalOutput:       s.KeepTerminalOutput,
+		DropdownHeight:           s.DropdownHeight,
 		LaunchTimeout:            s.LaunchTimeout.String(),
+		AllowScripts:             s.AllowScripts,
 		Launchers:                e.launcherViewsLocked(),
 	}
 }
@@ -363,5 +379,6 @@ func keysOf(c shortcuts.Config) KeysView {
 		PreviousLayout: show("previous_layout", c.PreviousLayout),
 		AddFrontWindow: show("add_front_window", c.AddFrontWindow),
 		Undo:           show("undo", c.Undo),
+		Dropdown:       show("dropdown", c.Dropdown),
 	}
 }

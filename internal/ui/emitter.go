@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/itbm/bench/internal/layout"
 	"github.com/itbm/bench/internal/workspace"
 )
 
@@ -34,6 +35,11 @@ type shell interface {
 	// closeTerminalWindow closes it.
 	popOutTerminal(itemID, title string) error
 	closeTerminalWindow(itemID string)
+	// showDropdown shows the drop-down terminal's window, making it first
+	// if the terminal hasn't one, height percent of the screen's height
+	// tall, and hideDropdown hides it (decision 72).
+	showDropdown(itemID, title string, height int) error
+	hideDropdown(itemID string)
 	// setMenuBar updates the menu bar item and the app menu.
 	setMenuBar(m workspace.MenuBar)
 	// shortcutsChanged registers the global shortcuts again, as the
@@ -43,6 +49,11 @@ type shell interface {
 	// fillScreen zooms Bench's window to fill its screen, unless it fills
 	// it already. It mustn't wait for the main thread.
 	fillScreen()
+	// moveToScreen moves Bench's window to another display, for its
+	// content area to be at content, in global coordinates, then, with
+	// fill, zooms it to fill that display's visible area. It mustn't wait
+	// for the main thread.
+	moveToScreen(content layout.Rect, fill bool)
 	// quit quits Bench without asking about terminals that are running
 	// something, as the user has answered that already. It mustn't wait
 	// for the main thread.
@@ -65,7 +76,9 @@ type shell interface {
 // copy-page-link isn't one: it only puts a page's link on the clipboard.
 // focus-terminal isn't one: the engine has already brought Bench forward,
 // with Platform.FocusUI, by the time it's sent, and doing it again here could
-// take the keyboard from a pane focused since.
+// take the keyboard from a pane focused since. Nor are switching and
+// switch-refused, which only change the title bar, wherever Bench is:
+// show_on_tab_shortcut decides whether a tab's shortcut brings it forward.
 var windowCommands = map[string]bool{
 	"open-palette":         true,
 	"toggle-palette":       true,
@@ -205,6 +218,23 @@ func (em *emitter) CloseTerminalWindow(itemID string) {
 	em.shell.closeTerminalWindow(itemID)
 }
 
+// ShowDropdown shows the drop-down terminal's window, over any app,
+// without bringing Bench forward.
+func (em *emitter) ShowDropdown(itemID, title string, height int) error {
+	if em.closed.Load() {
+		return nil
+	}
+	return em.shell.showDropdown(itemID, title, height)
+}
+
+// HideDropdown hides the drop-down terminal's window.
+func (em *emitter) HideDropdown(itemID string) {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.hideDropdown(itemID)
+}
+
 // MenuBar updates the menu bar item: the current tab's name, unless the
 // menu_bar setting says otherwise, and the tabs in its menu. It also
 // updates the app menu: its tabs, its layout mode, and the focused pane.
@@ -260,6 +290,16 @@ func (em *emitter) FillScreen() {
 		return
 	}
 	em.shell.fillScreen()
+}
+
+// MoveToScreen asks the shell to move Bench's window to another display,
+// as Bench does when the display that the user chose for it comes back
+// (decision 70).
+func (em *emitter) MoveToScreen(content layout.Rect, fill bool) {
+	if em.closed.Load() {
+		return
+	}
+	em.shell.moveToScreen(content, fill)
 }
 
 // Quit asks the shell to quit Bench without asking about its terminals

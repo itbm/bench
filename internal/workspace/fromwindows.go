@@ -98,7 +98,7 @@ func appKey(kind, bundleID, app string) string {
 
 // windowGroupsLocked groups windows by app, the apps in the order that
 // their first windows come. It leaves out windows that have gone, hidden
-// ones (see hiddenLocked), and repeats.
+// ones (see hiddenLocked), the drop-down terminal, and repeats.
 func (e *Engine) windowGroupsLocked(ids []string) []windowGroup {
 	var out []windowGroup
 	seen := map[string]bool{}
@@ -123,11 +123,12 @@ func (e *Engine) windowGroupsLocked(ids []string) []windowGroup {
 
 // windowAppLocked returns the app of a window, for windowGroupsLocked: its
 // key (appKey) and its name. It reports false for a window that has gone,
-// or a hidden item.
+// a hidden item, or the drop-down terminal, which is out of the tabs but
+// leaves the drop-down only by its own commands (decision 72).
 func (e *Engine) windowAppLocked(id string) (key, name string, ok bool) {
 	m := e.model
 	if it := m.Items[id]; it != nil {
-		if e.hiddenLocked(it) || (!m.IsFloating(id) && len(m.TabsOf(id)) == 0) {
+		if e.hiddenLocked(it) || e.isDropdownLocked(it) || (!m.IsFloating(id) && len(m.TabsOf(id)) == 0) {
 			return "", "", false
 		}
 		return appKey(it.Kind, it.BundleID, it.App), it.App, true
@@ -171,15 +172,15 @@ func (e *Engine) PreviewTabFromWindows(preset string, windows []string) (Windows
 // dialog's "Windows that are open". The tab has the draft's name, or else
 // the name of the first window's app, numbered if another tab has it
 // (uniqueTabName); the draft's preset, or else the one suggested for the
-// number of apps (suggestPreset); and the draft's small-screen setting and
-// place. Each app's windows share a pane, as sub-tabs, in order, and the
-// apps after the last pane go there too (fillPanes). Windows not in a tab
-// move to it. Those of other tabs show in it as well, as Also Show In
-// does, and stay where they are. Each pane shows its first window, the
-// first pane is focused, and Bench switches to the tab. The config gets
-// the tab, saved as Tab properties saves a new tab. The toast's Undo takes
-// the tab away again, from config.toml too, and puts each window back
-// where it was (see outsideWindow).
+// number of apps (suggestPreset); and the draft's small-screen setting,
+// colour, and place. Each app's windows share a pane, as sub-tabs, in
+// order, and the apps after the last pane go there too (fillPanes).
+// Windows not in a tab move to it. Those of other tabs show in it as well,
+// as Also Show In does, and stay where they are. Each pane shows its first
+// window, the first pane is focused, and Bench switches to the tab. The
+// config gets the tab, saved as Tab properties saves a new tab. The
+// toast's Undo takes the tab away again, from config.toml too, and puts
+// each window back where it was (see outsideWindow).
 func (e *Engine) NewTabFromWindows(draft TabDraft, windows []string) error {
 	e.cfgMu.Lock()
 	defer e.cfgMu.Unlock()
@@ -214,6 +215,7 @@ func (e *Engine) NewTabFromWindows(draft TabDraft, windows []string) error {
 		e.unlock()
 		return err
 	}
+	t.Colour = draft.Colour
 	n := e.fillTabLocked(t, groups, step)
 	e.cfg = cfg
 	e.syncConfigTab(cfg, m.IndexOf(t))

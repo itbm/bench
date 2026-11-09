@@ -152,6 +152,26 @@ func (p *Platform) FillWindow(nsWindow unsafe.Pointer) {
 	C.benchFillWindow(nsWindow)
 }
 
+// PlaceWindow moves Bench's window, Wails' window.NativeWindow(), in one
+// step, without animation: its frame's top-left corner to x and y, in
+// global coordinates from the primary screen's top left, as Wails'
+// SetPosition has them, at width by height, as Wails' SetSize makes it.
+// Then, with fill, it zooms the window to fill the visible area of the
+// screen it's on, at once, as FillWindow does. Bench uses it to move the
+// window to another display (decision 70), so that the window doesn't
+// change size on the display it's leaving first. It runs on the main
+// thread, later if it's called from another goroutine.
+func (p *Platform) PlaceWindow(nsWindow unsafe.Pointer, x, y, width, height int, fill bool) {
+	if nsWindow == nil || width <= 0 || height <= 0 {
+		return
+	}
+	f := 0
+	if fill {
+		f = 1
+	}
+	C.benchPlaceWindow(nsWindow, C.int(x), C.int(y), C.int(width), C.int(height), C.int(f))
+}
+
 // TagPopOutWindow marks one of Bench's windows, Wails'
 // window.NativeWindow(), as the popped-out window of an item, a terminal's,
 // for the platform to report when it gets and loses the keyboard
@@ -181,6 +201,31 @@ func (p *Platform) SetWindowAppearance(nsWindow unsafe.Pointer, appearance strin
 		return
 	}
 	C.benchSetWindowAppearance(nsWindow, C.int(appearanceCode(appearance)))
+}
+
+// ShowDropdown shows the drop-down terminal's window, Wails'
+// window.NativeWindow(), across the top of the screen that Bench's window
+// is on, fraction of the screen's height tall, sliding it down from under
+// the menu bar, or fading it in where a screen is arranged above that one,
+// unless Reduce Motion is on. It gives the window the
+// keyboard without making Bench active, so the app in front stays in front
+// (decision 72). It runs on the main thread, later if it's called from
+// another goroutine.
+func (p *Platform) ShowDropdown(nsWindow unsafe.Pointer, fraction float64) {
+	if nsWindow == nil {
+		return
+	}
+	C.benchShowDropdown(nsWindow, C.double(fraction))
+}
+
+// HideDropdown slides the drop-down terminal's window up out of sight, and
+// orders it out, which gives the keyboard back to the app in front. It runs
+// on the main thread, later if it's called from another goroutine.
+func (p *Platform) HideDropdown(nsWindow unsafe.Pointer) {
+	if nsWindow == nil {
+		return
+	}
+	C.benchHideDropdown(nsWindow)
 }
 
 // SystemDark reports whether macOS is in dark mode now, for Bench's
@@ -289,6 +334,31 @@ func (p *Platform) MouseHeld() bool {
 // thread.
 func (p *Platform) StageManager() bool {
 	return p.stageManager.Load()
+}
+
+// ToolPreferences reads a window tool's preferences from its own defaults
+// domain, afresh (benchCopyToolPreferences): its numbers, booleans, text,
+// and shortcuts, which toolPreferencesFrom turns into Bench's form. A tool
+// whose preferences macOS has nothing for gives none. It runs on the
+// calling goroutine, and never waits for the main thread.
+func (p *Platform) ToolPreferences(bundleID string) platform.ToolPreferences {
+	cid := C.CString(bundleID)
+	defer C.free(unsafe.Pointer(cid))
+	var prefs *C.BenchToolPreference
+	var n C.int
+	if C.benchCopyToolPreferences(cid, &prefs, &n) != C.BENCH_OK {
+		return platform.ToolPreferences{}
+	}
+	defer C.benchFreeToolPreferences(prefs, n)
+	raw := make([]rawPreference, 0, int(n))
+	for _, pr := range unsafe.Slice(prefs, int(n)) {
+		r := rawPreference{Key: C.GoString(pr.key), Kind: int(pr.kind), KeyCode: int(pr.keyCode), Number: int64(pr.number)}
+		if pr.text != nil {
+			r.Text = C.GoString(pr.text)
+		}
+		raw = append(raw, r)
+	}
+	return toolPreferencesFrom(raw)
 }
 
 // LoggingOut reports whether the user is logging out, restarting, or
@@ -672,6 +742,45 @@ func (p *Platform) ShowWebView(id string, view platform.WebView, frame layout.Re
 	defer freeAll(cid, cname, curl, cuuid, cua)
 	C.benchWebShow(cid, cname, curl, cuuid, cua, C.double(view.Zoom), C.double(frame.X), C.double(frame.Y), C.double(frame.W), C.double(frame.H))
 	return nil
+}
+
+// LoadWebView creates a Web item's web view, hidden, at frame (content
+// coordinates), and loads its address, so that its page runs before it's
+// shown, as a hidden one does, and keeps running (see KeepWebViewRunning).
+// It does nothing for a web view that exists.
+func (p *Platform) LoadWebView(id string, view platform.WebView, frame layout.Rect) error {
+	if id == "" {
+		return errors.New("loading a web view: no item ID")
+	}
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return errors.New("loading a web view: the platform is closed")
+	}
+	p.webViews[id] = true
+	p.mu.Unlock()
+
+	cid, cname, curl := C.CString(id), C.CString(view.Name), C.CString(view.URL)
+	cuuid, cua := C.CString(ProfileUUID(view.Profile)), C.CString(p.uaSuffix)
+	defer freeAll(cid, cname, curl, cuuid, cua)
+	C.benchWebLoad(cid, cname, curl, cuuid, cua, C.double(view.Zoom), C.double(frame.X), C.double(frame.Y), C.double(frame.W), C.double(frame.H))
+	return nil
+}
+
+// KeepWebViewRunning says whether a web view keeps running while it's
+// hidden: one that does loads again after its page's process ends, or its
+// first load fails, without waiting to be shown (benchWebKeepRunning).
+func (p *Platform) KeepWebViewRunning(id string, on bool) {
+	if !p.hasWebView(id) {
+		return
+	}
+	keep := 0
+	if on {
+		keep = 1
+	}
+	cid := C.CString(id)
+	defer C.free(unsafe.Pointer(cid))
+	C.benchWebKeepRunning(cid, C.int(keep))
 }
 
 // HideWebView hides a web view, keeping it loaded.

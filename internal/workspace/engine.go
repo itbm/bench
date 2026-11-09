@@ -47,6 +47,16 @@ type Emitter interface {
 	// nothing and return nil.
 	PopOutTerminal(itemID, title string) error
 	CloseTerminalWindow(itemID string)
+	// ShowDropdown shows the drop-down terminal's window, sliding it down
+	// from the top of Bench's screen, height percent of the screen's
+	// height tall, over any app, and gives it the keyboard
+	// without bringing Bench forward; it makes the window first if the
+	// terminal hasn't one. HideDropdown slides it up out of sight, and
+	// gives the keyboard back to the app that had it; the window stays,
+	// until CloseTerminalWindow closes it (decision 72). In the browser
+	// preview these do nothing, and the page draws the drop-down.
+	ShowDropdown(itemID, title string, height int) error
+	HideDropdown(itemID string)
 	// MenuBar tells the shell what the menu bar item shows: the current
 	// tab's name, unless the menu_bar setting says otherwise, and the tabs
 	// in its menu, with their shortcuts.
@@ -75,6 +85,12 @@ type Emitter interface {
 	// FillScreen asks the shell to zoom Bench's window to fill its screen,
 	// unless it fills it already. In the browser preview it does nothing.
 	FillScreen()
+	// MoveToScreen asks the shell to move Bench's window to another
+	// display, for its content area to be at content, in global
+	// coordinates, and then, with fill, to zoom it to fill that display's
+	// visible area, as FillScreen does (decision 70). In the browser
+	// preview it does nothing.
+	MoveToScreen(content layout.Rect, fill bool)
 	// Quit asks the shell to quit Bench without asking about terminals
 	// that are running something, as the user has answered that already.
 	// In the browser preview it does nothing.
@@ -140,6 +156,12 @@ type Options struct {
 	// they cancelled. It waits for the user. Nil means there's no picker,
 	// as in the browser preview.
 	ChooseFolder func(start string) (string, error)
+	// ShowMenu shows one of Bench's menus as a native macOS menu at its
+	// point in Bench's main window, waits for the user, and returns the ID
+	// of the entry chosen, or "" if they closed it (decision 71). Nil means
+	// there are no native menus, as in the browser preview, where the
+	// frontend draws them in HTML.
+	ShowMenu func(menu Menu) (string, error)
 	// Version is Bench's version, as `bench version` prints it, such as
 	// "0.2.0 (4f2c1a9e0b7d)". Bench records it in the support folder
 	// while it has Accessibility permission, to tell after an update that
@@ -270,6 +292,24 @@ type Engine struct {
 	looped chan struct{}
 
 	emitMu sync.Mutex // Keeps bench:state events in order.
+	// sock is the socket that answers bench list, and socketWanted, under
+	// mu, whether flushState last found that it should be there, and
+	// socketRetry, under mu, the timer that tries to make it again after
+	// it couldn't (see scripts.go).
+	sock         scriptSocket
+	socketWanted bool
+	socketRetry  clock.Timer
+	// readied is set, under mu, once the frontend has first asked for the
+	// view (Ready), and so gets events. Until then, heldCommand and
+	// heldToast keep what a link or script would show (see
+	// showScriptResult).
+	readied     bool
+	heldCommand string
+	heldToast   string
+	// links keeps the times of the latest bench:// links followed, under
+	// its own lock, so that a page that opens them over and over can't
+	// keep Bench switching tabs (see FollowLink).
+	links linkLimit
 	// saveMu keeps state.json saves in order, and guards writtenSeq: the
 	// number of the newest snapshot written (see snapshotLocked).
 	saveMu     sync.Mutex
@@ -290,6 +330,12 @@ type Engine struct {
 
 	mu  sync.Mutex
 	out []func()
+	// held is what the current hold of mu has asked for and arranged,
+	// switches the latest tab switches' times, and arranges the latest
+	// other arrangements' (see timing.go).
+	held     lockHold
+	switches arrangeTimes
+	arranges arrangeTimes
 
 	cfg *config.Config
 	// writable is false while config.toml has problems, or can't be read
@@ -343,14 +389,40 @@ type Engine struct {
 	loginApproval bool
 	firstRun      bool
 	overlay       bool
+	// menus counts the native menus open (ShowMenu), which raise nothing,
+	// but close if another app becomes active (menuOrDialogLocked).
+	menus int
 	// closePress holds the App items whose windows Close is to ask to
 	// close once Bench is lowered (see close.go).
 	closePress  []string
-	benchHidden bool   // Bench's window is hidden or minimised.
+	benchHidden bool // Bench's window is hidden or minimised.
+	// dropShown is set while the drop-down terminal shows, and dropKeys
+	// holds its item ID meanwhile, or "", for TermInput to read without
+	// the lock (see dropdown.go).
+	dropShown bool
+	dropKeys  atomic.Value
+	// dropScreen is the ID of the display that Bench's window was on when
+	// the drop-down last showed, where the shell put it, for it to show
+	// again on Bench's display if that one goes away (dropdownScreensLocked).
+	dropScreen string
+	// escMu guards escHeld, the item ID of the drop-down whose Escape
+	// waits for the next key, or "", escSeq, which numbers each such
+	// Escape, and escTimer, which hides the drop-down if no key comes
+	// (escapeDropdown). TermInput takes it without the engine's lock. It
+	// may be taken with the engine's lock held, but not the other way
+	// round.
+	escMu       sync.Mutex
+	escHeld     string
+	escSeq      uint64
+	escTimer    clock.Timer
 	benchActive bool   // Bench is the active app.
 	activeApp   string // the active app's bundle ID, as AppActivated last said
-	screen      platform.Screen
-	area        layout.Rect
+	// finderDropAt is when a drop from the Finder, made while another app
+	// was active, gave a terminal the keyboard, which brings Bench forward,
+	// or zero (droppedForwardLocked).
+	finderDropAt time.Time
+	screen       platform.Screen
+	area         layout.Rect
 	// titleBar is the density that the window's title bar was made with
 	// at launch (WindowStart), or "" if Bench has no window of its own.
 	titleBar string
@@ -387,6 +459,31 @@ type Engine struct {
 	filled       bool
 	refillOnShow bool
 	lastScreen   *config.ScreenState
+	// preferred is the display that the user last chose for Bench's
+	// window, which state.json saves too; preferredAway is set when it has
+	// been disconnected since, and returnDue when it has come back and the
+	// window is to go back to it once nothing holds it up; returnTimer
+	// looks again while a hold, a tab switch, or a menu or dialog holds it
+	// up (see returning.go).
+	preferred     *config.ScreenState
+	preferredAway bool
+	returnDue     bool
+	returnTimer   clock.Timer
+	// displaysChanged is set when the displays changed while the screens
+	// settle, as against Bench's window going to another screen by
+	// itself, and ownMove when Bench moved its window to another display
+	// itself. Until ownFillUntil, unless the window fills its screen
+	// before, its moves within its screen are the zoom with which Bench
+	// fills the screen again, not the user's.
+	displaysChanged bool
+	ownMove         bool
+	ownFillUntil    time.Time
+	// wentBack is Bench's latest move back to the display that the user
+	// chose, while its toast's Undo can take it back, and placeOnShow is
+	// where that Undo is to put the window once it's shown, as it was
+	// hidden or minimised then (see returning.go).
+	wentBack    *wentBack
+	placeOnShow *benchPlace
 	// autoClass is the size class that Auto chose last for the width of
 	// Bench's window, with compact_below as autoBelow, or "" before it has
 	// chosen (see chooseSizeClassLocked); startWidth is the width that
@@ -417,6 +514,19 @@ type Engine struct {
 	browsed   map[string]platform.AppInfo
 	browseDir string
 	unmanaged map[platform.WindowID]platform.Window
+	// covered holds the windows that Bench parked because they covered it,
+	// with their apps' lower-case bundle IDs, until each app comes forward;
+	// and told the apps that Bench has said it hid, or moved a window of,
+	// for that reason, which state.json saves (see covering.go).
+	covered map[platform.WindowID]string
+	told    map[string]bool
+	// toolsTold holds the window tools, by lower-case bundle ID, whose
+	// notice the user has dismissed, which state.json saves, and toolsOn
+	// the window tools that are running, with their shortcuts, if Bench
+	// could read them: each one not in toolsTold has a notice (see
+	// windowtools.go).
+	toolsTold map[string]bool
+	toolsOn   map[string]*runningTool
 	// putBack holds the apps that Undo has just given windows back to, out
 	// of every tab, by lower-case bundle ID: the next arrangement shows each
 	// one again if Bench hid it and it has no items with windows left (see
@@ -460,10 +570,24 @@ type Engine struct {
 	making   *makingWebApp // The web app a dialog waits for, from AddWebsite or MakeWebApp.
 	ownFocus map[platform.WindowID]time.Time
 	quiet    map[string]time.Time              // Apps whose focus events are Bench's own until then, by lower-case bundle ID.
-	redocks  map[platform.WindowID][]time.Time // When Bench put back windows their apps moved.
+	redocks  map[platform.WindowID]redockTries // When Bench put back windows their apps moved, and where to.
 	sizedAt  time.Time                         // When the user last resized the panes, by a divider or a window's edge, not by the keys.
 	webShown map[string]layout.Rect
 	webMade  map[string]bool
+	// preloadTimer loads the next page kept running in the background
+	// that has no web view yet, once preloading is set by the first
+	// arrangement with a pane area; preloadTried holds the pages it has
+	// tried to load, which it doesn't try again until their web view has
+	// closed (see keeprunning.go).
+	preloadTimer clock.Timer
+	preloading   bool
+	preloadTried map[string]bool
+	// webKept holds the web views that the platform keeps running while
+	// they're hidden, as the engine last said (keepWebViewsLocked), and
+	// keepToasts the toasts that say a page's first notification kept it
+	// running, which wait for Bench to be the active app.
+	webKept    map[string]bool
+	keepToasts []Toast
 	// minimised holds the apps whose docked window the user has just
 	// minimised, until when, by lower-case bundle ID (see minimise.go).
 	minimised map[string]time.Time
@@ -631,6 +755,9 @@ func New(opts Options) (*Engine, error) {
 	// The shell opens the window filling its screen with this setting (see
 	// WindowStart).
 	e.filled = e.cfg.Settings.FillScreen && !opts.Headless && !opts.Demo
+	// The display that the user chose may be away as Bench opens: it goes
+	// back to it when it comes back (decision 70).
+	e.notePreferredAwayLocked()
 	return e, nil
 }
 
@@ -650,39 +777,45 @@ func newEngine(opts Options) *Engine {
 		log = slog.New(slog.DiscardHandler)
 	}
 	return &Engine{
-		opts:      opts,
-		log:       log,
-		p:         opts.Platform,
-		clk:       clk,
-		em:        em,
-		dir:       opts.Dir,
-		cfgPath:   filepath.Join(opts.Dir, config.ConfigFile),
-		statePath: filepath.Join(opts.Dir, config.StateFile),
-		ownPID:    os.Getpid(),
-		ctx:       ctx,
-		cancel:    cancel,
-		stop:      make(chan struct{}),
-		running:   map[string]platform.App{},
-		unmanaged: map[platform.WindowID]platform.Window{},
-		putBack:   map[string]bool{},
-		headers:   map[string]paneHeader{},
-		launching: map[string]time.Time{},
-		openFail:  map[string]bool{},
-		notFound:  map[string]bool{},
-		quit:      map[string]bool{},
-		seen:      map[string]time.Time{},
-		noWindow:  map[string]bool{},
-		askedFor:  map[string]askRecord{},
-		reopening: map[string]*reopenState{},
-		ownFocus:  map[platform.WindowID]time.Time{},
-		quiet:     map[string]time.Time{},
-		minimised: map[string]time.Time{},
-		redocks:   map[platform.WindowID][]time.Time{},
-		webShown:  map[string]layout.Rect{},
-		webMade:   map[string]bool{},
-		termOn:    map[string]bool{},
-		notices:   map[string][]NoticeView{},
-		tq:        termQueue{data: map[string][]byte{}},
+		opts:         opts,
+		log:          log,
+		p:            opts.Platform,
+		clk:          clk,
+		em:           em,
+		dir:          opts.Dir,
+		cfgPath:      filepath.Join(opts.Dir, config.ConfigFile),
+		statePath:    filepath.Join(opts.Dir, config.StateFile),
+		ownPID:       os.Getpid(),
+		ctx:          ctx,
+		cancel:       cancel,
+		stop:         make(chan struct{}),
+		running:      map[string]platform.App{},
+		unmanaged:    map[platform.WindowID]platform.Window{},
+		covered:      map[platform.WindowID]string{},
+		told:         map[string]bool{},
+		toolsTold:    map[string]bool{},
+		toolsOn:      map[string]*runningTool{},
+		putBack:      map[string]bool{},
+		headers:      map[string]paneHeader{},
+		launching:    map[string]time.Time{},
+		openFail:     map[string]bool{},
+		notFound:     map[string]bool{},
+		quit:         map[string]bool{},
+		seen:         map[string]time.Time{},
+		noWindow:     map[string]bool{},
+		askedFor:     map[string]askRecord{},
+		reopening:    map[string]*reopenState{},
+		ownFocus:     map[platform.WindowID]time.Time{},
+		quiet:        map[string]time.Time{},
+		minimised:    map[string]time.Time{},
+		redocks:      map[platform.WindowID]redockTries{},
+		webShown:     map[string]layout.Rect{},
+		webMade:      map[string]bool{},
+		preloadTried: map[string]bool{},
+		webKept:      map[string]bool{},
+		termOn:       map[string]bool{},
+		notices:      map[string][]NoticeView{},
+		tq:           termQueue{data: map[string][]byte{}},
 	}
 }
 
@@ -780,10 +913,23 @@ func (e *Engine) loadModel() error {
 			e.dropDeadFloatingLocked()
 			e.loadAppStates(st.Apps, st.Ran)
 			e.lastScreen = st.Screen
+			e.preferred = st.PreferredScreen
+			if e.preferred == nil && st.Screen != nil {
+				// A file from before decision 70: the display that Bench was
+				// last on is the one it was chosen for.
+				p := *st.Screen
+				e.preferred = &p
+			}
 			e.dialogs = st.Dialogs
 			e.closedTabs = closedTabsOf(st.Closed)
 			if st.Updates != nil {
 				e.updates = *st.Updates
+			}
+			for _, key := range st.Covering {
+				e.told[strings.ToLower(key)] = true
+			}
+			for _, key := range st.WindowTools {
+				e.toolsTold[strings.ToLower(key)] = true
 			}
 			return nil
 		}
@@ -859,7 +1005,8 @@ func (e *Engine) Start() {
 }
 
 // reopenOwnWindowsLocked gives the popped-out Web and Built-in items that
-// had windows of their own when Bench last quit their windows again.
+// had windows of their own when Bench last quit their windows again. The
+// drop-down's session starts, out of sight, until it's shown.
 func (e *Engine) reopenOwnWindowsLocked() {
 	if e.opts.Headless {
 		return
@@ -867,6 +1014,10 @@ func (e *Engine) reopenOwnWindowsLocked() {
 	for _, id := range e.model.Floating {
 		it := e.model.Items[id]
 		if it == nil || !it.OwnWindow {
+			continue
+		}
+		if e.isDropdownLocked(it) {
+			e.dropdownFromStateLocked(it)
 			continue
 		}
 		switch it.Kind {
@@ -925,6 +1076,7 @@ func (e *Engine) beginLocked() {
 	e.started = true
 	e.loadRunning()
 	e.noteRunningAppsLocked()
+	e.noteWindowToolsLocked(false)
 	if e.trusted {
 		e.scanLocked()
 	} else {
@@ -996,6 +1148,8 @@ func (e *Engine) Close() error {
 	looped := e.looped
 	e.unlock()
 
+	// bench list's socket goes first: it answers from the engine.
+	e.closeScriptSocket()
 	close(e.stop)
 	if looped != nil {
 		<-looped
@@ -1019,7 +1173,7 @@ func (e *Engine) Close() error {
 
 // stopTimersLocked stops every pending timer.
 func (e *Engine) stopTimersLocked() {
-	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.desktopTimer, e.updateTimer} {
+	for _, t := range []clock.Timer{e.stateTimer, e.saveTimer, e.trustTimer, e.screenTimer, e.desktopTimer, e.updateTimer, e.preloadTimer, e.socketRetry} {
 		if t != nil {
 			t.Stop()
 		}
@@ -1029,12 +1183,19 @@ func (e *Engine) stopTimersLocked() {
 	e.stopEdgeLocked()
 }
 
-// lock takes the engine's lock.
-func (e *Engine) lock() { e.mu.Lock() }
+// lock takes the engine's lock, for work asked for now, which gives the
+// reason for what it arranges, if anything, as it goes (because, and see
+// timing.go).
+func (e *Engine) lock() { e.lockAt(e.clk.Now(), "") }
 
-// unlock releases the lock, then makes the Emitter calls queued while it
-// was held.
+// unlock keeps the time of what was arranged with the lock held, if
+// anything was, releases the lock, then makes the Emitter calls queued
+// while it was held.
 func (e *Engine) unlock() {
+	if e.held.arranged {
+		e.keepArrangeTimeLocked()
+	}
+	e.held = lockHold{}
 	out := e.out
 	e.out = nil
 	e.mu.Unlock()
@@ -1053,9 +1214,15 @@ func (e *Engine) toastLocked(msg string) {
 }
 
 // after runs f with the lock held after d, unless the engine has closed.
+// What f arranges is timed from then, as the end of a wait (reasonTimer).
 func (e *Engine) after(d time.Duration, f func()) clock.Timer {
+	return e.afterFor(reasonTimer, d, f)
+}
+
+// afterFor is after, with the reason that what f arranges is timed for.
+func (e *Engine) afterFor(reason string, d time.Duration, f func()) clock.Timer {
 	return e.clk.AfterFunc(d, func() {
-		e.lock()
+		e.lockFor(reason)
 		defer e.unlock()
 		if !e.closed {
 			f()
@@ -1110,6 +1277,7 @@ func (e *Engine) flushState() {
 	badge, badgeChanged := e.badgeChangedLocked()
 	track, trackChanged := e.dragTrackingChangedLocked()
 	look, lookChanged := e.appearanceChangedLocked()
+	sockChanged := e.scriptSocketChangedLocked()
 	e.unlock()
 	e.em.State(v)
 	if barChanged {
@@ -1126,6 +1294,9 @@ func (e *Engine) flushState() {
 	}
 	if lookChanged {
 		e.em.Appearance(look)
+	}
+	if sockChanged {
+		e.syncScriptSocket()
 	}
 }
 
@@ -1203,20 +1374,23 @@ func fileExists(path string) bool {
 // nopEmitter is the Emitter when none is given, as for bench arrange.
 type nopEmitter struct{}
 
-func (nopEmitter) State(View)                          {}
-func (nopEmitter) Toast(string)                        {}
-func (nopEmitter) ActionToast(Toast)                   {}
-func (nopEmitter) Command(Command)                     {}
-func (nopEmitter) TermData(TermData)                   {}
-func (nopEmitter) PopOutTerminal(string, string) error { return nil }
-func (nopEmitter) CloseTerminalWindow(string)          {}
-func (nopEmitter) MenuBar(MenuBar)                     {}
-func (nopEmitter) BringForward()                       {}
-func (nopEmitter) ShortcutsChanged()                   {}
-func (nopEmitter) PauseShortcuts(bool)                 {}
-func (nopEmitter) FillScreen()                         {}
-func (nopEmitter) Quit()                               {}
-func (nopEmitter) Relaunch()                           {}
-func (nopEmitter) Appearance(string)                   {}
+func (nopEmitter) State(View)                             {}
+func (nopEmitter) Toast(string)                           {}
+func (nopEmitter) ActionToast(Toast)                      {}
+func (nopEmitter) Command(Command)                        {}
+func (nopEmitter) TermData(TermData)                      {}
+func (nopEmitter) PopOutTerminal(string, string) error    { return nil }
+func (nopEmitter) CloseTerminalWindow(string)             {}
+func (nopEmitter) ShowDropdown(string, string, int) error { return nil }
+func (nopEmitter) HideDropdown(string)                    {}
+func (nopEmitter) MenuBar(MenuBar)                        {}
+func (nopEmitter) BringForward()                          {}
+func (nopEmitter) ShortcutsChanged()                      {}
+func (nopEmitter) PauseShortcuts(bool)                    {}
+func (nopEmitter) FillScreen()                            {}
+func (nopEmitter) MoveToScreen(layout.Rect, bool)         {}
+func (nopEmitter) Quit()                                  {}
+func (nopEmitter) Relaunch()                              {}
+func (nopEmitter) Appearance(string)                      {}
 
 func (nopEmitter) CheckShortcuts(map[string]string) []ShortcutView { return nil }

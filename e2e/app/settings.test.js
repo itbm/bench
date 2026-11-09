@@ -383,7 +383,7 @@ test('Settings ▸ Keyboard records a shortcut, which works as soon as Settings 
     ['jump', '⌃⌥Space', ''], ['show_all_tabs', '', ''], ['rearrange', '⌃⌥0', ''], ['focus_pane_modifiers', '⌃⌥', ''],
     ['move_window_modifiers', '⌃⌥⇧', ''], ['send_to_tab_modifiers', '⌃⌥⇧', ''], ['next_window', '⌃⌥Tab', ''], ['zoom_pane', '⌃⌥↩', ''],
     ['grow_pane', '', ''], ['shrink_pane', '', ''], ['equal_panes', '', ''], ['next_layout', '', ''], ['previous_layout', '', ''],
-    ['add_front_window', '', ''], ['undo', '', ''],
+    ['add_front_window', '', ''], ['undo', '', ''], ['dropdown', '', ''],
   ]);
   assert.equal(was.notices.some((n) => /shortcut|register/i.test(n.text)), false);
 
@@ -456,14 +456,16 @@ test('Settings ▸ Keyboard says that ⌘Z for Undo the latest change, or ⌘, f
   assert.match(await page.textContent('[data-key="key-show_all_tabs-use"]'), /^Use /);
 });
 
-test('Settings saves where new windows go, what another tab\'s window does, hiding other apps, dragging windows on, and how long to wait', async (t) => {
+test('Settings saves where new windows go, what another tab\'s window does, windows over Bench, hiding other apps, dragging windows on, how long to wait, and letting scripts control Bench', async (t) => {
   const { preview, page } = await open(t);
   const before = settingsSection(readConfig(preview));
   assert.match(before, /^new_windows = "app-pane"\s/m);
   assert.match(before, /^follow_focus = "switch-tab"\s/m);
+  assert.match(before, /^covering_windows = "hide"\s/m);
   assert.match(before, /^hide_other_apps = false\s/m);
   assert.match(before, /^drag_to_add = true\s/m);
   assert.match(before, /^launch_timeout = "15s"\s/m);
+  assert.match(before, /^allow_scripts = false\s/m);
 
   await openSettings(page, 'windows');
   assert.equal(await page.getAttribute('[data-key="new-windows-app-pane"]', 'aria-checked'), 'true');
@@ -472,32 +474,41 @@ test('Settings saves where new windows go, what another tab\'s window does, hidi
   assert.equal(await page.isChecked('[data-setting="dragToAdd"]'), true);
   await page.click('[data-key="new-windows-focused-pane"]');
   await page.click('[data-key="follow-focus-bring-here"]');
+  assert.equal(await page.getAttribute('[data-key="covering-windows-hide"]', 'aria-checked'), 'true');
+  await page.click('[data-key="covering-windows-leave"]');
   await page.check('[data-setting="hideOtherApps"]');
   await page.uncheck('[data-setting="dragToAdd"]');
   await showSection(page, 'advanced');
   assert.equal(await page.inputValue('#launch-wait'), '15');
   await page.fill('#launch-wait', '30');
+  assert.equal(await page.isChecked('[data-setting="allowScripts"]'), false);
+  await page.check('[data-setting="allowScripts"]');
   await page.click('[data-action="save-settings"]');
 
   await waitForToast(page, 'Saved settings');
   const v = await waitView(page, (x) => x.settings.followFocus === 'bring-here');
   assert.equal(v.settings.newWindows, 'focused-pane');
+  assert.equal(v.settings.coveringWindows, 'leave');
   assert.equal(v.settings.hideOtherApps, true);
   assert.equal(v.settings.dragToAdd, false);
   assert.equal(v.settings.launchTimeout, '30s');
+  assert.equal(v.settings.allowScripts, true);
   const after = await waitUntil(() => {
     const s = settingsSection(readConfig(preview));
     return /^follow_focus = "bring-here"\s/m.test(s) && s;
   }, 'config.toml to have the new follow_focus');
   assert.match(after, /^new_windows = "focused-pane"\s/m);
+  assert.match(after, /^covering_windows = "leave"\s/m);
   assert.match(after, /^hide_other_apps = true\s/m);
   assert.match(after, /^drag_to_add = false\s/m);
   assert.match(after, /^launch_timeout = "30s"\s/m);
+  assert.match(after, /^allow_scripts = true\s/m);
 
   await openSettings(page);
   assert.equal(await page.inputValue('#launch-wait'), '30');
   await showSection(page, 'windows');
   assert.equal(await page.getAttribute('[data-key="follow-focus-bring-here"]', 'aria-checked'), 'true');
+  assert.equal(await page.getAttribute('[data-key="covering-windows-leave"]', 'aria-checked'), 'true');
   assert.equal(await page.isChecked('[data-setting="dragToAdd"]'), false);
 });
 

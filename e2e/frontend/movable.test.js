@@ -159,11 +159,13 @@ test('resizing a dialog from its corner changes its size, within limits, and Ben
   const mini = () => page.$eval('.mini', (el) => Math.round(el.getBoundingClientRect().height));
   assert.equal(await mini(), 230);
 
-  // Larger: the layout's preview takes the room.
-  await drag(page, await grip(page), 120, 90);
-  assert.deepEqual(await frameOf(page), { ...before, w: before.w + 120, h: before.h + 90 });
-  assert.equal(await mini(), 230 + 90);
-  await fake.waitForCall('SetDialogSize', (a) => a[0] === 'editor' && a[1] === before.w + 120 && a[2] === before.h + 90);
+  // Larger: the layout's preview takes the room. The window has room
+  // below Tab properties for 50 points more.
+  assert.ok(before.y + before.h + 50 <= 900 - 8, 'room to grow: ' + JSON.stringify(before));
+  await drag(page, await grip(page), 120, 50);
+  assert.deepEqual(await frameOf(page), { ...before, w: before.w + 120, h: before.h + 50 });
+  assert.equal(await mini(), 230 + 50);
+  await fake.waitForCall('SetDialogSize', (a) => a[0] === 'editor' && a[1] === before.w + 120 && a[2] === before.h + 50);
   await page.waitForFunction(() => window.bench.store.view.dialogs && window.bench.store.view.dialogs.editor);
 
   // No smaller than 420 by 300 points: the middle scrolls.
@@ -236,8 +238,9 @@ test('a dialog that a smaller window cuts short gets its size back when the wind
   t.after(close);
   await openTabProperties(page);
   const before = await frameOf(page);
-  await drag(page, await grip(page), 100, 100);
-  const sized = { ...before, w: before.w + 100, h: before.h + 100 };
+  assert.ok(before.y + before.h + 50 <= 900 - 8, 'room to grow: ' + JSON.stringify(before));
+  await drag(page, await grip(page), 100, 50);
+  const sized = { ...before, w: before.w + 100, h: before.h + 50 };
   assert.deepEqual(await frameOf(page), sized);
   await fake.waitForCall('SetDialogSize', (a) => a[0] === 'editor' && a[1] === sized.w && a[2] === sized.h);
 

@@ -39,8 +39,9 @@ const (
 	UsualHeight = 900
 )
 
-// WindowStart is where Bench's window opens: on the screen it was last on,
-// if that's still connected, or else the primary screen; at Frame, its
+// WindowStart is where Bench's window opens: on the display that the user
+// chose for it, if that's connected, or else the screen it was last on, if
+// that's still connected, or else the primary screen; at Frame, its
 // content area in global coordinates (see openFrame); whether it then fills
 // that screen's visible area; whether its title bar is compact (the
 // density, on that screen, at that size); and its appearance (the
@@ -62,13 +63,28 @@ type WindowStart struct {
 // it into half the screen, opens where it was, at that size, if that's
 // still on the screen. Otherwise it fills the screen with fill_screen on,
 // or else opens at its usual size in the middle of the screen.
+//
+// Bench was last on another display than the one chosen if it quit while
+// that one was away (decision 70). Until the user has chosen one, the
+// display that Bench opens on is the one chosen.
 func (e *Engine) WindowStart() WindowStart {
 	e.lock()
 	defer e.unlock()
-	s := findScreen(e.p.Screens(), e.lastScreen)
-	frame, left := openFrame(s, e.lastScreen)
+	screens, saved := e.p.Screens(), e.lastScreen
+	if p, ok := connectedScreen(screens, e.preferred); ok && !sameDisplay(e.lastScreen, p) {
+		saved = e.preferred
+	}
+	s := findScreen(screens, saved)
+	frame, left := openFrame(s, saved)
 	fill := e.cfg.Settings.FillScreen && !left
 	e.filled = fill && !e.opts.Headless && !e.opts.Demo
+	if e.preferred == nil && s.ID != "" && !e.opts.Headless {
+		window := frame
+		if fill {
+			window = layout.Rect{}
+		}
+		e.preferred = &config.ScreenState{ID: s.ID, Name: s.Name, Frame: s.Frame, Window: window}
+	}
 	e.startWidth = frame.W
 	if fill {
 		e.startWidth = s.Visible.W
@@ -202,23 +218,41 @@ func (e *Engine) noteScreenLocked(s platform.Screen, window layout.Rect) {
 }
 
 // refillLocked runs once the screens have settled after a change, with
-// e.screen up to date. If Bench's window filled its screen before the
+// e.screen up to date. If Undo of Bench's move back to the display that
+// the user chose was waiting for the window to be shown, the window moves
+// back now (putBackLocked). Otherwise, if the display that the user chose
+// for Bench's window has come back, the window goes back to it
+// (goBackLocked). Otherwise, if the window filled its screen before the
 // change, and doesn't fill the screen it's on now, as after a display it
 // was on was disconnected, the shell fills it again. That moves the window
-// within its screen, which doesn't make Bench wait for the screens again.
-// A window the user had made smaller is left as it is. While the window is
-// hidden or minimised, zooming it could bring it back, so that waits until
-// it's shown (onBenchShown).
+// within its screen, which doesn't make Bench wait for the screens again,
+// and isn't the user's choice of the screen (see noteUserMoveLocked). A
+// window the user had made smaller is left as it is. While the window is
+// hidden or minimised, moving or zooming it could bring it back, so that
+// waits until it's shown (onBenchShown).
 func (e *Engine) refillLocked() {
-	if e.opts.Demo || e.opts.Headless || e.screen.ID == "" {
+	if e.opts.Headless || e.screen.ID == "" {
 		return
 	}
 	e.refillOnShow = e.benchHidden
 	if e.benchHidden {
 		return
 	}
+	if p := e.placeOnShow; p != nil {
+		e.placeOnShow = nil
+		if e.putBackLocked(p) {
+			return
+		}
+	}
+	if e.returnDue && e.goBackLocked() {
+		return
+	}
+	if e.opts.Demo {
+		return
+	}
 	if e.filled && !fills(e.p.ContentFrame(), e.screen.Visible) {
 		e.noteScreenLocked(e.screen, layout.Rect{})
+		e.ownFillUntil = e.clk.Now().Add(ownFill)
 		e.later(e.em.FillScreen)
 		return
 	}

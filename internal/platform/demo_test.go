@@ -94,6 +94,17 @@ func TestNewDemoWorld(t *testing.T) {
 	if k := d.SystemKeys(); k.VoiceOver || len(k.InputSources) != 0 {
 		t.Errorf("the demo's SystemKeys = %+v, want none", k)
 	}
+	// Rectangle is installed, for the demo bar to start, with the
+	// recommended shortcuts.
+	if d.IsRunning(DemoWindowTool) || !slices.Contains(names, "Rectangle") {
+		t.Errorf("the demo's Rectangle should be installed and not running: running %v, installed %q", d.IsRunning(DemoWindowTool), names)
+	}
+	if p := d.ToolPreferences(DemoWindowTool); p.Numbers["alternateDefaultShortcuts"] != 1 || len(p.Shortcuts) != 0 {
+		t.Errorf("the demo's Rectangle's preferences = %+v, want the recommended shortcuts", p)
+	}
+	if err := d.StartAgent(DemoWindowTool); err != nil {
+		t.Errorf("StartAgent(Rectangle) = %v", err)
+	}
 	// The preview opens nothing on the computer it runs on.
 	if err := d.OpenTextFile("/tmp/config.toml"); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("OpenTextFile = %v, want ErrUnsupported", err)
@@ -287,6 +298,74 @@ func TestSetDemoScreen(t *testing.T) {
 			t.Errorf("DemoScreen() = %q", got)
 		}
 	})
+}
+
+// TestSetDemoMonitor checks the demo bar's Unplug monitor and Plug in
+// monitor: the monitor goes, and Bench's window with it to the laptop's
+// screen, then comes back to the laptop's right, with the window staying
+// on the laptop until Bench moves it (MoveDemoBench).
+func TestSetDemoMonitor(t *testing.T) {
+	laptop := Screen{ID: "laptop", Name: "Laptop", Primary: true,
+		Frame: layout.Rect{W: 1512, H: 982}, Visible: layout.Rect{Y: 33, W: 1512, H: 949}}
+	monitor := Screen{ID: "monitor", Name: "Monitor",
+		Frame: layout.Rect{X: 1512, W: 2560, H: 1440}, Visible: layout.Rect{X: 1512, Y: 25, W: 2560, H: 1415}}
+	d := NewDemo(clock.NewFake(epoch))
+	if d.SetDemoMonitor(false) || d.SetDemoMonitor(true) {
+		t.Fatal("the fit screen has a monitor to unplug or plug in")
+	}
+	d.SetDemoScreen(DemoMonitor, 0)
+	d.DrainEvents()
+
+	if !d.SetDemoMonitor(false) {
+		t.Fatal("couldn't unplug the monitor")
+	}
+	if got := d.Screens(); !slices.Equal(got, []Screen{laptop}) {
+		t.Errorf("unplugged: Screens() = %+v, want the laptop's alone", got)
+	}
+	if got := d.ScreenOfWindow(); got.ID != DemoLaptop || d.DemoScreen() != DemoLaptop || !d.DemoUnplugged() {
+		t.Errorf("unplugged: Bench is on %q, the simulated screen is %q, unplugged %v; want the laptop, unplugged",
+			got.ID, d.DemoScreen(), d.DemoUnplugged())
+	}
+	if got, want := kinds(d.DrainEvents()), []EventKind{ScreensChanged, BenchMoved}; !slices.Equal(got, want) {
+		t.Errorf("unplugged: events = %v, want %v", got, want)
+	}
+	if d.SetDemoMonitor(false) {
+		t.Error("unplugged the monitor twice")
+	}
+
+	if !d.SetDemoMonitor(true) {
+		t.Fatal("couldn't plug the monitor in")
+	}
+	if got := d.Screens(); !slices.Equal(got, []Screen{laptop, monitor}) {
+		t.Errorf("plugged in: Screens() = %+v, want the laptop's and the monitor to its right", got)
+	}
+	if got := d.ScreenOfWindow(); got.ID != DemoLaptop || d.DemoUnplugged() {
+		t.Errorf("plugged in: Bench is on %q, unplugged %v; want still on the laptop", got.ID, d.DemoUnplugged())
+	}
+	if got, want := kinds(d.DrainEvents()), []EventKind{ScreensChanged}; !slices.Equal(got, want) {
+		t.Errorf("plugged in: events = %v, want %v", got, want)
+	}
+	if d.SetDemoMonitor(true) {
+		t.Error("plugged the monitor in twice")
+	}
+
+	d.MoveDemoBench("projector")
+	if got := d.ScreenOfWindow(); got.ID != DemoLaptop || len(d.DrainEvents()) != 0 {
+		t.Errorf("moved to a screen that isn't there: Bench is on %q", got.ID)
+	}
+	d.MoveDemoBench(DemoMonitor)
+	if got := d.ScreenOfWindow(); got != monitor || d.DemoScreen() != DemoMonitor || d.ContentFrame() != monitor.Visible {
+		t.Errorf("moved: Bench is on %+v, the simulated screen is %q; want the monitor", got, d.DemoScreen())
+	}
+	if got, want := kinds(d.DrainEvents()), []EventKind{BenchMoved}; !slices.Equal(got, want) {
+		t.Errorf("moved: events = %v, want %v", got, want)
+	}
+	// The monitor is among the screens again, so it can be unplugged again;
+	// choosing a screen puts the one screen back.
+	d.SetDemoScreen(DemoLaptop, 0)
+	if got := d.Screens(); !slices.Equal(got, []Screen{laptop}) || d.ScreenOfWindow().ID != DemoLaptop {
+		t.Errorf("chose the laptop: Screens() = %+v", got)
+	}
 }
 
 func TestNewDemoDoesntKeepGrowing(t *testing.T) {

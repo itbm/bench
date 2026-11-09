@@ -437,7 +437,7 @@ func (e *Engine) restoreTabLocked(ti int, d droppedTab) {
 		w, free := e.unmanaged[it.WindowID]
 		switch was := left[it.WindowID]; {
 		case was != nil:
-			it.Title, it.pid, it.Undocked, it.minimised = was.Title, was.pid, was.Undocked, was.minimised
+			it.Title, it.pid, it.Undocked, it.keptMoving, it.minimised = was.Title, was.pid, was.Undocked, was.keptMoving, was.minimised
 			it.Status, it.StatusText = was.Status, was.StatusText
 		case free && sameApp(w.BundleID, it.BundleID):
 			delete(e.unmanaged, w.ID)

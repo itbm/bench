@@ -169,6 +169,9 @@ function contrast(a, b) {
 
 const SURFACES = ['--bg-pane', '--bg-window', '--bg-chrome', '--bg-raised', '--bg-pane-header', '--bg-hover'];
 
+// TAB_COLOURS are the tokens of the colours a tab can have.
+const TAB_COLOURS = ['red', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink', 'grey'].map((c) => '--tab-' + c);
+
 // READABLE are text tokens, the surfaces each must be readable on, and how
 // readable, in both sets of colours: text at 4.5:1 at least, and faint text
 // in terminals too.
@@ -183,6 +186,13 @@ const READABLE = [
   // the tabs and sub-tabs it sits on, at rest, shown, and under the
   // pointer.
   [['--unread-dot'], ['--bg-chrome', '--bg-tab-active', '--bg-pane-header', '--bg-control-on', '--bg-hover'], 3],
+  // A tab's colour (decision 74) is a mark to see, at 3:1: its underline
+  // on the title bar and on the current tab, at rest, under the pointer,
+  // and pressed, the band along its panes' headers, and the dot beside its
+  // name in the palette's rows, chosen or not, the overview's cards, and
+  // Tab properties' swatches. A tab that a sub-tab is dragged over is
+  // checked below, as its wash isn't a token of its own.
+  [TAB_COLOURS, ['--bg-chrome', '--bg-tab-active', '--bg-hover', '--bg-pressed', '--bg-pane-header', '--bg-raised', '--bg-window', '--bg-control-on'], 3],
 ];
 
 // MORE_READABLE is the same with macOS's Increase contrast on: quiet text
@@ -196,6 +206,73 @@ const MORE_READABLE = [
   [['--unread-text'], ['--unread-bg'], 7],
   [['--line-pane', '--line-dialog', '--line-control'], ['--bg-window', '--bg-chrome'], 3],
 ];
+
+// APART is how far, as CIEDE2000, each tab colour is from the accent at
+// least (decision 74), so that a tab's colour can't be taken for the
+// focused pane's border or the current tab's own underline, and from the
+// amber of a problem, so that a yellow tab's underline and band can't be
+// taken for the warning sign of a window that keeps moving (decision 69).
+const APART = 20;
+
+// lab returns a #RRGGBB colour in CIELAB, with D65 white.
+function lab(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  const f = (t) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116);
+  const [x, y, z] = [
+    (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047,
+    0.2126 * r + 0.7152 * g + 0.0722 * b,
+    (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883,
+  ].map(f);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+
+// deltaE returns how far apart two CIELAB colours look, as CIEDE2000, by
+// Sharma, Wu, and Dalal's formulas.
+function deltaE([L1, a1, b1], [L2, a2, b2]) {
+  const rad = Math.PI / 180;
+  const cBar = (Math.hypot(a1, b1) + Math.hypot(a2, b2)) / 2;
+  const g = 0.5 * (1 - Math.sqrt(cBar ** 7 / (cBar ** 7 + 25 ** 7)));
+  const [p1, p2] = [a1, a2].map((a) => (1 + g) * a);
+  const [c1, c2] = [Math.hypot(p1, b1), Math.hypot(p2, b2)];
+  const hue = (b, a) => (b === 0 && a === 0 ? 0 : (Math.atan2(b, a) / rad + 360) % 360);
+  const [h1, h2] = [hue(b1, p1), hue(b2, p2)];
+  let dh = 0;
+  if (c1 * c2 !== 0) dh = h2 - h1 > 180 ? h2 - h1 - 360 : h2 - h1 < -180 ? h2 - h1 + 360 : h2 - h1;
+  const dH = 2 * Math.sqrt(c1 * c2) * Math.sin(dh * rad / 2);
+  const lBar = (L1 + L2) / 2;
+  const cpBar = (c1 + c2) / 2;
+  let hBar = h1 + h2;
+  if (c1 * c2 !== 0) hBar = (Math.abs(h1 - h2) > 180 ? hBar + (hBar < 360 ? 360 : -360) : hBar) / 2;
+  const t = 1 - 0.17 * Math.cos((hBar - 30) * rad) + 0.24 * Math.cos(2 * hBar * rad)
+    + 0.32 * Math.cos((3 * hBar + 6) * rad) - 0.2 * Math.cos((4 * hBar - 63) * rad);
+  const rc = 2 * Math.sqrt(cpBar ** 7 / (cpBar ** 7 + 25 ** 7));
+  const rt = -Math.sin(60 * Math.exp(-(((hBar - 275) / 25) ** 2)) * rad) * rc;
+  const sl = 1 + 0.015 * (lBar - 50) ** 2 / Math.sqrt(20 + (lBar - 50) ** 2);
+  const sc = 1 + 0.045 * cpBar;
+  const sh = 1 + 0.015 * cpBar * t;
+  const [l, c, h] = [(L2 - L1) / sl, (c2 - c1) / sc, dH / sh];
+  return Math.sqrt(l * l + c * c + h * h + rt * c * h);
+}
+
+// apart returns how far apart two #RRGGBB colours look, as CIEDE2000.
+const apart = (one, two) => deltaE(lab(one), lab(two));
+
+test('deltaE gives CIEDE2000 as Sharma, Wu, and Dalal\'s test data does', () => {
+  // Pairs 1, 7, 17, 21, 25, and 33 of their table.
+  const pairs = [
+    [[50, 2.6772, -79.7751], [50, 0, -82.7485], 2.0425],
+    [[50, 0, 0], [50, -1, 2], 2.3669],
+    [[50, 2.5, 0], [73, 25, -18], 27.1492],
+    [[50, 2.5, 0], [50, 3.1736, 0.5854], 1],
+    [[60.2574, -34.0099, 36.2677], [60.4626, -34.1751, 39.4387], 1.2644],
+    [[2.0776, 0.0795, -1.135], [0.9033, -0.0636, -0.5514], 0.9082],
+  ];
+  for (const [one, two, want] of pairs) {
+    assert.ok(Math.abs(deltaE(one, two) - want) < 0.0001, one + ' and ' + two + ': ' + deltaE(one, two) + ', want ' + want);
+  }
+  assert.ok(Math.abs(apart('#000000', '#FFFFFF') - 100) < 0.01);
+});
 
 // tokensOf returns the values of the tokens in rules on page.
 function tokensOf(page, rules) {
@@ -212,7 +289,7 @@ test('both sets of colours keep text readable, and more so with Increase contras
   for (const scheme of ['dark', 'light']) {
     for (const [more, rules] of [['no-preference', READABLE], ['more', MORE_READABLE]]) {
       await page.emulateMedia({ colorScheme: scheme, contrast: more });
-      const tokens = await tokensOf(page, rules);
+      const tokens = await tokensOf(page, [...rules, [TAB_COLOURS, ['--accent', '--accent-wash', '--warning', '--bg-pane']]]);
       for (const [fgs, bgs, least] of rules) {
         for (const fg of fgs) {
           for (const bg of bgs) {
@@ -220,6 +297,24 @@ test('both sets of colours keep text readable, and more so with Increase contras
             assert.ok(ratio >= least, scheme + ', contrast ' + more + ': ' + fg + ' ' + tokens[fg] + ' on ' + bg + ' ' + tokens[bg]
               + ' is ' + ratio.toFixed(2) + ':1, want ' + least + ':1');
           }
+        }
+      }
+      // A tab's colour on a tab that a sub-tab is dragged over, which has
+      // the accent's wash over the title bar, and on a pane header that
+      // files from the Finder are over (decision 73), which has it over
+      // the pane; and far enough from the accent and the amber of a
+      // problem.
+      const washes = ['--bg-chrome', '--bg-pane'].map((bg) => hex(tokens['--accent-wash'], tokens[bg]));
+      for (const fg of TAB_COLOURS) {
+        for (const wash of washes) {
+          const ratio = contrast(tokens[fg], wash);
+          assert.ok(ratio >= 3, scheme + ', contrast ' + more + ': ' + fg + ' ' + tokens[fg] + ' on the drop wash ' + wash
+            + ' is ' + ratio.toFixed(2) + ':1, want 3:1');
+        }
+        for (const other of ['--accent', '--warning']) {
+          const far = apart(tokens[fg], tokens[other]);
+          assert.ok(far >= APART, scheme + ', contrast ' + more + ': ' + fg + ' ' + tokens[fg] + ' is ' + far.toFixed(1)
+            + ' from ' + other + ' ' + tokens[other] + ', want ' + APART);
         }
       }
     }

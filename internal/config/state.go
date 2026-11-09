@@ -366,6 +366,10 @@ func tidyState(s *State) {
 	if s.Items == nil {
 		s.Items = map[string]ItemState{}
 	}
+	// The drop-down is a terminal out of the tabs.
+	if !contains(s.Floating, s.Dropdown) || s.Items[s.Dropdown].Kind != stateKindBuiltin {
+		s.Dropdown = ""
+	}
 	for kind, size := range s.Dialogs {
 		if !(size.W > 0 && size.H > 0) {
 			delete(s.Dialogs, kind)

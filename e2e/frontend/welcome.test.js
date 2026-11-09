@@ -74,6 +74,8 @@ test('the welcome guide goes from the permissions to a starting set-up, then fou
     ['Code', 'VSVisual Studio Code', '>_Terminal'],
     ['Plan', 'ObObsidian'],
   ]);
+  // Each name has the dot of the colour that its tab will have.
+  assert.deepEqual(await page.$$eval(STARTER + ' .starter-name .tab-dot', (els) => els.map((el) => el.dataset.colour)), ['blue', 'green', 'purple']);
   assert.equal(await focusedKey(page), 'guide-add-tabs');
   assert.equal(await page.textContent('[data-key="guide-add-tabs"]'), 'Add 3 tabs');
   await page.click('[data-key="starter-remove-Code"]');
@@ -81,6 +83,7 @@ test('the welcome guide goes from the permissions to a starting set-up, then fou
   await page.click('[data-key="guide-add-tabs"]');
   assert.deepEqual((await fake.waitForCall('UseStarterTabs')).args, [['Comms', 'Plan']]);
   await page.waitForFunction(() => window.bench.store.view.tabs.map((x) => x.name).join() === 'Research,Comms,Plan');
+  assert.deepEqual(await page.$$eval('#titlebar .tab', (els) => els.map((el) => el.dataset.colour || '')), ['', 'blue', 'purple']);
 
   // Then four tips, with the shortcuts as configured. The set-up still
   // counts, but Back and Continue skip it, as it's done.
@@ -324,6 +327,7 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['Previous layout', 'Off', '', ''],
     ['Add front window to this pane', 'Off', '', ''],
     ['Undo the latest change', 'Off', '', ''],
+    ['Show or hide the drop-down', 'Off', '', ''],
   ]);
   // After them, under their own headings, the keys of Bench's window, which
   // aren't configured (decision 64), then a terminal's.
@@ -336,7 +340,7 @@ test('the Keyboard Shortcuts sheet lists the shortcuts as configured, from the s
     ['In Bench\'s window', 'Settings…', '⌘,'],
     ['In a terminal', 'Find', '⌘F'],
   ]);
-  assert.match(await page.textContent('.shortcuts-sheet'), /Previous layout.*Add front window to this pane.*Undo the latest change.*In Bench's window.*Close the tab or sub-tab⌫.*In a terminal.*Find⌘F/s);
+  assert.match(await page.textContent('.shortcuts-sheet'), /Previous layout.*Add front window to this pane.*Undo the latest change.*Show or hide the drop-down.*In Bench's window.*Close the tab or sub-tab⌫.*In a terminal.*Find⌘F/s);
   // Escape closes it, and the focus goes back to the button.
   await page.keyboard.press('Escape');
   await page.waitForSelector('.shortcuts-sheet', { state: 'detached' });
@@ -360,11 +364,13 @@ test('an empty pane says how to bring a window into it, with the shortcut as con
   const { page, fake, close } = await openBench({ world });
   t.after(close);
   const hint = page.locator('.pane[data-pane-id="p2"] .empty-hint');
-  assert.equal(await hint.textContent(), 'Drag a sub-tab here, or press ⌥⇧ and an arrow to move the shown window here.');
+  assert.equal(await hint.textContent(),
+    'Drag a sub-tab here, or a folder or app from the Finder. Or press ⌥⇧ and an arrow to move the shown window here.');
 
   fake.world.keys.moveWindow = '';
   await fake.emitState();
-  await page.waitForFunction(() => document.querySelector('.pane[data-pane-id="p2"] .empty-hint').textContent === 'Drag a sub-tab here.');
+  await page.waitForFunction(() => document.querySelector('.pane[data-pane-id="p2"] .empty-hint').textContent
+    === 'Drag a sub-tab here, or a folder or app from the Finder.');
 });
 
 test('the notice of a newer version has Download, which opens its page, and Dismiss', async (t) => {

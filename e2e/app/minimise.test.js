@@ -33,6 +33,7 @@ function shownIn(v, pane) {
 async function minimise(page, item, pane) {
   await page.click('.subtab[data-item="' + item + '"]');
   await waitView(page, (x, a) => x.display.focus === a.pane && x.display.panes.find((p) => p.id === a.pane).active === a.item, { item, pane });
+  await page.click('#demo-simulate');
   await page.click('#demo-bar [data-action="demo-minimise"]');
   return waitView(page, (x, id) => x.items[id].status === 'minimised', item);
 }
@@ -89,6 +90,7 @@ test('Minimise window says when the focused pane has no window to minimise', asy
   const terminal = paneOf(v, Object.values(v.items).find((i) => i.kind === 'builtin' && i.tab === v.current).id);
   await page.click('.pane[data-pane-id="' + terminal + '"] .pane-header');
   await waitView(page, (x, id) => x.display.focus === id, terminal);
+  await page.click('#demo-simulate');
   await page.click('#demo-bar [data-action="demo-minimise"]');
   await waitForToast(page, 'The focused pane doesn\'t show an app\'s window to minimise.');
 });

@@ -4,6 +4,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -191,6 +192,10 @@ const (
 	actualSizeLabel = "Actual Size"
 )
 
+// keepRunningLabel is Pane ▸ Page's checkbox for whether the page keeps
+// running in the background, as the ⋯ menu names it (pages.js).
+const keepRunningLabel = "Keep Running in the Background"
+
 // Labels of Pop Out of Bench, which reads Remove from Bench for a window
 // that has closed, as there's nothing to pop out.
 const (
@@ -213,9 +218,11 @@ func withKeys(label, keys string) string {
 // menuItems are the app menu's items that change as the engine says what's
 // what (appMenu.apply).
 type menuItems struct {
-	// The View menu: Show All Tabs and Rearrange, with their shortcuts,
-	// and View ▸ Layout's items, ticked for the layout mode.
+	// The View menu: Show All Tabs, Show Drop-down, which reads Hide
+	// Drop-down while it shows, and Rearrange, with their shortcuts, and
+	// View ▸ Layout's items, ticked for the layout mode.
 	showAllTabs *application.MenuItem
+	dropdown    *application.MenuItem
 	layouts     layoutItems
 	rearrange   *application.MenuItem
 	// The Tab menu: Undo, first, which names the latest change, and is off
@@ -254,12 +261,14 @@ type menuItems struct {
 	// Pane ▸ Page, on for a Web item, and its items: each is off where it
 	// would do nothing. Actual Size shows the page's zoom, and the camera
 	// and microphone items read Turn On Camera and Unmute Microphone while
-	// they're off.
+	// they're off. Keep Running in the Background is a checkbox, ticked
+	// while it's on, and off for VS Code for the Web.
 	page                          *application.MenuItem
 	reload, back, forward         *application.MenuItem
 	zoomIn, zoomOut, actualSize   *application.MenuItem
 	find, copyLink                *application.MenuItem
 	microphone, camera, stopSound *application.MenuItem
+	keepRunning                   *application.MenuItem
 }
 
 // appMenu is the app menu: Bench, Edit, View, Tab, Pane, Window, and Help.
@@ -280,8 +289,8 @@ type appMenu struct {
 	// once the app runs, so the main thread must never take it.
 	mu sync.Mutex
 	// bar is what the engine last said, and built what the items were
-	// built for: the menu is built again when the number of tabs changes,
-	// and otherwise changed in place.
+	// built for: the menu is built again when the number of tabs or their
+	// colours change, and otherwise changed in place.
 	bar   workspace.MenuBar
 	built workspace.MenuBar
 	items menuItems
@@ -290,6 +299,11 @@ type appMenu struct {
 	started bool
 	// clicks are what the items do, for tests, which can't click them.
 	clicks map[*application.MenuItem]func()
+	// dots are the colours of the dots of the Tab menu's tabs and Pane ▸
+	// Move to Tab's, by item, for tests, which can't see an item's image:
+	// "" for a tab with no colour, which has a blank image while another
+	// tab has a colour.
+	dots map[*application.MenuItem]string
 
 	// latest is what the engine last said, for the items to act on when
 	// chosen, without mu, which a rebuild may hold.
@@ -309,8 +323,11 @@ func newAppMenu(do menuActions) *appMenu {
 }
 
 // set brings the menu up to date with what the engine says: once the app
-// runs, it builds the menu again if the number of tabs has changed, and
-// otherwise changes its items in place.
+// runs, it builds the menu again if the number of tabs, or their colours,
+// have changed, and otherwise changes its items in place. A tab's dot is
+// an image, which Wails gives the native item, on the main thread, only as
+// it builds the menu: it would change an item's image later from this
+// thread.
 func (a *appMenu) set(m workspace.MenuBar) {
 	a.latest.Store(&m)
 	a.mu.Lock()
@@ -319,7 +336,7 @@ func (a *appMenu) set(m workspace.MenuBar) {
 	if !a.started {
 		return
 	}
-	if len(m.Tabs) != len(a.built.Tabs) {
+	if len(m.Tabs) != len(a.built.Tabs) || !sameColours(m.Tabs, a.built.Tabs) {
 		a.buildLocked(m)
 		a.root.Update()
 		return
@@ -386,6 +403,7 @@ func (a *appMenu) buildLocked(m workspace.MenuBar) {
 	}
 	a.root.Clear()
 	a.clicks = map[*application.MenuItem]func(){}
+	a.dots = map[*application.MenuItem]string{}
 	a.items = menuItems{}
 	a.built = m
 	a.addBenchMenu()
@@ -436,12 +454,14 @@ func (a *appMenu) addEditMenu() {
 }
 
 // addViewMenu adds the View menu: Show All Tabs, which opens the overview
-// of every tab; Layout ▸ Auto, Wide, and Compact, a group of radio items,
-// which Wails ticks one of when it's chosen; Rearrange; and Fill the
-// Screen.
+// of every tab; Show Drop-down, which shows the drop-down terminal over
+// any app, or hides it (decision 72); Layout ▸ Auto, Wide, and Compact, a
+// group of radio items, which Wails ticks one of when it's chosen;
+// Rearrange; and Fill the Screen.
 func (a *appMenu) addViewMenu() {
 	view := a.root.AddSubmenu("View")
 	a.items.showAllTabs = a.add(view, showAllTabsLabel, a.command(showAllTabsCommand.Name))
+	a.items.dropdown = a.add(view, workspace.MenuBarDropdown{}.Label(), a.act(func(e engine, _ workspace.MenuBar) error { return e.ToggleDropdown() }))
 	view.AddSeparator()
 	layouts := view.AddSubmenu("Layout")
 	a.items.layouts = layoutItems{}
@@ -507,8 +527,12 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 	if len(m.Tabs) > 0 {
 		tab.AddSeparator()
 	}
+	// While any tab has a colour, each has a dot of its colour before its
+	// name, and a tab with none a blank image as wide, so that the names
+	// line up (decision 74).
+	coloured := slices.ContainsFunc(m.Tabs, func(t workspace.MenuBarTab) bool { return t.Colour != "" })
 	for i := range m.Tabs {
-		a.items.tabs = append(a.items.tabs, a.bind(tab.AddRadio("", false), func() {
+		item := a.bind(tab.AddRadio("", false), func() {
 			a.do.act(func(e engine) error {
 				err := e.SwitchTab(i)
 				if err != nil {
@@ -516,8 +540,19 @@ func (a *appMenu) addTabMenu(m workspace.MenuBar) {
 				}
 				return err
 			})
-		}))
+		})
+		if coloured {
+			item.SetBitmap(menuDot(m.Tabs[i].Colour))
+			a.dots[item] = m.Tabs[i].Colour
+		}
+		a.items.tabs = append(a.items.tabs, item)
 	}
+}
+
+// sameColours reports whether two lists of tabs, as long as each other,
+// have the same colours.
+func sameColours(a, b []workspace.MenuBarTab) bool {
+	return slices.EqualFunc(a, b, func(x, y workspace.MenuBarTab) bool { return x.Colour == y.Colour })
 }
 
 // addPaneMenu adds the Pane menu, for the focused pane and the window it
@@ -548,11 +583,19 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 	it.shrink = a.add(pane, shrinkPaneLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.ShrinkPane() }))
 	it.equal = a.add(pane, equalPanesLabel, a.act(func(e engine, _ workspace.MenuBar) error { return e.EqualPanes() }))
 	pane.AddSeparator()
+	// Move to Tab's tabs have their dots as the Tab menu's do, as the ⋯
+	// menu's Move to Tab has them (decision 74).
 	moveTo := application.NewMenu()
+	coloured := slices.ContainsFunc(m.Tabs, func(t workspace.MenuBarTab) bool { return t.Colour != "" })
 	for i := range m.Tabs {
-		it.moveToTabs = append(it.moveToTabs, a.add(moveTo, "", a.act(func(e engine, m workspace.MenuBar) error {
+		item := a.add(moveTo, "", a.act(func(e engine, m workspace.MenuBar) error {
 			return e.MoveItemToTab(m.Pane.Item, i)
-		})))
+		}))
+		if coloured {
+			item.SetBitmap(menuDot(m.Tabs[i].Colour))
+			a.dots[item] = m.Tabs[i].Colour
+		}
+		it.moveToTabs = append(it.moveToTabs, item)
 	}
 	if len(m.Tabs) > 0 {
 		moveTo.AddSeparator()
@@ -572,10 +615,13 @@ func (a *appMenu) addPaneMenu(m workspace.MenuBar) {
 }
 
 // addPageMenu adds Pane ▸ Page, for the web page that the focused pane
-// shows, as its ⋯ menu's Page group does: reloading it, going back or
-// forward, zooming it, finding in it, copying its link, and what it does
-// with the camera, the microphone, and sound. None has a key equivalent,
-// so that pages keep their own ⌘R, ⌘F, ⌘+, and the like (decision 50).
+// shows. It holds all of the page's entries in one place: reloading it,
+// going back or forward and zooming it (the ⋯ menu's Page submenu), and
+// finding in it, copying its link, what it does with the camera, the
+// microphone, and sound, and whether it keeps running in the background
+// (which the ⋯ menu shows after its Page submenu; decisions 71 and 76).
+// None has a key equivalent, so that pages keep their own ⌘R, ⌘F, ⌘+,
+// and the like (decision 50).
 func (a *appMenu) addPageMenu(pane *application.Menu) {
 	it := &a.items
 	page := application.NewMenu()
@@ -597,6 +643,19 @@ func (a *appMenu) addPageMenu(pane *application.Menu) {
 		return e.MuteCapture(m.Pane.Item, "camera", m.Pane.Camera != "muted")
 	}))
 	it.stopSound = a.add(page, "Stop Sound and Video", a.act(func(e engine, m workspace.MenuBar) error { return e.StopMedia(m.Pane.Item) }))
+	page.AddSeparator()
+	// Wails ticks or unticks a checkbox as it's chosen, so the tick goes
+	// back to what the engine says if it refuses, as for the layouts.
+	it.keepRunning = a.bind(page.AddCheckbox(keepRunningLabel, false), func() {
+		m := a.now()
+		a.do.act(func(e engine) error {
+			err := e.SetKeepRunning(m.Pane.Item, !m.Pane.KeepRunning)
+			if err != nil {
+				a.retick()
+			}
+			return err
+		})
+	})
 	it.page = application.NewSubmenu("Page", page)
 	pane.Append(application.NewMenuFromItems(it.page))
 }
@@ -629,6 +688,7 @@ func (a *appMenu) addHelpMenu() {
 func (a *appMenu) applyLocked(m workspace.MenuBar) {
 	it := a.items
 	setLabel(it.showAllTabs, withKeys(showAllTabsLabel, m.Keys.ShowAllTabs))
+	setLabel(it.dropdown, withKeys(m.Dropdown.Label(), m.Keys.Dropdown))
 	it.layouts.tick(m.Mode)
 	setLabel(it.rearrange, withKeys("Rearrange", m.Keys.Rearrange))
 
@@ -748,6 +808,8 @@ func (a *appMenu) applyPageLocked(p workspace.MenuBarPane) {
 	enable(it.microphone, page && p.Microphone != "")
 	enable(it.camera, page && p.Camera != "")
 	enable(it.stopSound, page)
+	enable(it.keepRunning, page && p.Link)
+	tick(it.keepRunning, page && p.KeepRunning)
 }
 
 // keysWith returns modifiers with a key added, such as "⌃⌥⇧→", or "" if

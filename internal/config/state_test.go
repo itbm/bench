@@ -49,10 +49,14 @@ func goodState() *State {
 			"w8": {Kind: "app", BundleID: "com.brave.Browser", WindowID: 105, Title: "Popped", Created: 8},
 		},
 		Floating: []string{"w8"},
-		Screen:   &ScreenState{ID: "2", Name: "Studio Display", Frame: layout.Rect{X: 1512, W: 2560, H: 1440}},
-		Dialogs:  map[string]DialogSize{"settings": {W: 640, H: 520}},
+		Screen:   &ScreenState{ID: "1", Name: "Built-in Retina Display", Frame: layout.Rect{W: 1512, H: 982}},
+		PreferredScreen: &ScreenState{ID: "2", Name: "Studio Display", Frame: layout.Rect{X: 1512, W: 2560, H: 1440},
+			Window: layout.Rect{X: 1600, Y: 100, W: 1440, H: 900}},
+		Dialogs: map[string]DialogSize{"settings": {W: 640, H: 520}},
 		Updates: &UpdatesState{Checked: time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC), Latest: "0.3.0",
 			URL: "https://github.com/itbm/bench/releases/tag/v0.3.0", Dismissed: "0.2.5"},
+		Covering:    []string{"com.apple.calculator", "com.apple.finder"},
+		WindowTools: []string{"com.knollsoft.rectangle"},
 	}
 }
 
@@ -293,6 +297,39 @@ func TestLoadStateTidies(t *testing.T) {
 	}
 }
 
+// TestLoadStateDropdown checks that state.json keeps the drop-down
+// terminal, and forgets a drop-down that isn't a terminal out of the tabs.
+func TestLoadStateDropdown(t *testing.T) {
+	requireLayout(t)
+	tests := []struct {
+		name     string
+		dropdown string
+		want     string
+	}{
+		{"a floating terminal", "w9", "w9"},
+		{"a floating app", "w8", ""},
+		{"a terminal in a tab", "w5", ""},
+		{"an unknown item", "w99", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), StateFile)
+			s := goodState()
+			s.Items["w9"] = ItemState{Kind: "builtin", Title: "zsh", Created: 9, OwnWindow: true}
+			s.Floating = append(s.Floating, "w9")
+			s.Dropdown = tc.dropdown
+			writeState(t, path, s)
+			got, _, err := LoadState(path, Example())
+			if err != nil || got == nil {
+				t.Fatalf("LoadState = %v, %v", got, err)
+			}
+			if got.Dropdown != tc.want {
+				t.Errorf("Dropdown = %q, want %q", got.Dropdown, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadStateRaisesSeq(t *testing.T) {
 	requireLayout(t)
 	tests := []struct {
@@ -502,7 +539,7 @@ func closedMail() ClosedTab {
 			"w32": {Kind: "web", Title: "Inbox", Created: 32, Name: "Mail", URL: "https://mail.example.com/"},
 			"w34": {Kind: "app", BundleID: "com.apple.Notes", WindowID: 140, Title: "Notes", Created: 34},
 		},
-		Config: Tab{Name: "Mail", Layout: "side", Panes: []Pane{{Items: []Item{{Web: "https://mail.example.com/", Name: "Mail"}}}, {}}},
+		Config: Tab{Name: "Mail", Layout: "side", Colour: ColourPink, Panes: []Pane{{Items: []Item{{Web: "https://mail.example.com/", Name: "Mail"}}}, {}}},
 		Rules:  []Rule{{App: "com.apple.Notes", Tab: "Mail"}},
 		Index:  1,
 		Closed: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC),
@@ -517,8 +554,8 @@ func TestSaveAndLoadClosedTabs(t *testing.T) {
 	if err := SaveState(path, want); err != nil {
 		t.Fatal(err)
 	}
-	if data := readFile(t, path); !strings.Contains(data, "\"closed\": [") {
-		t.Errorf("state.json has no closed tabs:\n%s", data)
+	if data := readFile(t, path); !strings.Contains(data, "\"closed\": [") || !strings.Contains(data, "\"colour\": \"pink\"") {
+		t.Errorf("state.json has no closed tabs, or no colour for Mail:\n%s", data)
 	}
 	got, aside, err := LoadState(path, Example())
 	if err != nil || aside != nil {

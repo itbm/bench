@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -213,6 +214,56 @@ func TestLoggedForwardsTheDemoScreen(t *testing.T) {
 	}
 }
 
+func TestLoggedForwardsTheDemoMonitor(t *testing.T) {
+	p := Logged(NewDemo(clock.NewFake(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC))), slog.New(slog.DiscardHandler))
+	dd, ok := p.(DemoDisplays)
+	if !ok {
+		t.Fatal("the logged demo platform isn't DemoDisplays")
+	}
+	p.(DemoScreens).SetDemoScreen(DemoMonitor, 0)
+	if !dd.SetDemoMonitor(false) || !dd.DemoUnplugged() {
+		t.Fatal("the logged demo platform didn't unplug the monitor")
+	}
+	if !dd.SetDemoMonitor(true) || dd.DemoUnplugged() {
+		t.Fatal("the logged demo platform didn't plug the monitor in")
+	}
+	dd.MoveDemoBench(DemoMonitor)
+	if got := p.ScreenOfWindow().ID; got != DemoMonitor {
+		t.Errorf("after MoveDemoBench, Bench is on %q, want the monitor", got)
+	}
+	type bare struct{ Platform }
+	if Logged(bare{NewFake(nil)}, slog.New(slog.DiscardHandler)).(DemoDisplays).SetDemoMonitor(false) {
+		t.Error("a platform without a monitor to unplug unplugged one")
+	}
+}
+
+func TestLoggedForwardsEmitEvent(t *testing.T) {
+	// The browser preview's demo bar has a page post a notification, with
+	// BENCH_DEBUG set too.
+	var buf syncBuffer
+	p := Logged(NewDemo(clock.NewFake(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC))),
+		slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	de, ok := p.(interface{ EmitEvent(Event) })
+	if !ok {
+		t.Fatal("the logged demo platform has no EmitEvent")
+	}
+	de.EmitEvent(Event{Kind: WebNotification, ItemID: "slack"})
+	select {
+	case ev := <-p.Events():
+		if ev.Kind != WebNotification || ev.ItemID != "slack" {
+			t.Errorf("got event %+v, want the notification", ev)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the emitted event never arrived")
+	}
+	if got := buf.String(); !strings.Contains(got, "item=slack") {
+		t.Errorf("the event wasn't logged; the log says:\n%s", got)
+	}
+	type bare struct{ Platform }
+	// A platform without the method does nothing.
+	Logged(bare{NewFake(nil)}, slog.New(slog.DiscardHandler)).(interface{ EmitEvent(Event) }).EmitEvent(Event{Kind: WebNotification})
+}
+
 func TestLoggedMinimises(t *testing.T) {
 	f := NewFake(nil)
 	w := f.AddWindow("dev.zed.Zed", "main.go")
@@ -253,6 +304,69 @@ func TestLoggedForwardsMinimiseWindow(t *testing.T) {
 	bare := struct{ Platform }{NewFake(nil)}
 	if err := Logged(bare, slog.New(slog.DiscardHandler)).(interface{ MinimiseWindow(WindowID) error }).MinimiseWindow(w.ID); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("MinimiseWindow on a platform without it = %v, want ErrUnsupported", err)
+	}
+}
+
+func TestLoggedForwardsWindowTools(t *testing.T) {
+	// The browser preview's demo bar starts a window tool and has it move
+	// the shown window, with BENCH_DEBUG set too.
+	f := NewFake(nil)
+	f.InstallApp("com.knollsoft.Rectangle", "Rectangle", AppNotRegular())
+	f.SetToolPreferences("com.knollsoft.Rectangle", ToolPreferences{
+		Shortcuts: map[string]string{"leftHalf": "ctrl+alt+left"},
+		Numbers:   map[string]int64{"alternateDefaultShortcuts": 1},
+	})
+	w := f.AddWindow("dev.zed.Zed", "main.go")
+	var buf syncBuffer
+	p := Logged(f, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	type demoTools interface {
+		StartAgent(string) error
+		StopAgent(string) error
+		AppMoveWindow(WindowID, layout.Rect) error
+	}
+	dt, ok := p.(demoTools)
+	if !ok {
+		t.Fatal("the logged demo platform has no StartAgent, StopAgent, or AppMoveWindow")
+	}
+	if err := dt.StartAgent("com.knollsoft.Rectangle"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(p.RunningApps(), func(a App) bool { return a.BundleID == "com.knollsoft.Rectangle" }) {
+		t.Error("StartAgent didn't reach the platform")
+	}
+	frame := layout.Rect{X: 0, Y: 25, W: 756, H: 957}
+	if err := dt.AppMoveWindow(w.ID, frame); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.Window(w.ID); got.Frame != frame {
+		t.Errorf("AppMoveWindow didn't reach the platform: %v", got.Frame)
+	}
+	if got := p.ToolPreferences("com.knollsoft.Rectangle"); got.Shortcuts["leftHalf"] != "ctrl+alt+left" || got.Numbers["alternateDefaultShortcuts"] != 1 {
+		t.Errorf("ToolPreferences = %+v", got)
+	}
+	if err := dt.StopAgent("com.knollsoft.Rectangle"); err != nil {
+		t.Fatal(err)
+	}
+	logs := buf.String()
+	for _, want := range []string{"msg=StartAgent", "msg=AppMoveWindow", "msg=ToolPreferences", "msg=StopAgent"} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("the log lacks %s:\n%s", want, logs)
+		}
+	}
+	// The log says how many preferences the tool has, not what they are.
+	if strings.Contains(logs, "leftHalf") || strings.Contains(logs, "ctrl+alt+left") {
+		t.Errorf("the log names the tool's preferences:\n%s", logs)
+	}
+	// A platform without them, such as the Mac's, refuses.
+	bare := Logged(struct{ Platform }{NewFake(nil)}, slog.New(slog.DiscardHandler)).(demoTools)
+	if err := bare.StartAgent("com.knollsoft.Rectangle"); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("StartAgent on a platform without it = %v, want ErrUnsupported", err)
+	}
+	if err := bare.StopAgent("com.knollsoft.Rectangle"); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("StopAgent on a platform without it = %v, want ErrUnsupported", err)
+	}
+	if err := bare.AppMoveWindow(w.ID, frame); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("AppMoveWindow on a platform without it = %v, want ErrUnsupported", err)
 	}
 }
 

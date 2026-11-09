@@ -186,10 +186,13 @@ for (const viewport of [SIZE, MINIMUM]) {
   });
 }
 
-test('the page has no scripts, links only within itself, and loads only from its own origin', async (t) => {
+test('the page runs only the script that keeps drops off it, links only within itself, and loads only from its own origin', async (t) => {
   const { page, url, close } = await openPage(PAGE, { viewport: SIZE });
   t.after(close);
-  assert.equal(await page.$$eval('script', (els) => els.length), 0);
+  // Its one script is in the page, and only cancels drags (dropGuard in
+  // build/acknowledgements).
+  const scripts = await page.$$eval('script', (els) => els.map((el) => [el.src, /^for \(const type of \['dragenter', 'dragover', 'drop'\]\)/.test(el.textContent.trim())]));
+  assert.deepEqual(scripts, [['', true]]);
   const handlers = await page.$$eval('*', (els) => els.flatMap((el) => Array.from(el.attributes, (a) => a.name).filter((n) => n.startsWith('on'))));
   assert.deepEqual(handlers, []);
   const hrefs = await page.$$eval('[href]', (els) => els.filter((el) => el.tagName !== 'LINK').map((el) => el.getAttribute('href')));
@@ -260,4 +263,29 @@ test('licence texts can be selected', async (t) => {
   const line = (await pre.textContent()).split('\n')[0];
   assert.ok(line.length > 10, 'the first line: ' + JSON.stringify(line));
   assert.equal(await page.evaluate(() => window.getSelection().toString()), line);
+});
+
+test('a link or a file dropped on the page doesn\'t load in its place', async (t) => {
+  const { page, url, close } = await openPage(PAGE, { viewport: SIZE });
+  t.after(close);
+  for (const file of [false, true]) {
+    const r = await page.evaluate((withFile) => {
+      const target = document.querySelector('.ack-intro');
+      const box = target.getBoundingClientRect();
+      const at = { clientX: box.left + 20, clientY: box.top + 5 };
+      const dt = new DataTransfer();
+      if (withFile) dt.items.add(new File(['%PDF'], 'report.pdf', { type: 'application/pdf' }));
+      else dt.setData('text/uri-list', 'https://example.com/');
+      // Chromium keeps the dropEffect of a DataTransfer made by a page as
+      // 'none', so this one records what the page sets instead.
+      let effect = '';
+      Object.defineProperty(dt, 'dropEffect', { get: () => effect, set: (v) => { effect = v; }, configurable: true });
+      const cancelled = ['dragenter', 'dragover', 'drop'].map((type) => !target.dispatchEvent(new DragEvent(type, {
+        dataTransfer: dt, bubbles: true, cancelable: true, ...at,
+      })));
+      return { cancelled, effect };
+    }, file);
+    assert.deepEqual(r, { cancelled: [true, true, true], effect: 'none' }, file ? 'a file' : 'a link');
+  }
+  assert.equal(page.url(), url);
 });

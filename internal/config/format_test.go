@@ -33,6 +33,7 @@ func roundTripConfigs() map[string]*Config {
 		OpenMissingApps:          false,
 		HideOtherTabs:            false,
 		HideOtherApps:            true,
+		CoveringWindows:          CoveringLeave,
 		NewWindows:               NewWindowsFloat,
 		FollowFocus:              FollowOff,
 		LivePreviews:             true,
@@ -40,7 +41,9 @@ func roundTripConfigs() map[string]*Config {
 		TerminalOptionAsMeta:     true,
 		NotifyTerminals:          false,
 		KeepTerminalOutput:       false,
+		DropdownHeight:           65,
 		LaunchTimeout:            Duration{90*time.Second + 500*time.Millisecond},
+		AllowScripts:             true,
 	}
 	c.Shortcuts = Shortcuts{
 		TabModifiers:        "cmd+alt",
@@ -64,7 +67,7 @@ func roundTripConfigs() map[string]*Config {
 			{Name: "One", Layout: "single", SmallScreens: "same", Panes: []Pane{
 				{Items: []Item{{App: "com.apple.Terminal"}}},
 			}},
-			{Name: "Grid", Layout: "grid", Sizes: []float64{30, 70}, Panes: []Pane{
+			{Name: "Grid", Layout: "grid", Sizes: []float64{30, 70}, Colour: ColourCyan, Panes: []Pane{
 				{Items: []Item{{App: "com.brave.Browser", Title: "Docs", URL: "https://docs.example.com/a?b=c&d=e"}}},
 				{},
 				{Items: []Item{{VSCode: "~/code/bench", Name: "Bench"}}},
@@ -72,8 +75,12 @@ func roundTripConfigs() map[string]*Config {
 			}},
 			{Name: "Thirds", Layout: "three", Sizes: []float64{33.333333333333336, 33.33, 0.0001}, SmallScreens: "tabs", Panes: []Pane{
 				{Items: []Item{{Web: "https://example.com/path#frag", Profile: "work"}}},
+				{Items: []Item{
+					{Web: "https://app.slack.com/client", Name: "Slack", KeepRunning: KeepRunningOf(true)},
+					{Web: "https://mail.google.com/mail/", KeepRunning: KeepRunningOf(false)},
+				}},
 			}},
-			{Name: "Stacked", Layout: "top-bottom", SmallScreens: "stack"},
+			{Name: "Stacked", Layout: "top-bottom", SmallScreens: "stack", Colour: ColourGrey},
 			{Name: "Wide", Layout: "main-side", Sizes: []float64{1e20, 2.5e-7}},
 		},
 		Rules: []Rule{
@@ -114,6 +121,12 @@ func roundTripConfigs() map[string]*Config {
 			}},
 		},
 	}
+
+	every := &Config{Settings: DefaultSettings(), Shortcuts: Example().Shortcuts}
+	for _, colour := range TabColours() {
+		every.Tabs = append(every.Tabs, Tab{Name: strings.ToUpper(colour[:1]) + colour[1:], Layout: "single", Colour: colour})
+	}
+	configs["every colour"] = every
 
 	var many []Item
 	for _, id := range []string{"dev.zed.Zed", "com.microsoft.VSCode", "com.apple.Terminal", "com.brave.Browser", "md.obsidian", "com.apple.finder"} {
@@ -174,6 +187,7 @@ func TestFormatLayout(t *testing.T) {
 name = "Grid"
 layout = "grid"
 sizes = [30, 70]
+colour = "cyan"
 
   [[tab.pane]]
   items = [{ app = "com.brave.Browser", title = "Docs", url = "https://docs.example.com/a?b=c&d=e" }]
@@ -201,11 +215,31 @@ tab = "Grid"
 	}
 }
 
+// TestFormatColour checks that a tab's colour comes after its layout,
+// sizes, and small-screen setting, and that a tab with none has no colour
+// line, as config.toml files from before tab colours have none.
+func TestFormatColour(t *testing.T) {
+	c := Example()
+	c.Tabs[0].Colour = ColourPurple
+	c.Tabs[1].Colour = ""
+	got := string(Format(c))
+	if want := "layout = \"side\"\nsizes = [45, 55]\nsmall_screens = \"tabs\"\ncolour = \"purple\"\n"; !strings.Contains(got, want) {
+		t.Errorf("Format wrote:\n%s\nwant it to have:\n%s", got, want)
+	}
+	if n := strings.Count(got, "colour = "); n != 1 {
+		t.Errorf("Format wrote %d colour lines, want 1:\n%s", n, got)
+	}
+	c.Tabs[0].Colour = ""
+	if got := string(Format(c)); strings.Contains(got, "colour") {
+		t.Errorf("Format wrote a colour for a tab with none:\n%s", got)
+	}
+}
+
 func TestFormatLauncherLayout(t *testing.T) {
 	c := roundTripConfigs()["launchers and typed commands"]
 	c.Launchers = append(c.Launchers[1:2], c.Launchers[4])
 	got := string(Format(c))
-	_, got, _ = strings.Cut(got, "\nundo = ") // The settings are checked against the default file.
+	_, got, _ = strings.Cut(got, "\ndropdown = ") // The settings are checked against the default file.
 	_, got, _ = strings.Cut(got, "\n")
 	want := `
 [[launcher]]
@@ -235,6 +269,54 @@ layout = "side"
 `
 	if got != want {
 		t.Errorf("Format wrote:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestFormatKeepRunning checks that a web item's keep_running is written
+// after its other fields, true or false, and left out while it's missing.
+func TestFormatKeepRunning(t *testing.T) {
+	got := string(Format(roundTripConfigs()["every preset and item kind"]))
+	want := `  [[tab.pane]]
+  items = [
+    { web = "https://app.slack.com/client", name = "Slack", keep_running = true },
+    { web = "https://mail.google.com/mail/", keep_running = false },
+  ]
+`
+	if !strings.Contains(got, want) {
+		t.Errorf("Format wrote:\n%s\nwant it to have:\n%s", got, want)
+	}
+	if strings.Count(got, "keep_running") != 2 {
+		t.Errorf("Format wrote keep_running %d times, want 2:\n%s", strings.Count(got, "keep_running"), got)
+	}
+}
+
+// TestFormatColourAndKeepRunning checks that a tab's colour (decision 74)
+// and its web items' keep_running (decision 76) are both written, and both
+// read back, in the same tab, as Bench writes them whenever it saves.
+func TestFormatColourAndKeepRunning(t *testing.T) {
+	c := Example()
+	c.Tabs[0].Colour = ColourBlue
+	c.Tabs[0].Panes[0].Items = []Item{
+		{Web: "https://app.slack.com/client", Name: "Slack", KeepRunning: KeepRunningOf(true)},
+		{Web: "https://mail.google.com/mail/", KeepRunning: KeepRunningOf(false)},
+	}
+	got := Format(c)
+	for _, want := range []string{"colour = \"blue\"\n", `{ web = "https://app.slack.com/client", name = "Slack", keep_running = true }`, `{ web = "https://mail.google.com/mail/", keep_running = false }`} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("Format wrote:\n%s\nwant it to have:\n%s", got, want)
+		}
+	}
+	back := mustParse(t, string(got))
+	tab := back.Tabs[0]
+	if tab.Colour != ColourBlue {
+		t.Errorf("read back colour %q, want %q", tab.Colour, ColourBlue)
+	}
+	items := tab.Panes[0].Items
+	if len(items) != 2 || !items[0].KeepsRunning() || items[1].KeepRunning == nil || *items[1].KeepRunning {
+		t.Errorf("read back items %+v, want Slack kept running and Gmail set not to", items)
+	}
+	if again := Format(back); string(again) != string(got) {
+		t.Errorf("Format of what Parse read differs:\n%s\nwant:\n%s", again, got)
 	}
 }
 
