@@ -349,9 +349,19 @@ test('Keep Running in the Background is a checkbox at the end of a web page\'s P
   }
   await openPageMenu(page);
   assert.equal(await page.locator('#menu-sub .menu-tick').count(), 0);
+  // keepCall waits for call n, from 0, to SetKeepRunning, and returns its
+  // arguments: the page calls Go a moment after the click or the key.
+  const keepCall = async (n) => {
+    await fake.waitForCall('SetKeepRunning', () => fake.callsTo('SetKeepRunning').length > n);
+    return fake.callsTo('SetKeepRunning')[n].args;
+  };
   await runEntry(page, 'Keep Running in the Background');
-  assert.deepEqual((await fake.waitForCall('SetKeepRunning')).args, ['w1', true]);
+  assert.deepEqual(await keepCall(0), ['w1', true]);
   await toastIs(page, 'Slack will keep running in the background.');
+  // The toast can come a moment before the view with the change, as from
+  // Go. The menu shows the view that the page has when it opens, so the
+  // page has to have the new one first.
+  await fake.emitState();
 
   // On, it's ticked before its label, and choosing it again turns it off.
   await openMenu(page, 'p1');
@@ -359,8 +369,9 @@ test('Keep Running in the Background is a checkbox at the end of a web page\'s P
   assert.ok(await page.$eval(keep + ' .menu-tick', (el) => el.querySelector('svg') !== null
     && el.getBoundingClientRect().right <= el.parentElement.querySelector('.menu-label').getBoundingClientRect().left));
   await runEntry(page, 'Keep Running in the Background');
-  assert.deepEqual(fake.callsTo('SetKeepRunning').at(-1).args, ['w1', false]);
+  assert.deepEqual(await keepCall(1), ['w1', false]);
   await toastIs(page, 'Slack will load only when you show it, from the next time Bench opens.');
+  await fake.emitState();
 
   // From the keyboard: Down Arrow to it, then Return.
   await openMenu(page, 'p1');
@@ -371,7 +382,7 @@ test('Keep Running in the Background is a checkbox at the end of a web page\'s P
   }
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Keep Running in the Background');
   await page.keyboard.press('Enter');
-  assert.deepEqual(fake.callsTo('SetKeepRunning').at(-1).args, ['w1', true]);
+  assert.deepEqual(await keepCall(2), ['w1', true]);
 });
 
 test('Jump to… says whether a page keeps running in the background now, and turns it on or off', async (t) => {
