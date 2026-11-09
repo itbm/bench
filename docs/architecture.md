@@ -6262,12 +6262,12 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       what the agent needs, "Needs your permission", "Has a question for
       you", "Needs you to sign in", or "Needs you" with no kind; "Finished";
       or "Stopped with an error"; then ": " and its words, if it has any.
-      Its notification waits for the end of the batch, or goes as its
-      session ends: for a command, before the command's own; for a shell,
-      before Bench removes the item. `clear` forgets the agent. `ended`, and
-      `Exit`, forget it too, unless it finished or stopped: that shows until
-      the user sees the terminal, as the spec says. `Exit` first posts a
-      finished or stopped agent's notification that still waits
+      Its notification waits for the end of the batch. `clear` forgets the
+      agent. `ended`, and `Exit`, forget it too, unless it finished or
+      stopped: that shows until the user sees the terminal, as the spec
+      says. A waiting agent loses its mark, and its notification too if its
+      program or session ends in the same batch as its report. `Exit` first
+      posts a finished or stopped agent's notification that still waits
       (`postAgentNoteLocked`), for a shell too, before `removeItemLocked`
       forgets the item. So a shell that ends in the same batch as its
       agent's done or error report, as with `codex exec …; exit`, still
@@ -6288,12 +6288,13 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       would from an earlier batch. A new `blocked`, `done`, or `error`
       report in the same batch takes its place, as its mark does. A waiting
       agent's notification is dropped with its mark (`unmarkWaitingLocked`).
-      When a shell's item is removed as its session ends, while
-      `agent_status` is on and its agent has had events,
-      `applyTermEventLocked` keeps the item's `ItemView`, as it last was, in
-      `Engine.goneTerminals`. The next View sends it (`View.GoneTerminals`),
-      and `flushState` forgets the list once it has built that View. Only
-      `touch` is used: the View changes, and nothing is saved.
+      Only `touch` is used: the View changes, and nothing is saved. When a
+      shell's item is removed as its session ends, while `agent_status` is
+      on and its agent has had events, `applyTermEventLocked` keeps the
+      item's `ItemView`, as it last was, in `Engine.goneTerminals`. The next
+      View sends it (`View.GoneTerminals`), and `flushState` forgets the
+      list once it has built that View. The list is never saved, but the
+      item's removal is, as for any window that closes.
     - **One event, one alert.** Agents often ring the bell or ask for a
       notification as they report, for terminals that don't know OSC 7501:
       Claude Code's notification channel can add a BEL and "Claude needs

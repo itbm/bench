@@ -890,8 +890,8 @@ Things to know:
 | Blue bell | Before a sub-tab's title | The terminal or web page needs you: it rang its bell, posted a notification, or finished its command while you couldn't see it, or the terminal's agent, such as Claude Code, needs you. Its tooltip says which, with the agent's own words. It goes when you show it, but an agent's bell stays until the agent no longer needs you. See [When a terminal needs you](#when-a-terminal-needs-you). |
 | Blue bell, with a number if there's more than one | After a tab's name | That many of the tab's windows need you, as above. |
 | Three grey dots | The corner of a terminal sub-tab's icon | The terminal's agent is working. |
-| Green circle with a tick | The corner of a terminal sub-tab's icon | The terminal's agent has finished. It goes when you show the terminal. |
-| Red octagon with a × | The corner of a terminal sub-tab's icon | The terminal's agent stopped with an error. It goes when you show the terminal. |
+| Green circle with a tick | The corner of a terminal sub-tab's icon | The terminal's agent has finished. It goes when you show the terminal, or when the agent carries on or quits. |
+| Red octagon with a × | The corner of a terminal sub-tab's icon | The terminal's agent stopped with an error. It goes when you show the terminal, or when the agent carries on or quits. |
 | Grey dots, green circle, or red octagon | After a tab's name | The tab's agents: the red octagon if one stopped with an error, or else the green circle if one finished, or else the dots. Its tooltip says how many, such as "1 agent working, 2 agents done". |
 | Grey pill with a number | Before a sub-tab's title, after the bell | The app's Dock badge, or the count at the start of the page's title: how many unread messages it has. **999+** is more than 999. See [Unread counts](#unread-counts). |
 | Grey pill with a number | After a tab's name | The total of the tab's unread counts. |
@@ -2113,13 +2113,15 @@ error, as the command ends, the notification is the agent's, such as
 ends as the agent finishes, as with `codex exec …; exit`, you still get
 the agent's notification.
 
-When Claude Code or Codex quits, it takes its marks off. If an agent ends
-without doing so, as when it crashes, its dots and its bell go once the
-shell that started it has the terminal back, also in a shell that you
-started in the terminal, such as `sh -i` or `nix develop`. They stay
-while a shell that the agent started has the terminal, as with vim's
-`:sh`, and while the programs that you run in that shell run. A green
-circle or red octagon stays until you see the terminal.
+When Claude Code or Codex quits, it takes its marks off, but the bell of
+an agent that finished, or stopped with an error, while you couldn't see
+it stays until you show the terminal. If an agent ends without doing so,
+as when it crashes, its dots and its bell go once the shell that started
+it has the terminal back, also in a shell that you started in the
+terminal, such as `sh -i` or `nix develop`. They stay while a shell that
+the agent started has the terminal, as with vim's `:sh`, and while the
+programs that you run in that shell run. A green circle or red octagon
+stays until you see the terminal.
 
 An agent's words can hold a command, the path of a file, or other text
 from your work, and Notification Centre keeps notifications until you
@@ -4048,7 +4050,7 @@ version of Bench. If a field changes or goes, `version` goes up.
 | --- | --- |
 | `version` | The version of this layout, now 1. |
 | `current` | The number of the tab that Bench shows, from 1. |
-| `attention` | How many items need you: a terminal that rang its bell or finished its command, or a page that posted a notification, while you couldn't see it. An item in more than one tab counts once, as in the Dock's badge. The drop-down counts too. |
+| `attention` | How many items need you: a terminal that rang its bell or finished its command, or whose agent needed you, finished, or stopped with an error, or a page that posted a notification, while you couldn't see it. An item in more than one tab counts once, as in the Dock's badge. The drop-down counts too. |
 | `unread` | The total of your items' unread counts. An item in more than one tab counts once. |
 | `tabs` | The tabs, in order. |
 | `tabs[].number` | The tab's place, from 1. `bench tab 2` switches to number 2. |
@@ -4066,7 +4068,7 @@ version of Bench. If a field changes or goes, `version` goes up.
 | `items[].app` | The app's name, such as `Zed`, or `Terminal` for a terminal in Bench. |
 | `items[].title` | What the item's sub-tab says: its window's or page's title, or the name you gave it. |
 | `items[].shown` | `true` for the item that the pane shows. |
-| `items[].attention` | Why the item needs you, as its sub-tab's bell says, or `""`. It's `Rang the bell`, `Its command has finished`, or `Its command ended with an error` for a terminal, or `Notification: ` and the notification's title and text, for a page or a terminal that posted one. |
+| `items[].attention` | Why the item needs you, as its sub-tab's bell says, or `""`. It's `Rang the bell`, `Its command has finished`, or `Its command ended with an error` for a terminal, or `Notification: ` and the notification's title and text, for a page or a terminal that posted one. For a terminal whose agent needs you, finished, or stopped with an error while you couldn't see it, it's the agent's line, such as `Needs your permission: approve Bash: npm test`. Once you've seen an agent that still waits for you, it's `""`, though its sub-tab still shows the bell. |
 | `items[].unread` | The item's unread count. |
 | `items[].keepRunning` | `true` for a web page with **Keep Running in the Background** on, or else `false`. See [Keep a page running in the background](#keep-a-page-running-in-the-background). |
 | `items[].notLoaded` | `true` for a web page that Bench hasn't loaded yet, as its sub-tab's tooltip says, or else `false`. Until you show the page, it has no unread count, and posts no notifications. |

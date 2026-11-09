@@ -4307,8 +4307,10 @@ that the shell runs ends, and in a shell started in the terminal, such as
 - [ ] **Codex**: run `codex`, ask it to run a command that needs your
       approval, and switch to Comms: the bell, with "Needs your
       permission", or the text of Codex's own notification after it, and
-      one notification. When it finishes, the green circle. Quit Codex:
-      its marks go.
+      one notification. Approve the command, and switch to Comms again
+      before Codex finishes: when it finishes, the green circle and the
+      bell, and one notification. Show the terminal: they go. Quit Codex:
+      nothing shows.
 - [ ] **The program ends**: run `claude`, ask it something that takes a
       while, and press Control-Z while it works. Claude Code says nothing
       as it stops, but the dots go within a few seconds, once the shell has
