@@ -111,8 +111,7 @@ func (e *Engine) queueTerm(add func(q *termQueue)) {
 // first, so that a bell or notification sent with one, which can be in
 // the same batch whatever the order of the bytes, is part of it (see
 // agentEchoLocked), and their notifications are posted last, unless a
-// command ends, or an agent carries on, before then (see
-// postAgentNoteLocked).
+// command ends before then (see postAgentNoteLocked).
 func (e *Engine) flushTerms() {
 	q := &e.tq
 	q.sendMu.Lock()

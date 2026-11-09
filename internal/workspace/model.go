@@ -199,7 +199,12 @@ type Item struct {
 	// or stopped with an error. It goes when the program ends, or once
 	// the user has seen that it finished. Like attention, it isn't saved,
 	// and it holds no pointers, so that Items stay comparable.
-	agent agentStatus
+	// agentNote is the report of an agent that finished or stopped with an
+	// error, and then carried on or quit in the same batch of terminal
+	// events, while its notification waits to be posted (see
+	// keepFinishedNoteLocked).
+	agent     agentStatus
+	agentNote agentStatus
 	// page, host, site, offSite, and notSecure describe the page a Web
 	// item shows, as its web view last reported it (see platform.Page): its
 	// address, its host and the host's site, whether it's on another site

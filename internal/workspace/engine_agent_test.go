@@ -126,6 +126,35 @@ func TestAgentAfterAnAlertIsStillNotified(t *testing.T) {
 	if got := h.item("w5").Attention; got != "Needs your permission: "+approve {
 		t.Errorf("attention: %q", got)
 	}
+
+	// An agent's notification without its words would say less than the
+	// alert, so notifyGap holds it back: for an agent that sends no words,
+	// such as Codex, and while the agent_words setting is off.
+	for _, tt := range []struct {
+		name   string
+		config string
+		alert  term.Alert
+		report term.Status
+		mark   string
+	}{
+		{"no words", exampleConfig(t), term.Alert{Title: "Codex", Body: "Codex wants to run npm test"},
+			agentSays(term.StateBlocked, "", ""), agentNeedsText},
+		{"agent_words off", strings.Replace(exampleConfig(t), "agent_words = true", "agent_words = false", 1),
+			term.Alert{Title: "Claude Code", Body: "Claude needs your permission"},
+			agentSays(term.StateBlocked, term.KindPermission, approve), "Needs your permission: " + approve},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := agentHarness(t, setup{config: tt.config})
+			h.alert("w5", tt.alert)
+			h.report("w5", tt.report)
+			if n := h.p.Notifications(); len(n) != 1 || n[0].Body != noteText(tt.alert.Title, tt.alert.Body) {
+				t.Errorf("notifications: %+v", n)
+			}
+			if got := h.item("w5").Attention; got != tt.mark {
+				t.Errorf("attention: %q", got)
+			}
+		})
+	}
 }
 
 func TestAgentTakesItsWordsFromItsNotification(t *testing.T) {
@@ -388,22 +417,35 @@ func TestAgentThatCarriesOnIsntWaiting(t *testing.T) {
 }
 
 func TestAgentThatCarriesOnAtOnceIsNotified(t *testing.T) {
+	// codex is the notification that an agent without words, such as
+	// Codex, asks for as it finishes, with what it did.
+	codex := term.Alert{Title: "Codex", Body: "Fixed the failing test"}
 	for _, tt := range []struct {
 		name        string
 		first, then term.Status
+		alert       *term.Alert
 		agent, why  string
 	}{
-		{"done, then working", agentSays(term.StateDone, "", "Tests passed"), agentSays(term.StateWorking, "", ""), agentWorking, "Finished: Tests passed"},
-		{"error, then idle", agentSays(term.StateError, "", "rsync failed"), agentSays(term.StateIdle, "", ""), "", "Stopped with an error: rsync failed"},
-		{"done, then clear", agentSays(term.StateDone, "", "Tests passed"), agentSays(term.StateClear, "", ""), "", "Finished: Tests passed"},
+		{"done, then working", agentSays(term.StateDone, "", "Tests passed"), agentSays(term.StateWorking, "", ""), nil, agentWorking, "Finished: Tests passed"},
+		{"error, then idle", agentSays(term.StateError, "", "rsync failed"), agentSays(term.StateIdle, "", ""), nil, "", "Stopped with an error: rsync failed"},
+		{"done, then clear", agentSays(term.StateDone, "", "Tests passed"), agentSays(term.StateClear, "", ""), nil, "", "Finished: Tests passed"},
+		{"done and its notification, then working", agentSays(term.StateDone, "", ""), agentSays(term.StateWorking, "", ""), &codex, agentWorking, "Finished: Fixed the failing test"},
+		{"error and its notification, then idle", agentSays(term.StateError, "", ""), agentSays(term.StateIdle, "", ""), &codex, "", "Stopped with an error: Fixed the failing test"},
+		{"done and its notification, then clear", agentSays(term.StateDone, "", ""), agentSays(term.StateClear, "", ""), &codex, "", "Finished: Fixed the failing test"},
 	} {
 		for _, batch := range []string{"same batch", "separate batches"} {
 			t.Run(tt.name+", "+batch, func(t *testing.T) {
 				h := agentHarness(t, setup{})
 				// The agent finishes, and carries on at once, as with a
 				// prompt that waits. It keeps its mark, and its
-				// notification goes, whatever the batches.
+				// notification goes, whatever the batches. An agent
+				// without words asks for a notification as it finishes,
+				// which gives them, although the agent's next report is
+				// applied before it.
 				h.terms.cb.Status("w5", tt.first)
+				if tt.alert != nil {
+					h.terms.cb.Alert("w5", *tt.alert)
+				}
 				if batch == "separate batches" {
 					h.advance(2 * frame)
 				}
