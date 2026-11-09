@@ -26,6 +26,19 @@ func processName(pid int) (string, bool) {
 	return string(comm), len(comm) > 0
 }
 
+// processParent returns the parent of process pid: the process that
+// started it, while that runs.
+func processParent(pid int) (int, bool) {
+	if pid <= 0 {
+		return 0, false
+	}
+	info, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil || info == nil || info.Proc.P_pid != int32(pid) {
+		return 0, false
+	}
+	return int(info.Eproc.Ppid), info.Eproc.Ppid > 0
+}
+
 // Arguments and sizes from <sys/proc_info.h>, for asking the kernel for a
 // process's current folder the way libproc's proc_pidinfo does, without cgo.
 const (

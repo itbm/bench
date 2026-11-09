@@ -402,6 +402,43 @@ func TestManagerReportsProgramEnd(t *testing.T) {
 	write(t, m, "t1", `sh -c 'printf "\033]7501;state=blocked:kind=permission\007"; sleep 0.2'`+"\n")
 	want = append(want, StateBlocked, StateEnded)
 	waitStates(want...)
+
+	// There too, the end of a program that reports twice, then ends at
+	// once, is reported. The inner shell, which started the program, can
+	// have the terminal back before the second report is read. Each run
+	// ends with a report of done from the inner shell itself, so that a
+	// late report that counted as the inner shell's own doesn't last into
+	// the next run.
+	for range 10 {
+		write(t, m, "t1", `sh -c 'printf "\033]7501;state=working\007"; sleep 0.1; printf "\033]7501;state=working\007"'`+"\n")
+		n := len(want)
+		waitFor(t, wait, "statuses "+strings.Join(want, ", ")+", and three more", func() bool { return len(states(r, "t1")) >= n+3 })
+		got := states(r, "t1")[n : n+3]
+		if !slices.Equal(got, []string{StateWorking, StateWorking, StateEnded}) && !slices.Equal(got, []string{StateWorking, StateEnded, StateWorking}) {
+			t.Fatalf("statuses for a program in sh -i that reports twice, then ends = %q, want working, working, ended, or working, ended, working", got)
+		}
+		want = append(want, got...)
+		write(t, m, "t1", `printf '\033]7501;state=done\007'`+"\n")
+		want = append(want, StateDone)
+		waitFor(t, wait, "statuses "+strings.Join(want, ", "), func() bool { return len(states(r, "t1")) >= len(want) })
+	}
+	waitStates(want...)
+
+	// A program that the inner shell starts as soon as another has gone,
+	// as in "a; b", keeps its status while it runs, even if Bench hasn't
+	// yet seen the first go.
+	write(t, m, "t1", `sh -c 'printf "\033]7501;state=working\007"; sleep 0.2'; sh -c 'printf "\033]7501;state=blocked\007"; read line'`+"\n")
+	n := len(want)
+	waitFor(t, wait, "a status from the second program", func() bool { return slices.Contains(states(r, "t1")[n:], StateBlocked) })
+	time.Sleep(20 * m.titleEvery)
+	if got := states(r, "t1")[n:]; !slices.Equal(got, []string{StateWorking, StateBlocked}) && !slices.Equal(got, []string{StateWorking, StateEnded, StateBlocked}) {
+		t.Fatalf("statuses while the second of two programs runs = %q, want working, blocked, or working, ended, blocked", got)
+	}
+	write(t, m, "t1", "\n")
+	waitFor(t, wait, "the end of the second program", func() bool {
+		got := states(r, "t1")
+		return got[len(got)-1] == StateEnded && slices.Contains(got[n:], StateBlocked)
+	})
 }
 
 func TestManagerCommandStatusEndsWithExit(t *testing.T) {

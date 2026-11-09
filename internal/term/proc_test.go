@@ -43,6 +43,12 @@ func TestProcessDirOfSelf(t *testing.T) {
 	}
 }
 
+func TestProcessParentOfSelf(t *testing.T) {
+	if got, ok := processParent(os.Getpid()); !ok || got != os.Getppid() {
+		t.Errorf("processParent(self) = %d, %v; want %d", got, ok, os.Getppid())
+	}
+}
+
 func TestProcessLookupsRejectBadIDs(t *testing.T) {
 	for _, pid := range []int{0, -1} {
 		if name, ok := processName(pid); ok {
@@ -50,6 +56,9 @@ func TestProcessLookupsRejectBadIDs(t *testing.T) {
 		}
 		if dir, ok := processDir(pid); ok {
 			t.Errorf("processDir(%d) = %q, want nothing", pid, dir)
+		}
+		if ppid, ok := processParent(pid); ok {
+			t.Errorf("processParent(%d) = %d, want nothing", pid, ppid)
 		}
 	}
 }
