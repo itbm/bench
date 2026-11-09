@@ -377,7 +377,7 @@ by its only window). After any change, Go sends `bench:state`.
 | `CloseItem(itemID string, sure, dontAsk bool) (CloseQuestion, error)` | A sub-tab's **Close Window**, **Close Page**, or **Close Terminal**, or **Close Everywhere** for one in several tabs, its ×, and a middle-click on it: close the item, from every tab. The frontend calls `RemoveItemFromTab` instead for the × and middle-click on an item that's in other tabs too. Unless `sure`, with `confirm_quit_busy_terminals` on, a terminal that's running something closes nothing, and returns the question (`ask`), as closing its own window would; with `dontAsk`, it turns that setting off. See decision 36. |
 | `TermInput(itemID, data string)` and `TermResize(itemID string, cols, rows int)` | Terminal input and size. Return in a terminal whose command has finished runs the command again. |
 | `TermSnapshot(itemID string) (TermSnapshot, error)` | Recent output, base64-encoded, for a new terminal view to replay, and the offset where it ends (see [Terminal output](#terminal-output)). |
-| `TermAttach(itemID, view string) (TermSnapshot, error)` | A window draws the terminal from now on: `view` is `"main"` for the main window, or `"own"` for the terminal's own window, popped out or the drop-down. It returns the snapshot that `TermSnapshot` would, from the same point in the output. Go answers the program's question for the terminal's attributes (DA1) in output up to there, and in output that no window draws; the window answers after it. Attaching again changes nothing. `Ready` forgets the main window's views, and closing a terminal's own window forgets its view. See decision 78. |
+| `TermAttach(itemID, view string) (TermSnapshot, error)` | A window draws the terminal from now on: `view` is `"main"` for the main window, or `"own"` for the terminal's own window, popped out or the drop-down. It returns the snapshot that `TermSnapshot` would, from the same point in the output. Go answers the program's question for the terminal's attributes (DA1) in output up to there, and in output that no window draws; the window answers after it. Attaching again changes nothing. A window sends `TermAttach` and `TermDetach` for a terminal one at a time: each waits until Go has answered the one before for that item ID (`viewCall` in `terminals.js`), so Go gets them in the order they were sent. `Ready` forgets the main window's views, and closing a terminal's own window forgets its view. See decision 78. |
 | `TermDetach(itemID, view string)` | The window `view` no longer draws the terminal, as when the terminal leaves the main window's tabs. See `TermAttach`. |
 | `TermAck(itemID string, offset int64)` | A terminal view has drawn the output up to `offset`. |
 | `TermClear(itemID string)` | A terminal view's **Clear** (⌘K): forget the session's recent output, so that `TermSnapshot` has none of it, nor does the output Bench keeps as it quits. Offsets carry on. See decision 42. |
@@ -2258,17 +2258,18 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     count changes, after the lock is released. With `notify_terminals` on,
     a terminal also posts a notification (`Platform.Notify`, with its tab
     as the `Subtitle`): at most one every 5 seconds per terminal
-    (`notifyGap`), and for the bell only when it newly marks the
-    terminal, as programs ring it in bursts. Web items post theirs as
-    before, whatever the setting, since the page asked. Clicking any
-    notification sends `NotificationClicked`, which shows its item
-    wherever it is (`showAnywhereLocked`): on its tab, bringing Bench
-    forward if it's hidden, or its own window if it's popped out. An agent
-    that reports its state with OSC 7501, such as Claude Code, gets the
-    same mark and notification, with its own words, when it needs the
-    user, finishes, or stops with an error, and a bell or notification
-    that comes with that report is part of it, not another event (decision
-    78).
+    (`notifyGap`), but for an agent's notification with its words just
+    after a bell or notification (decision 78), and for the bell only
+    when it newly marks the terminal, as programs ring it in bursts. Web
+    items post theirs as before, whatever the setting, since the page
+    asked. Clicking any notification sends `NotificationClicked`, which
+    shows its item wherever it is (`showAnywhereLocked`): on its tab,
+    bringing Bench forward if it's hidden, or its own window if it's
+    popped out. An agent that reports its state with OSC 7501, such as
+    Claude Code, gets the same mark and notification, with its own words,
+    when it needs the user, finishes, or stops with an error, and a bell
+    or notification that comes with that report is part of it, not
+    another event (decision 78).
 44. **A terminal keeps its folder and its output across a restart, apart
     from its config entry.** A session reports the folder its shell moves
     to (`term.Callbacks.Folder`): the shell process's current folder, or
@@ -3992,10 +3993,13 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       one, and what happened: "go test — ~/code/bench in Code: its command
       has finished.". The same text for a terminal isn't announced again
       within 5 seconds, as Go's `notifyGap`, so the bell and Go's mark for
-      it are one announcement. While another toast shows, `announce` keeps
-      the text until that toast has shown for its reading time (`readTime`,
-      how long a toast without buttons shows), so that a message from Go
-      isn't replaced unread, and the same text waits once. Then it replaces
+      it are one announcement. An agent's report is a new event each time,
+      and decision 78 limits those by time instead, once a second for each
+      terminal. While another toast shows, `announce` keeps the text until
+      that toast has shown for its reading time (`readTime`, how long a
+      toast without buttons shows), so that a message from Go isn't
+      replaced unread, the same text waits once, and only the newest 5
+      texts wait. Then it replaces
       a toast without buttons; a toast with buttons, such as **Undo**, keeps
       them and its text, and gets the announcement after its text as a span
       of its own, which the live region reads alone, and stays until that
@@ -6070,7 +6074,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
     words, such as "approve Bash: npm test", in the notification by
     default. Claude Code 2.1.295 and later report with the Program Status
     Protocol (OSC 7501, revision 0.4) once the terminal answers its status
-    check; Codex 0.163 and later report without asking, and without words.
+    check; Codex 0.164 and later report without asking, and without words.
+    Codex 0.163 sends only `idle`, `working`, and `blocked`, with no kind.
     A bell or a notification (decision 43) says once that something
     happened; a status says what is true now, and the protocol says when it
     stops being true.
@@ -6092,11 +6097,18 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       and `title` lose the characters that turn text round or hide in it
       (U+061C, U+200E, U+200F, U+202A to U+202E, U+2060 to U+2064, U+2066
       to U+2069, and U+FEFF), but keep the joiners (U+200C and U+200D),
-      which some scripts and emoji need; the frontend takes them out again,
-      as a second guard. Bench reads `app`, `title`, and `progress`, but
-      shows none of them: `app` is the name the program gives itself,
-      never a label, so notifications and VoiceOver name the terminal, and
-      a program can't pass for one in another terminal, as the spec asks.
+      which some scripts and emoji need. Their line and paragraph
+      separators (U+2028 and U+2029) become spaces, so that the words stay
+      on one line in a notification or a tooltip. The frontend takes the
+      characters out, and makes the separators spaces, again
+      (`agentWords`), as a second guard. Bench reads `app`, `title`, and
+      `progress`, but shows none of them: `app` is the name the program
+      gives itself, never a label. Notifications and VoiceOver name the
+      terminal by its sub-tab title and tab, as for a bell. The program in
+      the terminal can set that title (OSC 0 or 2), unless the user has
+      renamed the terminal, so a program can make its notification read
+      like one from another terminal in the same tab. Clicking the
+      notification still shows the terminal it came from.
     - **Go answers the status check.** xterm.js 6 ignores OSC 7501, so a
       session answers `ESC ] 7501 ; ?` itself, while the setting is on,
       with `statusReply`, which lists every state and kind, and ends with
@@ -6119,24 +6131,40 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       xterm.js reads them, with no prefix or intermediate bytes) with
       xterm.js's own bytes, `ESC [ ? 1 ; 2 c` (`da1Reply`), but only while
       no window draws it, whatever the setting, so that the program never
-      gets two answers. The Manager keeps which windows draw each terminal
-      by its ID, so that they outlive a session that a rerun replaces, and
-      gives them to each new session as it starts (`startSession`), before
-      its goroutines read them. `Host.Attach(id, view)` records a window
-      and takes the snapshot under the same `s.mu` that `deliver` holds:
-      each read is either in the snapshot, where Go answered and the view,
+      gets two answers. CSI is `ESC [`, or U+009B, the C1 CSI, as UTF-8,
+      which xterm.js takes in any state: it drops an OSC, DCS, SOS, PM, or
+      APC string that it comes in, and starts a control sequence again
+      inside one. After ESC, a C0 control acts and DEL is ignored, and the
+      sequence goes on, so `ESC CR [ c` is DA1 too; CAN and SUB end it.
+      Bench reads no other C1 control (U+0080 to U+009F), so they leave OSC
+      payloads as they were. `oscParser` finds U+009B's first byte, 0xC2,
+      with a table of bytes (`byteSet`), as `bytes.IndexAny` reads its set
+      as UTF-8. The Manager keeps which windows draw each terminal by its
+      ID, so that they outlive a session that a rerun replaces, and gives
+      them to each new session as it starts (`startSession`), before its
+      goroutines read them. `Host.Attach(id, view)` records a window and
+      takes the snapshot under the same `s.mu` that `deliver` holds: each
+      read is either in the snapshot, where Go answered and the view,
       replaying it, drops its answers, or after it, where the view answers
-      and Go doesn't. `TermAttach` and `TermDetach` are the bound calls,
-      which take the engine's lock only to find the item; attaching again
-      changes nothing. The view keys are strings: `"main"` for the main
-      window, and `"own"` for a terminal's own window, popped out or the
-      drop-down. `Ready`, which only the main window calls, forgets
-      `"main"` (`DetachView`) before it takes the engine's lock, as a main
-      window that loads again draws its terminals afresh; the frontend then
-      attaches each terminal it draws again, as a View can come before
-      `Ready`'s answer. A terminal's own window has no `Ready`, and a page
-      that closes can't say so, so Go forgets `"own"` itself: in
-      `TerminalWindowClosed`, and as it closes that window
+      and Go doesn't. `TermAttach` and `TermDetach` are the bound calls:
+      `TermAttach` takes the engine's lock only to find the item, and
+      `TermDetach` doesn't take it. Attaching again changes nothing. Wails
+      runs each call on its own, so a window sends these calls for a
+      terminal one at a time, by item ID and not by session (`viewCall`):
+      each waits until Go has answered the one before. A `TermDetach` can't
+      overtake its `TermAttach`, which would leave Go with a view that
+      doesn't draw the terminal, so that nothing answers DA1. A
+      `TermAttach` for a terminal that comes back into a tab can't overtake
+      the `TermDetach` before it, which would make DA1 get two answers.
+      `attachAgain` after `Ready` waits in the same way. The view keys are
+      strings: `"main"` for the main window, and `"own"` for a terminal's
+      own window, popped out or the drop-down. `Ready`, which only the main
+      window calls, forgets `"main"` (`DetachView`) before it takes the
+      engine's lock, as a main window that loads again draws its terminals
+      afresh; the frontend then attaches each terminal it draws again, as a
+      View can come before `Ready`'s answer. A terminal's own window has no
+      `Ready`, and a page that closes can't say so, so Go forgets `"own"`
+      itself: in `TerminalWindowClosed`, and as it closes that window
       (`closeTerminalWindowLocked`). If a terminal joins a tab while its
       own window opens, that window can attach after Go has forgotten it:
       Go then leaves DA1 to a window that has gone, until the terminal's
@@ -6145,19 +6173,44 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       record's reports, under `emitMu`, after the read's `Data` and before
       its `Alert`s, at most 16 a read (`maxStatuses`): the latest, which
       say where the program is now. A full reset (`ESC c`) reports `clear`,
-      as the spec says it removes every record. The spec drops `working`
-      and `blocked` as the program ends, or at the next prompt (OSC 133 A),
-      which Bench doesn't read and Claude Code sends only at times. So a
-      session in a shell reports `StateEnded`, Bench's own state, which no
-      program can send, once: when the latest state is working, blocked,
-      or idle, a program other than the shell has had the terminal since,
-      and the shell has it back. `updateTitle`, which reads the foreground
-      process group already, finds that, and `deliver` hints it while such
-      a state is held, so that it looks soon. A status that the shell
-      prints itself lasts until the next program that it runs ends. A
-      session that runs a `command` ends with `Exit` instead. Both agents
-      send `clear` as they quit, so this is for a crash, `kill -9`, or
-      Claude Code's Control-Z, which sends none.
+      as the spec says it removes every record, and so does `ESC c` with C0
+      controls other than CAN and SUB, or DEL, between the two, as in
+      xterm.js. The spec drops `working` and `blocked` as the program ends,
+      or at the next prompt (OSC 133 A), which Bench doesn't read and
+      Claude Code sends only at times. So a session in a shell reports
+      `StateEnded`, Bench's own state, which no program can send, once the
+      program that reported a live state (working, blocked, or idle) has
+      gone. As `deliver` reads a live report, under `emitMu`, it records
+      two process groups (`reporterIfLive`): `reporter`, the terminal's
+      foreground group, if it isn't the shell's; and `starter`, the group
+      of the process that started `reporter`'s leader (`processParent`,
+      which reads `/proc` on Linux and `sysctl` on macOS). In a shell that
+      the shell started, such as `sh -i` or `nix develop`, `starter` is the
+      inner shell's. Behind `ssh`, `reporter` is `ssh`'s. `updateTitle`,
+      which reads the foreground group already, reports the end once
+      `reporter` no longer has the terminal: the program has ended or
+      stopped, in the session's shell or in an inner one. If no reporter
+      was recorded, it reports the end once a program other than the shell
+      has had the terminal, and the shell has it back. `deliver` hints it
+      while a live state is held, so that it looks soon. A live report read
+      while the session's shell, or `starter`, has the terminal, after the
+      program has had it, may be that program's own output, read after it
+      has gone. Such a report keeps what was known (`noteStatus`), and the
+      end follows. A report from a new group replaces what was known, so a
+      program that a shell starts as soon as another has gone, as in `a;
+      b`, keeps its own status. Bench doesn't keep the old program on the
+      grounds that its group has gone: that would give the new program
+      `ended` at once, and a program's children can keep its group after it
+      has gone. The foreground is read under `emitMu`, so `updateTitle`
+      can't see the program go between that read and the record. A report
+      read after Bench has seen its program go, and a status that a shell
+      prints itself, count as that shell's own. In the session's shell,
+      such a status lasts until the next program that the shell runs ends.
+      In a shell that the shell started, it lasts until that inner shell
+      runs another program, or ends. A session that runs a `command` ends
+      with `Exit` instead. Both agents send `clear` as they quit, so this
+      is for a crash, `kill -9`, or Claude Code's Control-Z, which sends
+      none.
     - **The engine.** `Item.agent` (`agent.go`) holds the state, the kind,
       the words, when the agent last needed the user, and whether the
       item's mark has its words (`marked`). It's never saved, as
@@ -6172,29 +6225,65 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       question for you", "Needs you to sign in", or "Needs you" with no
       kind; "Finished"; or "Stopped with an error"; then ": " and its
       words, if it has any. Its notification waits for the end of the
-      batch. `clear` forgets the agent. `ended`, and `Exit`, forget it too,
-      unless it finished or stopped: that shows until the user sees the
-      terminal, as the spec says. A new session for the item, as for a
-      rerun, forgets it (`startTerminalLocked`). `clearSeenLocked` takes
-      the mark off as before, and forgets a finished or stopped agent once
-      the user can see its terminal. An agent that carries on after it
-      finished keeps that mark until then. Only `touch` is used: the View
-      changes, and nothing is saved.
+      batch, or goes as its command ends, before the command's own. `clear`
+      forgets the agent. `ended`, and `Exit`, forget it too, unless it
+      finished or stopped: that shows until the user sees the terminal, as
+      the spec says. For a command, `Exit` first posts a finished or
+      stopped agent's notification that still waits
+      (`postAgentNoteLocked`), and then calls `commandEndedLocked`, as an
+      earlier batch would: `notifyGap` then holds back "Its command has
+      finished." or "Its command ended with an error.", and the mark
+      becomes the command's, as before. So the agent's report and its
+      command's end give the same notification, in one batch or in two. A
+      new session for the item, as for a rerun, forgets it
+      (`startTerminalLocked`). `clearSeenLocked` takes the mark off as
+      before, and forgets a finished or stopped agent once the user can see
+      its terminal. An agent that carries on after it finished keeps that
+      mark until then. If an agent that finished or stopped with an error
+      carries on (`working`, `idle`) or clears its report (`clear`) in the
+      same batch, `keepFinishedNoteLocked` keeps that report, with its
+      waiting notification, in `Item.agentNote`. That notification goes at
+      the end of the batch, or as the command ends, with the old state's
+      line, as it would from an earlier batch. A new `blocked`, `done`, or
+      `error` report in the same batch takes its place, as its mark does. A
+      waiting agent's notification is dropped with its mark
+      (`unmarkWaitingLocked`). Only `touch` is used: the View changes, and
+      nothing is saved.
     - **One event, one alert.** Agents often ring the bell or ask for a
       notification as they report, for terminals that don't know OSC 7501:
       Claude Code's notification channel can add a BEL and "Claude needs
       your permission" by OSC 9, and Codex has notifications of its own.
       `flushTerms` applies a batch's reports first, then its other events
       in order, so that the order of the bytes in a batch doesn't matter,
-      and then posts the agents' notifications (`postAgentNotesLocked`). A
-      bell, OSC 9, or OSC 777 within `agentEcho` (2 seconds) of a blocked,
+      and then posts the agents' notifications that still wait
+      (`postAgentNotesLocked`, through `postAgentNoteLocked`). A bell, OSC
+      9, or OSC 777 less than `agentEcho` (2 seconds) after a blocked,
       done, or error report is part of it (`agentEchoLocked`): it marks
-      nothing more and posts nothing. If the agent sent no words, as Codex
-      sends none, a notification's body becomes them, on the mark and in
-      the agent's notification if that's still to be posted; its title,
-      the name the program gives itself, isn't used. So an agent that sends
-      7501, BEL, and OSC 9 together gets one mark and one notification,
-      with its words.
+      nothing more and posts nothing. So is one in the same batch as a done
+      or error report that the agent carried on or quit from
+      (`Item.agentNote`), as `flushTerms` applies a batch's reports before
+      its alerts. If the agent sent no words, as Codex sends none, a
+      notification's body becomes them: on the mark while the mark has the
+      agent's line, and in the agent's notification if that's still to be
+      posted, the kept one too. Its title, the name the program gives
+      itself, isn't used. So an agent that sends 7501, BEL, and OSC 9
+      together, in one batch, gets one mark and one notification, with its
+      words, even if it carries on or quits in the same batch: Codex's
+      wordless done, its notification, and working give one notification,
+      "Finished: *its notification's body*". A bell or notification in an
+      earlier batch, which posted its own notification less than
+      `agentEcho` before the report, isn't part of it.
+      `notifyTerminalLocked` reports whether it posted, and
+      `terminalAlertLocked` records when an alert posted
+      (`Item.alertNoted`, which any other notification zeroes). The agent's
+      notification then follows it once, despite `notifyGap`, but only if
+      it shows the agent's words: the agent has words, and `agent_words` is
+      on. Otherwise `notifyGap` holds it back, as it would say less than
+      the alert did. So Codex's own "Codex wants to run npm test" and then
+      its wordless `blocked`, or Claude Code's OSC 9 and then its report
+      with `agent_words` off, give one notification, the alert's, and a
+      bell and then a wordless report give only "Rang the bell.". A program
+      still gets at most two notifications within `notifyGap`.
     - **The agent's words.** A later bell never takes the place of the
       agent's words: `terminalAlertLocked` ignores a bell while the mark
       has them. A later notification has words of its own, and Go's mark
@@ -6202,13 +6291,15 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       the agent's line while the agent waits, or has finished or stopped
       and is marked (`needsYouWhy`). The notification goes through
       `notifyTerminalLocked`, which keeps `notify_terminals` and
-      `notifyGap`: its title is the terminal's (`shownTitleLocked`), its
-      subtitle the tab or "Drop-down", and its body the agent's line, with
-      the words while `agent_words` is on. The owner chose the words by
-      default: they say what to approve, which the kind alone doesn't. They
-      can hold a command or a path, which Notification Centre then keeps,
-      so `agent_words` can limit notifications to the kind. Bench's own
-      marks always have the words: they stay in Bench.
+      `notifyGap`, except that an agent's notification with its words may
+      follow an alert of the last 2 seconds, once (above). Its title is the
+      terminal's (`shownTitleLocked`), its subtitle the tab or "Drop-down",
+      and its body the agent's line, with the words while `agent_words` is
+      on. The owner chose the words by default: they say what to approve,
+      which the kind alone doesn't. They can hold a command or a path,
+      which Notification Centre then keeps, so `agent_words` can limit
+      notifications to the kind. Bench's own marks always have the words:
+      they stay in Bench.
     - **The View.** `ItemView.Agent` is `working`, `waiting` (blocked),
       `done`, or `error`, left out for none or idle, with `AgentKind` and
       `AgentText`, the words. Like `Ended`, they're sent whether or not the
@@ -6233,22 +6324,41 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       agent working, 2 agents done" in its tooltip and for screen readers;
       the agents that need the user are in its bell's count. The marks keep
       3:1 against the sub-tab and tab in both themes and with Increase
-      contrast, and the dots stop with Reduce motion, through the global
+      contrast. The working dots keep it at their faintest too: they pulse
+      between opacity 0.7 and 1, never lower, as the keyframes ease without
+      overshoot. The dots stop with Reduce motion, through the global
       rule. A sub-tab's label adds a note, "working", "needs you", "done",
       or "stopped with an error", and keeps the words out: Voice Control
       users say the name, which must stay short and the same. The words go
       through `esc`, and never through `sentence`, as they're the agent's
       own.
     - **VoiceOver.** `announceChanges` says "*name*: *the agent's line*."
-      once for each new waiting, done, or error report, in the window that
+      for each new waiting, done, or error report, in the window that
       speaks for the terminal, such as "zsh — ~/code/bench: needs your
       permission: approve Bash: npm test.", with no full stop after words
-      that end in one, or in "!", "?", or "…". An agent at work isn't
-      announced. xterm.js's own bell waits 400 ms (`BELL_HOLD`), and isn't
-      announced while the agent waits, or within 2 seconds of an announced
-      report, as in Go, so that one event is said once. A finished or
-      stopped agent in a terminal that the user can see shows nothing, so
-      it isn't announced: VoiceOver reads the terminal's output instead.
+      that end in one, or in "!", "?", or "…". Each such report is a new
+      event, so it's announced even when its line is the same as one said a
+      moment ago, such as a second request for permission: decision 64's 5
+      seconds for the same text (`SAY_GAP`) apply only to bells and
+      finished commands. Words that come alone, in a View with the same
+      state and kind, less than 2 seconds (`AGENT_ECHO`) and 100 ms
+      (`ECHO_LATE`) after a report that had none, are Go's words from a
+      notification: as in Go, they're part of that report, and aren't
+      announced again. A terminal's agent is announced at most once a
+      second (`AGENT_GAP`). A report within that second waits, with one
+      timer for each terminal (`tell`). When the timer fires, VoiceOver
+      says the line that the agent has then, if it still has one, while
+      VoiceOver is on and the window still speaks for the terminal. So the
+      latest words are said once, and words that have gone are never said.
+      What's said has at most 200 characters of the agent's words, then "…"
+      (`sayAgent`); the marks and tooltips keep all the words. `announce`
+      keeps only the newest 5 texts that wait for the toast. An agent at
+      work isn't announced. xterm.js's own bell waits 400 ms (`BELL_HOLD`),
+      and isn't announced while the agent waits, or within 2 seconds of a
+      report, said or waiting to be said, as in Go, so that one event is
+      said once. A finished or stopped agent in a terminal that the user
+      can see shows nothing, so it isn't announced: VoiceOver reads the
+      terminal's output instead.
     - **The settings.** `agent_status` and `agent_words`, after
       `notify_terminals`, are on by default, as **Show the status that
       agents report** and **Show what the agent says in notifications** in
@@ -6278,33 +6388,48 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       that the list has the notifications waiting. The list has no agent
       fields, so its version stays 1.
     - **Tests.** `status_test.go` checks the parser's table, with every
-      limit, the terminator counted, the probe, and the characters taken
-      out; `osc_test.go` DA1, the terminators, and the full reset, split at
-      every byte; `status_session_test.go` the probe answered with BEL and
-      with ST, once a read, before the output goes on, and not with the
-      setting off, DA1 only without a view, `Attach` dividing the output,
-      statuses before alerts, the root record only, a report split across
-      reads, the full reset, the latest 16, restored output answered
-      nothing, a program's end in a shell, and a command's with `Exit`, on
-      real pseudo-terminals too; `restore_test.go` that restored output
-      can't raise a status or get an answer; `echo_test.go` the `agent`
-      command; `engine_agent_test.go` one alert with the words, words from
-      the notification, `agent_words` off, the kind texts, the setting off
-      in Settings and in `config.toml`, nothing marked in view, done until
-      seen, an agent that carries on, the same report again, the end of
-      the program and of a command, nothing saved, and `TermAttach` and
-      `TermDetach`; `service_test.go` the bound calls;
-      `e2e/frontend/agents.test.js` the marks, tooltips, and labels, the
-      tab's and the overview's marks, a later bell keeping the words, words
-      with markup or characters that turn text round, VoiceOver once an
-      event, Reduce motion, the setting off, Settings' switches, and
-      `TermAttach` and `TermDetach`, again after `Ready`;
-      `appearance.test.js` the marks' contrast; and `e2e/app/agents.test.js`
-      the preview's `agent` command, from the terminal to the marks.
-      `build/privacy` shows that agent status connects to nothing: it adds
-      no entry to `allowed`. A Mac is needed for Claude Code and Codex
-      themselves, notifications, and VoiceOver (the manual checks in
-      `development.md`).
+      limit, the terminator counted, the probe, the characters taken out,
+      and the line and paragraph separators made spaces; `osc_test.go` DA1,
+      the terminators, and the full reset, split at every byte, the C1 CSI,
+      also in an OSC and a DCS and after a parameter, ESC and a control
+      character or DEL before DA1 and the full reset, and U+0085 and U+00A1
+      left as they are; `proc_test.go` `processParent`;
+      `status_session_test.go` the probe answered with BEL and with ST,
+      once a read, before the output goes on, and not with the setting off,
+      DA1 only without a view, `Attach` dividing the output while the
+      output goes (the test skips with one CPU), statuses before alerts,
+      the root record only, a report split across reads, the full reset,
+      the latest 16, restored output answered nothing, a program's end in a
+      shell and in a shell that the shell starts (`sh -i`), also after a
+      second report read late, and with two programs as in `a; b`, and a
+      command's with `Exit`, on real pseudo-terminals too;
+      `restore_test.go` that restored output can't raise a status or get an
+      answer; `echo_test.go` the `agent` command; `engine_agent_test.go`
+      one alert with the words, words from the notification, `agent_words`
+      off, the kind texts, the setting off in Settings and in
+      `config.toml`, nothing marked in view, done until seen, an agent that
+      carries on, at once too, with words from its notification, in one
+      batch and in two, an alert just before the report, which the agent's
+      notification follows only with its words, a command that ends in the
+      same batch as its agent's done or error report and in the next, the
+      same report again, the end of the program and of a command, nothing
+      saved, and `TermAttach` and `TermDetach`; `service_test.go` the bound
+      calls; `e2e/frontend/agents.test.js` the marks, tooltips, and labels,
+      the tab's and the overview's marks, a later bell keeping the words,
+      words with markup, characters that turn text round, or line and
+      paragraph separators, VoiceOver once an event, a second report with
+      the same line, words that come just after their report, once a second
+      at most with the latest words, and words cut at 200 characters,
+      Reduce motion, the setting off, Settings' switches, and `TermAttach`
+      and `TermDetach`, again after `Ready`, and in order while Go's
+      answers are late; `appearance.test.js` the marks' contrast, and that
+      of the working dots at the faintest keyframe in the stylesheet, on
+      each surface that the marks sit on; and `e2e/app/agents.test.js` the
+      preview's `agent` command, from the terminal to the marks.
+      `build/privacy`, a static check for the known ways to connect, finds
+      none in agent status's code: agent status adds no entry to `allowed`.
+      A Mac is needed for Claude Code and Codex themselves, notifications,
+      and VoiceOver (the manual checks in `development.md`).
     - **Not** the `buildkite/osc7501` module: Bench frames OSC itself and
       needs one function, and the module, before 1.0, had two breaking
       changes in its first month, and would bring testify and a new
@@ -6318,4 +6443,6 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       ignores it, as before, which the spec allows. **Not** working in a
       notification, or in VoiceOver: an agent works most of the time.
       **Not** the agent's state in `state.json`: it lasts as long as the
-      program.
+      program. **Not** holding each bell's notification back for a batch,
+      to see whether an agent's report follows: that would delay every
+      bell.

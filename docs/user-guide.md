@@ -2050,9 +2050,10 @@ shell, asks for it too.
 Agents, such as Claude Code and Codex, also tell Bench what they're doing:
 working, waiting for you, finished, or stopped with an error. (They use the
 OSC 7501 escape sequence.) There's nothing to set up: Claude Code 2.1.295
-or later, and Codex 0.163 or later, do this in Bench's terminals. Claude
+or later, and Codex 0.164 or later, do this in Bench's terminals. Claude
 Code says in its own words what it needs, such as "approve Bash: npm
-test". Codex says only what kind of help it needs.
+test". Codex says only what kind of help it needs. (Codex 0.163 says only
+whether it's working or waiting for you.)
 
 When a terminal asks for your attention and you can't see it, because its
 tab isn't shown, it isn't the sub-tab its pane shows, or the app in front
@@ -2068,8 +2069,9 @@ is neither Bench nor an app with a window in the current tab:
 - Bench posts a notification, which says the terminal's title, its tab,
   and why. Clicking the notification brings Bench forward on the terminal's
   tab and shows the terminal. Bench posts at most one notification for a
-  terminal every 5 seconds, and for the bell only when it marks the
-  terminal, not again for each bell while it's marked. Untick **Notify me
+  terminal every 5 seconds (two when an agent's words follow a bell or
+  notification), and for the bell only when it marks the terminal, not
+  again for each bell while it's marked. Untick **Notify me
   when a terminal in another tab needs attention** in [Settings](#settings)
   to have only the bells.
 
@@ -2097,14 +2099,21 @@ same marks.
 Each time an agent needs you while you can't see it, you get one bell and
 one notification. An agent can also ring the bell, or ask for a
 notification, as it reports, as Claude Code and Codex can: Bench counts
-that as part of the same event. If the agent sends no words of its own, as
-Codex doesn't, Bench uses the text of that notification. A bell that comes
-later doesn't take the place of the agent's words.
+that as part of the same event, even if the agent carries on at once. If
+the agent sends no words of its own, as Codex doesn't, Bench uses the text
+of that notification. A bell that comes later doesn't take the place of
+the agent's words. If the bell or notification comes just before the
+report, Bench has posted it already. The agent's notification then comes
+after it, but only if the agent sent words of its own and **Show what the
+agent says in notifications** is on. If an agent in a terminal that runs a
+command finishes as the command ends, the notification has the agent's
+words, not "Its command has finished."
 
 When Claude Code or Codex quits, it takes its marks off. If an agent ends
-without doing so, as when it crashes, its dots and its bell go once your
-shell has the terminal back, but a green circle or red octagon stays until
-you see the terminal.
+without doing so, as when it crashes, its dots and its bell go once the
+shell that started it has the terminal back, also in a shell that you
+started in the terminal, such as `sh -i` or `nix develop`. A green circle
+or red octagon stays until you see the terminal.
 
 An agent's words can hold a command, the path of a file, or other text
 from your work, and Notification Centre keeps notifications until you
@@ -2135,7 +2144,8 @@ While VoiceOver is on, Bench also says when a terminal rings the bell or
 its command finishes, whether you can see the terminal or not, and what an
 agent needs, in its words. See [VoiceOver](#voiceover).
 
-The bells go when you show the terminal. While you work in a window docked
+The bells go when you show the terminal, except an agent's, which stays
+while the agent waits for you. While you work in a window docked
 in the same tab, such as Zed beside the terminal, you can see the
 terminal, so it gets no bell. A terminal in a window of its own has no
 sub-tab, so it gets only the notification, while Bench isn't in front. A web page that posts a notification while you can't see it gets
@@ -3345,8 +3355,12 @@ new output as it comes. Bench also says:
 
 Bench names the terminal by the title on its sub-tab. If the terminal is in
 another tab, Bench says which tab too, such as "go test — ~/code/bench in
-Code: its command has finished." Bench says each of these at most once
-every 5 seconds for one terminal.
+Code: its command has finished." Bench says a bell or a finished command
+at most once every 5 seconds for one terminal. It says each new report of
+an agent, even one with the same words as a moment ago, but at most once a
+second for one terminal, with the agent's latest words. If the words are
+long, Bench says the first 200 characters, then "…". The tooltip has them
+all.
 
 They show as a message at the bottom of the window, or in the title bar
 while the status bar is hidden. **Help ▸ Recent Messages** keeps them. If

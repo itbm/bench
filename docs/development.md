@@ -153,11 +153,21 @@ The unit tests drive the workspace engine and the windows manager with
 a case, see the existing tests in `internal/workspace` and
 `internal/windows`.
 
-`build/privacy` reads Bench's Go, Objective-C, C, and frontend files,
-whatever their build tags, and fails for each connection, listener,
-client, or name lookup that its `allowed` list doesn't name, with the file
-and line. It also fails for an entry that the code no longer uses, so the
-list stays exact. If Bench must connect somewhere new, add an entry to
+`build/privacy` is a static check. It reads Bench's Go, Objective-C, C,
+and C++ files and headers, and its frontend files and SVG images, whatever
+their build tags. It looks for the known ways to connect, listen, or look
+a name up, which the lists in `build/privacy/network_test.go` name, such
+as `net.Dial`, `getaddrinfo`, `NSHost`, `fetch`, `WebSocket`,
+`RTCPeerConnection`, an address on another host in an attribute or a
+style, and any meta refresh. It fails for each use of one that its
+`allowed` list doesn't name, with the file and line. It reads the code and
+doesn't run it, so it isn't proof that nothing else connects. It can't
+see what other programs, or modules from outside Bench, do; a way to
+connect that its lists don't name, or one in a file of a kind that it
+doesn't read; a name that the code spells another way, such as
+`window["fetch"]`; or an address that the code makes as it runs. It also
+fails for an entry that the code no longer uses, so the list stays exact.
+If Bench must connect somewhere new, add an entry to
 `allowed` in `build/privacy/network_test.go` with the file, the names it
 uses, and where it connects and why, and say so in README.md's
 "Permissions and privacy".
@@ -4272,6 +4282,13 @@ Bash: npm test" in base64.
       `sh -c 'sleep 3; printf "\033]7501;state=blocked:kind=permission\007\033]9;Approve the deploy\007"; sleep 30'`
       and switch to Comms: one notification, "Needs your permission:
       Approve the deploy", and the tooltip says the same.
+- [ ] **A bell just before**: run
+      `sh -c 'sleep 3; printf "\007"; sleep 0.5; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 30'`
+      and switch to Comms: two notifications, "Rang the bell." and then
+      "Needs your permission: approve Bash: npm test". Untick **Show what
+      the agent says in notifications**, save, and do it again: only
+      "Rang the bell.", and the bell's tooltip still has the words. Tick
+      it again.
 - [ ] **Finished**: ask Claude Code something short, and switch to Comms
       while it works. When it finishes, its sub-tab gets a green circle
       with a tick and the bell, with "Finished", and Claude Code's summary
@@ -4293,6 +4310,12 @@ Bash: npm test" in base64.
       while, and press Control-Z while it works. Claude Code says nothing
       as it stops, but the dots go within a few seconds, once the shell has
       the terminal back. Run `fg`, and quit Claude Code.
+- [ ] **In a shell in the shell**: run `sh -i`, and do **The program
+      ends** again in it: the dots go within a few seconds, while `sh -i`
+      still runs. Then, still in `sh -i`, run
+      `sh -c 'printf "\033]7501;state=working\007"; sleep 1'; sh -c 'printf "\033]7501;state=blocked\007"; sleep 5'`:
+      the dots show, then the bell, for the whole 5 seconds, and the bell
+      goes as the second `sh` ends. Run `exit`.
 - [ ] **A full reset**: run
       `sh -c 'printf "\033]7501;state=working\007"; sleep 3; printf "\033c"; sleep 30'`:
       the dots show, and go after 3 seconds.
@@ -4306,10 +4329,14 @@ Bash: npm test" in base64.
 - [ ] **VoiceOver**: turn it on, and do **Asking for permission** again.
       VoiceOver says "*title* in Code: needs your permission: approve Bash:
       touch bench-check.txt." once, and not "rang the bell" as well. It
-      says nothing as Claude Code starts to work. Do **Finished** again:
-      it says "*title* in Code: finished.". It reads the sub-tab as
-      "*title*, Terminal, working" while Claude Code works, and the Code
-      tab's name with "1 agent working".
+      says nothing as Claude Code starts to work. Quit Claude Code, and
+      run
+      `sh -c 'sleep 3; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 2; printf "\033]7501;state=working\007"; sleep 2; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 30'`:
+      VoiceOver says "*title*: needs your permission: approve Bash: npm
+      test." twice. Do **Finished** again: it says "*title* in Code:
+      finished.". It reads the sub-tab as "*title*, Terminal, working"
+      while Claude Code works, and the Code tab's name with "1 agent
+      working".
 - [ ] **Reduce motion**: turn on **Reduce motion** in **System Settings ▸
       Accessibility ▸ Display**: the dots stop pulsing, and still show.
 - [ ] **Light and dark, and Increase contrast**: in light mode, dark mode,
@@ -4320,11 +4347,11 @@ Bash: npm test" in base64.
       on the sub-tabs and tabs, and nothing scrolls sideways that didn't
       before.
 - [ ] **Nothing saved, and the list**: while Claude Code waits for your
-      permission in another tab, `grep -c bench-check
-      ~/Library/Application\ Support/Bench/state.json` prints 0. With
-      **Allow scripts to control Bench** on, `bench list` says "Needs your
-      permission: approve Bash: touch bench-check.txt" as why the terminal
-      needs you.
+      permission in another tab,
+      `grep -c -e 'approve Bash' -e 'Needs your permission' ~/Library/Application\ Support/Bench/state.json`
+      prints 0. With **Allow scripts to control Bench** on, `bench list`
+      says "Needs your permission: approve Bash: touch bench-check.txt" as
+      why the terminal needs you.
 - [ ] **tmux**: run `tmux`, and `claude` in it: its sub-tab shows no
       dots, as Claude Code asks tmux whether it can show its status.
 
