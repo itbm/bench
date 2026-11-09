@@ -187,8 +187,12 @@ type Item struct {
 	// it or its page posted a notification, or its command finished, while
 	// the user couldn't see it (see attention.go). It isn't saved.
 	// notified is when Bench last posted a notification for a terminal.
-	attention string
-	notified  time.Time
+	// alertNoted is the same time while that notification was for a bell
+	// or a notification from its program, and zero otherwise (see
+	// postAgentNoteLocked).
+	attention  string
+	notified   time.Time
+	alertNoted time.Time
 	// agent is what the program in a terminal, such as a coding agent,
 	// last reported about itself with OSC 7501, while the agent_status
 	// setting is on (see agent.go): working, needing the user, finished,

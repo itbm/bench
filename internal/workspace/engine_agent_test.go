@@ -83,6 +83,51 @@ func TestAgentEventIsOneAlertWithItsWords(t *testing.T) {
 	}
 }
 
+func TestAgentAfterAnAlertIsStillNotified(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		alert term.Alert
+		body  string
+	}{
+		{"bell", term.Alert{Bell: true}, "Rang the bell."},
+		{"notification", term.Alert{Title: "Claude Code", Body: "Claude needs your permission"}, "Claude Code: Claude needs your permission"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := agentHarness(t, setup{})
+			// The agent rings the bell, or asks for a notification, just
+			// before it reports, so that the alert is in the batch before.
+			// The alert has posted already, but the agent's words follow.
+			h.alert("w5", tt.alert)
+			h.report("w5", agentSays(term.StateBlocked, term.KindPermission, approve))
+			n := h.p.Notifications()
+			if len(n) != 2 || n[0].Body != tt.body || n[1].Body != "Needs your permission: "+approve {
+				t.Fatalf("notifications: %+v", n)
+			}
+			if got := h.item("w5").Attention; got != "Needs your permission: "+approve {
+				t.Errorf("attention: %q", got)
+			}
+			// That's once: notifyGap holds the next one back.
+			h.report("w5", agentSays(term.StateBlocked, term.KindPermission, "approve Bash: rm -rf build"))
+			if n := h.p.Notifications(); len(n) != 2 {
+				t.Errorf("another report: %+v", n)
+			}
+		})
+	}
+
+	// An alert longer than agentEcho before is another event, and
+	// notifyGap holds the agent's notification back.
+	h := agentHarness(t, setup{})
+	h.alert("w5", term.Alert{Bell: true})
+	h.advance(agentEcho)
+	h.report("w5", agentSays(term.StateBlocked, term.KindPermission, approve))
+	if n := h.p.Notifications(); len(n) != 1 || n[0].Body != "Rang the bell." {
+		t.Errorf("notifications: %+v", n)
+	}
+	if got := h.item("w5").Attention; got != "Needs your permission: "+approve {
+		t.Errorf("attention: %q", got)
+	}
+}
+
 func TestAgentTakesItsWordsFromItsNotification(t *testing.T) {
 	h := agentHarness(t, setup{})
 	// Codex says only what it needs, and asks for a notification that
@@ -342,6 +387,47 @@ func TestAgentThatCarriesOnIsntWaiting(t *testing.T) {
 	}
 }
 
+func TestAgentThatCarriesOnAtOnceIsNotified(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		first, then term.Status
+		agent, why  string
+	}{
+		{"done, then working", agentSays(term.StateDone, "", "Tests passed"), agentSays(term.StateWorking, "", ""), agentWorking, "Finished: Tests passed"},
+		{"error, then idle", agentSays(term.StateError, "", "rsync failed"), agentSays(term.StateIdle, "", ""), "", "Stopped with an error: rsync failed"},
+		{"done, then clear", agentSays(term.StateDone, "", "Tests passed"), agentSays(term.StateClear, "", ""), "", "Finished: Tests passed"},
+	} {
+		for _, batch := range []string{"same batch", "separate batches"} {
+			t.Run(tt.name+", "+batch, func(t *testing.T) {
+				h := agentHarness(t, setup{})
+				// The agent finishes, and carries on at once, as with a
+				// prompt that waits. It keeps its mark, and its
+				// notification goes, whatever the batches.
+				h.terms.cb.Status("w5", tt.first)
+				if batch == "separate batches" {
+					h.advance(2 * frame)
+				}
+				h.report("w5", tt.then)
+				if n := h.p.Notifications(); len(n) != 1 || n[0].Body != tt.why {
+					t.Errorf("notifications: %+v", n)
+				}
+				if it := h.item("w5"); it.Agent != tt.agent || it.Attention != tt.why || h.p.Badge() != 1 {
+					t.Errorf("agent %q, attention %q, badge %d", it.Agent, it.Attention, h.p.Badge())
+				}
+			})
+		}
+	}
+
+	// An agent that needed the user, and carries on at once, has no mark,
+	// so it gets no notification either.
+	h := agentHarness(t, setup{})
+	h.terms.cb.Status("w5", agentSays(term.StateBlocked, term.KindPermission, approve))
+	h.report("w5", agentSays(term.StateWorking, "", ""))
+	if it := h.item("w5"); it.Agent != agentWorking || it.Attention != "" || len(h.p.Notifications()) != 0 {
+		t.Errorf("agent %q, attention %q, notifications %+v", it.Agent, it.Attention, h.p.Notifications())
+	}
+}
+
 func TestAgentSameReportIsTheSameEvent(t *testing.T) {
 	h := agentHarness(t, setup{})
 	h.report("w5", agentSays(term.StateBlocked, term.KindPermission, approve))
@@ -418,6 +504,44 @@ func TestAgentInACommandEndsWithIt(t *testing.T) {
 	rerun()
 	if it := h.item(id); it.Agent != "" || it.Ended {
 		t.Errorf("after running again: %+v", it)
+	}
+}
+
+func TestAgentInACommandIsNotifiedAsItEnds(t *testing.T) {
+	for _, tt := range []struct {
+		state, agent, why, mark string
+		err                     error
+	}{
+		{term.StateDone, agentDone, "Finished: Tests passed", finishedText, nil},
+		{term.StateError, agentError, "Stopped with an error: Tests passed", failedText, errors.New("exit status 1")},
+	} {
+		for _, batch := range []string{"same batch", "separate batches"} {
+			t.Run(tt.state+", "+batch, func(t *testing.T) {
+				h := newHarness(t, setup{config: commandConfig})
+				// Obsidian isn't in a tab, so the terminal is out of sight.
+				mustOK(t, h.p.ActivateApp(obsidianID))
+				h.settle()
+				id := h.builtinID()
+				// The program reports just before it ends, as the spec
+				// asks, so its report and its end are often in the same
+				// batch.
+				h.terms.cb.Status(id, agentSays(tt.state, "", "Tests passed"))
+				if batch == "separate batches" {
+					h.advance(2 * frame)
+				}
+				h.terms.end(id)
+				h.terms.cb.Exit(id, tt.err)
+				h.advance(2 * frame)
+				// The agent's notification says more than the command's.
+				want := platform.Notification{ItemID: id, Title: "Tests", Subtitle: "Code", Body: tt.why}
+				if n := h.p.Notifications(); len(n) != 1 || n[0] != want {
+					t.Errorf("notifications: %+v", n)
+				}
+				if it := h.item(id); it.Agent != tt.agent || it.AgentText != "Tests passed" || !it.Ended || it.Attention != tt.mark {
+					t.Errorf("agent %q, text %q, ended %v, attention %q", it.Agent, it.AgentText, it.Ended, it.Attention)
+				}
+			})
+		}
 	}
 }
 

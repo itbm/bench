@@ -116,7 +116,8 @@ func (e *Engine) clearSeenLocked() bool {
 // bell only when it marks the terminal, not again while it's marked. An
 // alert that's part of what the terminal's agent reported changes nothing
 // more (see agentEchoLocked), and nor does a bell while the mark has the
-// agent's words, which stay.
+// agent's words, which stay. If the alert posts, it records when, so that
+// the agent's notification can still follow (see postAgentNoteLocked).
 func (e *Engine) terminalAlertLocked(it *Item, a term.Alert) {
 	if e.agentEchoLocked(it, a) || (a.Bell && it.agent.marked && it.attention != "") {
 		return
@@ -126,12 +127,16 @@ func (e *Engine) terminalAlertLocked(it *Item, a term.Alert) {
 		why = notePrefix + noteText(a.Title, a.Body)
 	}
 	unseen, already := e.markLocked(it, why)
+	posted := false
 	switch {
 	case !unseen:
 	case a.Bell && !already:
-		e.notifyTerminalLocked(it, bellText+".")
+		posted = e.notifyTerminalLocked(it, bellText+".")
 	case !a.Bell:
-		e.notifyTerminalLocked(it, noteText(a.Title, a.Body))
+		posted = e.notifyTerminalLocked(it, noteText(a.Title, a.Body))
+	}
+	if posted {
+		it.alertNoted = it.notified
 	}
 }
 
@@ -150,17 +155,18 @@ func (e *Engine) commandEndedLocked(it *Item, failed bool) {
 // notifyTerminalLocked posts a notification for a terminal, with its
 // sub-tab's title, the tab it's in (or "Drop-down" for the drop-down), and
 // body, if the notify_terminals setting is on, and Bench hasn't posted one
-// for it within notifyGap.
+// for it within notifyGap, and reports whether it posted.
 // Clicking it shows the terminal (see showAnywhereLocked).
-func (e *Engine) notifyTerminalLocked(it *Item, body string) {
+func (e *Engine) notifyTerminalLocked(it *Item, body string) bool {
 	if !e.cfg.Settings.NotifyTerminals {
-		return
+		return false
 	}
 	now := e.clk.Now()
 	if !it.notified.IsZero() && now.Sub(it.notified) < notifyGap {
-		return
+		return false
 	}
 	it.notified = now
+	it.alertNoted = time.Time{}
 	n := platform.Notification{ItemID: it.ID, Title: e.shownTitleLocked(it), Body: body}
 	if ti, _ := e.model.Where(it.ID); ti >= 0 {
 		n.Subtitle = e.model.Tabs[ti].Name
@@ -173,6 +179,7 @@ func (e *Engine) notifyTerminalLocked(it *Item, body string) {
 	if err := e.p.Notify(n); err != nil {
 		e.log.Debug("couldn't post a notification", "item", it.ID, "error", err)
 	}
+	return true
 }
 
 // attentionCountLocked returns how many items are marked as needing the
