@@ -169,6 +169,11 @@ function contrast(a, b) {
 
 const SURFACES = ['--bg-pane', '--bg-window', '--bg-chrome', '--bg-raised', '--bg-pane-header', '--bg-hover'];
 
+// MARK_SURFACES are the surfaces that the marks of agents in terminals
+// (decision 78) sit on: the tabs and sub-tabs, at rest, shown, under the
+// pointer, and pressed, and the overview's cards.
+const MARK_SURFACES = ['--bg-chrome', '--bg-tab-active', '--bg-pane-header', '--bg-control-on', '--bg-hover', '--bg-pressed', '--bg-raised'];
+
 // TAB_COLOURS are the tokens of the colours a tab can have.
 const TAB_COLOURS = ['red', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink', 'grey'].map((c) => '--tab-' + c);
 
@@ -187,12 +192,11 @@ const READABLE = [
   // pointer.
   [['--unread-dot'], ['--bg-chrome', '--bg-tab-active', '--bg-pane-header', '--bg-control-on', '--bg-hover'], 3],
   // The marks of agents in terminals (decision 78), and the bell of one
-  // that needs you, are marks to see, at 3:1, on the tabs and sub-tabs
-  // they sit on, at rest, shown, under the pointer, and pressed, and on
-  // the overview's cards; and the tick and × cut out of the marks of a
-  // finished agent and one that stopped with an error, on them.
-  [['--text-muted', '--ok', '--danger', '--bell'],
-    ['--bg-chrome', '--bg-tab-active', '--bg-pane-header', '--bg-control-on', '--bg-hover', '--bg-pressed', '--bg-raised'], 3],
+  // that needs you, are marks to see, at 3:1, on the surfaces they sit on;
+  // and the tick and × cut out of the marks of a finished agent and one
+  // that stopped with an error, on them. The dots of an agent at work are
+  // checked below at their faintest too.
+  [['--text-muted', '--ok', '--danger', '--bell'], MARK_SURFACES, 3],
   [['--on-accent'], ['--ok', '--danger'], 3],
   // A tab's colour (decision 74) is a mark to see, at 3:1: its underline
   // on the title bar and on the current tab, at rest, under the pointer,
@@ -346,6 +350,45 @@ function hex(css, bg) {
   const under = [1, 3, 5].map((i) => parseInt(bg.slice(i, i + 2), 16));
   return '#' + [r, g, b].map((c, i) => Math.round(c * a + under[i] * (1 - a)).toString(16).padStart(2, '0')).join('').toUpperCase();
 }
+
+// faintest returns the lowest opacity in the keyframes named name in
+// page's stylesheets, or null if there are none. A keyframe without an
+// opacity has the element's own, 1.
+function faintest(page, name) {
+  return page.evaluate((n) => {
+    const rules = (list) => Array.from(list).flatMap((r) => (r instanceof CSSKeyframesRule ? [r] : rules(r.cssRules || [])));
+    const frames = Array.from(document.styleSheets).flatMap((s) => rules(s.cssRules)).filter((r) => r.name === n);
+    const all = frames.flatMap((r) => Array.from(r.cssRules, (k) => (k.style.opacity === '' ? 1 : Number(k.style.opacity))));
+    return all.length ? Math.min(...all) : null;
+  }, name);
+}
+
+// over returns the #RRGGBB colour fg at opacity over bg, both #RRGGBB.
+function over(fg, opacity, bg) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(fg.slice(i, i + 2), 16));
+  return hex('rgba(' + r + ', ' + g + ', ' + b + ', ' + opacity + ')', bg);
+}
+
+test('the dots of an agent at work keep 3:1 at their faintest, in both sets of colours and with Increase contrast', async (t) => {
+  const { page, close } = await openPage('/acknowledgements.html');
+  t.after(close);
+  // The dots ease from one keyframe to the next, so they are never
+  // fainter than the faintest keyframe.
+  const least = await faintest(page, 'agent-working');
+  assert.ok(least > 0, 'the keyframes agent-working have no opacity: ' + least);
+  for (const scheme of ['dark', 'light']) {
+    for (const more of ['no-preference', 'more']) {
+      await page.emulateMedia({ colorScheme: scheme, contrast: more });
+      const tokens = await tokensOf(page, [[['--text-muted'], MARK_SURFACES]]);
+      for (const bg of MARK_SURFACES) {
+        const dot = over(tokens['--text-muted'], least, tokens[bg]);
+        const ratio = contrast(dot, tokens[bg]);
+        assert.ok(ratio >= 3, scheme + ', contrast ' + more + ': --text-muted ' + tokens['--text-muted'] + ' at opacity ' + least
+          + ' on ' + bg + ' ' + tokens[bg] + ' is ' + dot + ', ' + ratio.toFixed(2) + ':1, want 3:1');
+      }
+    }
+  }
+});
 
 // drawn returns the colour that item id's terminal draws text in, as
 // #RRGGBB over its background, bg.

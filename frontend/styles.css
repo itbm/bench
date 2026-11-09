@@ -731,9 +731,10 @@ body[data-density="compact"] .pane[data-colour] > .pane-header .subtab .status-m
    error. An agent that needs you has the blue bell, which is the only blue
    mark. On a sub-tab, the mark sits on the tile's corner, as a marker
    does, and on a tab after its name. Each is at 3:1 at least on the
-   surfaces it sits on. The dots pulse quietly, one after the other, but
-   not with Reduce Motion on, which stops every animation (below): they
-   then show as an ellipsis. */
+   surfaces it sits on. The dots pulse quietly, one after the other, and
+   keep 3:1 at their faintest, at 0.7 (appearance.test.js checks this).
+   They don't pulse with Reduce Motion on, which stops every animation
+   (below): they then show as an ellipsis. */
 .agent-mark {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 13px; height: 13px; border-radius: 50%;
@@ -746,7 +747,7 @@ body[data-density="compact"] .pane[data-colour] > .pane-header .subtab .status-m
 .agent-mark[data-agent="working"] .dot:nth-child(2) { animation-delay: 0.2s; }
 .agent-mark[data-agent="working"] .dot:nth-child(3) { animation-delay: 0.4s; }
 @keyframes agent-working {
-  0%, 80%, 100% { opacity: 0.4; }
+  0%, 80%, 100% { opacity: 0.7; }
   40% { opacity: 1; }
 }
 .subtab .agent-mark { position: absolute; top: -5px; right: -6px; background: var(--subtab-bg); }

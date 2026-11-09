@@ -152,11 +152,17 @@ export function agentOf(item) {
   return Object.hasOwn(AGENT_TEXT, state) ? state : '';
 }
 
+// LINE_BREAKS matches the line and paragraph separators (U+2028 and
+// U+2029), which can break a tooltip or a notification into lines that
+// seem to be Bench's own.
+const LINE_BREAKS = /[\u2028\u2029]/g;
+
 // agentWords returns what the agent in an item's terminal says (ItemView's
-// agentText), without UNSAFE characters, or ''. They are the agent's own
-// words, so they are never changed in other ways, such as by sentence.
+// agentText), on one line, as LINE_BREAKS become spaces, without UNSAFE
+// characters, or ''. They are the agent's own words, so they are never
+// changed in other ways, such as by sentence.
 export function agentWords(item) {
-  return String((item && item.agentText) || '').replace(UNSAFE, '').trim();
+  return String((item && item.agentText) || '').replace(LINE_BREAKS, ' ').replace(UNSAFE, '').trim();
 }
 
 // agentLine says the state of the agent in an item's terminal and its

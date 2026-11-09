@@ -19,7 +19,7 @@ import { SearchAddon } from '../vendor/xterm-addon-search/addon-search.mjs';
 import { WebLinksAddon } from '../vendor/xterm-addon-web-links/addon-web-links.mjs';
 import { call, clipboardText, setClipboardText } from './bridge.js';
 import { act, actLatest, announce, toast } from './state.js';
-import { agentLine, agentOf, ICONS, itemOf, sentence } from './util.js';
+import { agentLine, agentOf, agentWords, ICONS, itemOf, sentence } from './util.js';
 import { setDropTarget } from './drops.js';
 
 // sessions holds each terminal by item ID.
@@ -31,6 +31,10 @@ const sessions = new Map();
 // main window's views when it loads again (Ready), and those of a
 // terminal's own window when the window closes.
 let viewKey = 'main';
+
+// viewCalls holds, by item ID, the last TermAttach or TermDetach that this
+// window sent for each terminal (viewCall), whichever session sent it.
+const viewCalls = new Map();
 
 // ACK_EVERY is how much output, in bytes, a terminal draws between telling
 // Go how far it has got (TermAck). Go stops reading a program's output once
@@ -77,21 +81,36 @@ let latestView = null;
 
 // heard holds, by item ID, what announceChanges last saw of each terminal
 // that this window speaks for: whether its command had finished, why it
-// needed the user, and what its agent reported (agentHeard).
+// needed the user, and what its agent reported (agentHeard), with its
+// words.
 const heard = new Map();
 
-// spoke holds, by item ID, when what a terminal's agent reported was last
-// announced, so that a bell that comes with the report isn't announced
-// too (agentSpoke).
+// spoke holds, by item ID, when announceChanges last took up a report of
+// a terminal's agent, to announce now or later (tell), so that a bell that
+// comes with the report isn't announced too (agentSpoke).
 const spoke = new Map();
 
 // AGENT_ECHO is how long, in milliseconds, after an agent's report a bell
-// is part of the same event, as in Go (agentEcho in agent.go).
+// or a notification is part of the same event, as in Go (agentEcho in
+// agent.go). Go gives a report without words the notification's words,
+// and the View with them can come up to ECHO_LATE after AGENT_ECHO, as Go
+// sends a View once a frame at most.
 const AGENT_ECHO = 2000;
+const ECHO_LATE = 100;
+
+// told holds, by item ID, when the line of each terminal's agent was last
+// announced, and the timer that waits to announce a newer one (tell), so
+// that a program that reports over and over is announced once each
+// AGENT_GAP milliseconds at most. What's announced has at most SAID_WORDS
+// characters of the agent's words.
+const told = new Map();
+const AGENT_GAP = 1000;
+const SAID_WORDS = 200;
 
 // said holds, by item ID, what was last announced for each terminal, and
 // when, so that a program that rings the bell over and over is announced
-// once each SAY_GAP milliseconds, as Go posts its notifications.
+// once each SAY_GAP milliseconds, as Go posts its notifications. Each
+// report of an agent is a new event, so SAY_GAP doesn't apply to it.
 const said = new Map();
 const SAY_GAP = 5000;
 
@@ -525,17 +544,19 @@ function rang(s) {
 }
 
 // agentHeard returns what announceChanges says about the agent in a
-// terminal, if it needs you, has finished, or stopped with an error, with
-// its state, so that the same words in another state are new; or ''. An
-// agent that works isn't announced.
+// terminal, if it needs you, has finished, or stopped with an error: its
+// state, and what it needs, so that the same words in another state are
+// new; or ''. An agent that works isn't announced. The words are heard
+// on their own (agentWords), so that words that come alone can be told
+// from a new report.
 function agentHeard(it) {
   const state = agentOf(it);
-  return state && state !== 'working' ? state + '\n' + agentLine(it) : '';
+  return state && state !== 'working' ? state + '\n' + (it.agentKind || '') : '';
 }
 
-// agentSpoke reports whether the agent in terminal id needs you, or what
-// it reported was announced within AGENT_ECHO, for a bell, which then
-// isn't announced: it is part of the same event.
+// agentSpoke reports whether the agent in terminal id needs you, or
+// reported within AGENT_ECHO, for a bell, which then isn't announced: it
+// is part of the same event.
 function agentSpoke(id, it) {
   const at = spoke.get(id);
   return agentOf(it) === 'waiting' || (at !== undefined && Date.now() - at < AGENT_ECHO);
@@ -557,6 +578,44 @@ function say(id, text) {
   announce(text);
 }
 
+// tell announces the line of the agent in terminal id, which is it in
+// view. Within AGENT_GAP of the last line, it waits until AGENT_GAP has
+// passed, with one timer. It then announces the line that the agent has
+// at that time, if it still has one, while VoiceOver is on and this
+// window speaks for the terminal (heard). So the latest words are said,
+// and words that have gone aren't.
+function tell(id, view, it) {
+  const last = told.get(id);
+  const wait = last ? last.at + AGENT_GAP - Date.now() : 0;
+  if (wait <= 0) {
+    if (last) clearTimeout(last.timer);
+    sayAgent(id, view, it);
+    return;
+  }
+  if (last.timer) return;
+  last.timer = setTimeout(() => {
+    last.timer = 0;
+    const now = latestView && itemOf(latestView, id);
+    if (settings.reader && now && heard.has(id) && agentHeard(now)) sayAgent(id, latestView, now);
+  }, wait);
+}
+
+// sayAgent announces the line of the agent in terminal id, which is it in
+// view, with at most SAID_WORDS characters of its words, then "…": a
+// program chooses them, and VoiceOver reads every one. The words are the
+// agent's own: sentence only ends what's said.
+function sayAgent(id, view, it) {
+  const words = Array.from(agentWords(it));
+  const line = words.length > SAID_WORDS
+    ? agentLine({ ...it, agentText: words.slice(0, SAID_WORDS).join('').trimEnd() + '…' })
+    : agentLine(it);
+  const text = sentence(spokenName(view, it) + ': ' + lowerFirst(line));
+  const at = Date.now();
+  told.set(id, { at, timer: 0 });
+  said.set(id, { text, at });
+  announce(text);
+}
+
 // spokenName names a terminal in what's announced: the title on its
 // sub-tab, then the tab it's in, if that isn't the one shown.
 function spokenName(view, it) {
@@ -568,13 +627,16 @@ function spokenName(view, it) {
 // announceChanges announces, while VoiceOver is on, the terminals of view
 // whose agents need you, have finished, or stopped with an error since the
 // last View, with the agent's words (agentLine), as "zsh: needs your
-// permission: approve Bash: npm test."; those whose commands have finished,
-// saying whether with an error (the item's failed, which Go sends whether
-// or not the user can see the terminal); and those that Go has marked for
-// ringing the bell, unless the bell came with an agent's report. It does
-// so for the terminals that this window speaks for (mine): the main window
-// for those in tabs, and a terminal's own window for its terminal. What a
-// terminal does while VoiceOver is off isn't announced later.
+// permission: approve Bash: npm test." (tell); those whose commands have
+// finished, saying whether with an error (the item's failed, which Go
+// sends whether or not the user can see the terminal); and those that Go
+// has marked for ringing the bell, unless the bell came with an agent's
+// report. Words that come alone, within AGENT_ECHO and ECHO_LATE of a
+// report that had none, are Go's from a notification. As in Go, they are
+// part of that report, which isn't announced again. It does so for the
+// terminals that this window speaks for (mine): the main window for those
+// in tabs, and a terminal's own window for its terminal. What a terminal
+// does while VoiceOver is off isn't announced later.
 function announceChanges(view, mine) {
   const items = (view && view.items) || {};
   for (const id of heard.keys()) {
@@ -582,18 +644,22 @@ function announceChanges(view, mine) {
       heard.delete(id);
       said.delete(id);
       spoke.delete(id);
+      if (told.has(id)) clearTimeout(told.get(id).timer);
+      told.delete(id);
     }
   }
   for (const [id, it] of Object.entries(items)) {
     if (it.kind !== 'builtin' || !mine(id)) continue;
     const was = heard.get(id);
-    const now = { ended: Boolean(it.ended), attention: it.attention || '', agent: agentHeard(it) };
+    const now = { ended: Boolean(it.ended), attention: it.attention || '', agent: agentHeard(it), words: agentWords(it) };
     heard.set(id, now);
     if (!was || !settings.reader) continue;
-    if (now.agent && now.agent !== was.agent) {
-      // The words are the agent's own: sentence only ends what's said.
+    if (now.agent && (now.agent !== was.agent || now.words !== was.words)) {
+      const at = spoke.get(id);
+      const echo = now.agent === was.agent && !was.words && at !== undefined && Date.now() - at < AGENT_ECHO + ECHO_LATE;
+      if (echo) continue;
       spoke.set(id, Date.now());
-      say(id, sentence(spokenName(view, it) + ': ' + lowerFirst(agentLine(it))));
+      tell(id, view, it);
     } else if (now.ended && !was.ended) {
       say(id, spokenName(view, it) + ': ' + (it.failed ? 'its command ended with an error.' : 'its command has finished.'));
     } else if (now.attention === BELL && was.attention !== BELL && !agentSpoke(id, it)) {
@@ -854,7 +920,7 @@ function open(s) {
   s.opened = true;
   let snap = new Uint8Array(0);
   let end = 0;
-  call('TermAttach', s.id, viewKey)
+  viewCall(s.id, 'TermAttach')
     .then((r) => {
       snap = decode(r && r.data);
       end = Number(r && r.offset) || 0;
@@ -1048,7 +1114,7 @@ export function prune(view, keep = (id) => inTab(view, id)) {
     s.ro.disconnect();
     // Go answers the program's questions for the terminal's attributes
     // once no window draws it.
-    if (s.opened) call('TermDetach', id, viewKey).catch(() => {});
+    if (s.opened) viewCall(id, 'TermDetach').catch(() => {});
     s.term.dispose();
     s.host.remove();
     sessions.delete(id);
@@ -1078,8 +1144,28 @@ export function setViewKey(key) {
 // first. The snapshots that come back aren't needed.
 export function attachAgain() {
   for (const s of sessions.values()) {
-    if (s.opened) call('TermAttach', s.id, viewKey).catch(() => {});
+    if (s.opened) viewCall(s.id, 'TermAttach').catch(() => {});
   }
+}
+
+// viewCall calls method, TermAttach or TermDetach, for terminal id with
+// this window's viewKey, and returns Go's answer. It waits until Go has
+// answered the last of these calls for the terminal, so that Go gets them
+// in the order that this window sends them. Wails runs each call on its
+// own, and Go's TermAttach waits for the engine's lock, but TermDetach
+// doesn't. A TermDetach that overtook the TermAttach before it would
+// leave Go with a view that doesn't draw the terminal, so nothing would
+// answer DA1. A TermAttach that overtook the TermDetach before it would
+// be undone, so DA1 would get two answers. The wait is by ID, not by
+// session, as a terminal that comes back into a tab has a new session.
+function viewCall(id, method) {
+  const key = viewKey;
+  const done = (viewCalls.get(id) || Promise.resolve()).catch(() => {}).then(() => call(method, id, key));
+  viewCalls.set(id, done);
+  done.catch(() => {}).finally(() => {
+    if (viewCalls.get(id) === done) viewCalls.delete(id);
+  });
+  return done;
 }
 
 // count returns how many terminals exist, for tests.
