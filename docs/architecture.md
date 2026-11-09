@@ -6212,10 +6212,14 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       few dozen commands. If no reporter was recorded, it reports the end
       once a program other than the shell has had the terminal, and the
       shell has it back. `deliver` hints it while a live state is held, so
-      that it looks soon. A live report read while the session's shell, or
-      `starter`, has the terminal, after the program has had it, may be that
-      program's own output, read after it has gone. Such a report keeps what
-      was known (`noteStatus`), and the end follows. A report from a new
+      that it looks soon. A live report read while the program's own child
+      has the terminal (`startedIn`), such as the shell of vim's `:sh`, is
+      the program's, as the program still runs: what's known about it
+      stays, and its status stays once it has the terminal back. A live
+      report read while the session's shell, or `starter`, has the terminal,
+      after the program has had it, may be that program's own output, read
+      after it has gone. Such a report keeps what was known (`noteStatus`),
+      and the end follows. A report from a new
       group replaces what was known, so a program that a shell starts as
       soon as another has gone, as in `a; b`, keeps its own status. Bench
       doesn't keep the old program on the grounds that its group has gone:
@@ -6237,7 +6241,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       inner shell's own, so its end comes only as `sh -i` ends. The same
       holds when two inner shells are nested, and the inner one exits before
       the late read. Bench doesn't look for another process in the group. A
-      session that runs a `command` ends with `Exit` instead. Both agents
+      program's first report, if it's read only after the program's child
+      has taken the terminal, counts as the child's, so its end comes as the
+      child gives the terminal back. A session that runs a `command` ends
+      with `Exit` instead. Both agents
       send `clear` as they quit, so this is for a crash, `kill -9`, or
       Claude Code's Control-Z, which sends none.
     - **The engine.** `Item.agent` (`agent.go`) holds the state, the kind,
@@ -6430,7 +6437,16 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       most 200 characters, then "…" (`sayAgent`); the marks and tooltips
       keep all the words. For a terminal in `View.GoneTerminals` that the
       window spoke for, its latest event is said at once, if its count is
-      new or its line still waits, as no later View has it. `announce` keeps
+      new or its line still waits, as no later View has it, and while
+      `agent_status` is on. Go empties the list as the setting goes off. A
+      View that the main window doesn't draw yet, as while the pointer is
+      held down, a tab is dragged, or text is composed, is still heard
+      (`terminals.hear`): otherwise a later View could take its place first,
+      and a terminal that has gone in it would never be said. A popped-out
+      or drop-down shell's own window closes with its item, and the main
+      window doesn't speak for it, so such a shell that ends in the same
+      batch as its agent's event isn't announced. Its notification is still
+      posted. `announce` keeps
       only the newest 5 texts that wait for the toast. An agent at work
       isn't announced. xterm.js's own bell waits 400 ms (`BELL_HOLD`). A
       bell, that one or Go's mark for it, isn't announced while the agent
@@ -6484,7 +6500,9 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       after a second report read late, and with two programs as in `a; b`, a
       program's status kept while its own interactive shell, and the
       programs that shell runs, have the terminal, also as each of them
-      ends, and a command's end with `Exit`, on real pseudo-terminals too;
+      ends, and a report that the program sends while its shell has the
+      terminal, and a command's end with `Exit`, on real pseudo-terminals
+      too;
       `restore_test.go` that restored output can't raise a status or get an
       answer; `echo_test.go` the `agent` command; `engine_agent_test.go` one
       alert with the words, words from the notification, `agent_words` off,
@@ -6496,7 +6514,8 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       words, and after a notification only with them, a command or a shell
       that ends in the same batch as its agent's done or error report and in
       the next, with the View after a shell's end listing it with its event
-      (`GoneTerminals`), and the View after that not, the count of events
+      (`GoneTerminals`), and the View after that not, nor one after agent
+      status goes off before the View is sent, the count of events
       and the event's line (blocked, done, and error, in view and out of
       sight; not the same report again, also in view, nor words from a
       notification, nor a bell; Codex's done, notification, and working in
@@ -6509,8 +6528,10 @@ Decisions 11 to 14 and 19 come from running Bench on a real Mac, in the
       paragraph separators, VoiceOver once for each event that Go counts,
       with done then working in one View and its bell, a done that the user
       sees, a command's end just after its agent's done, a shell that ends
-      in the View with its agent's event and in the one after, a line that
-      waits as the shell ends, nothing for events from before the first View
+      in the View with its agent's event and in the one after, also while
+      the pointer is held down and a later View comes first, a line that
+      waits as the shell ends, nothing for a gone terminal while agent
+      status is off, nothing for events from before the first View
       or as agent status comes back on, a second report with the same line,
       words that come just after their report, once a second at most with
       the latest line, and the line cut at 200 characters, on one line,
