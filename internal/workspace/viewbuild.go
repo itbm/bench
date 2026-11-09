@@ -214,6 +214,9 @@ func (e *Engine) itemViewLocked(it *Item, tab int, pane string) ItemView {
 		if iv.Agent = e.agentShownLocked(it); iv.Agent != "" {
 			iv.AgentKind, iv.AgentText = it.agent.kind, it.agent.words
 		}
+		if e.cfg.Settings.AgentStatus {
+			iv.AgentEvent, iv.AgentEventLine = it.agentEvent, it.agentEventLine
+		}
 	case it.VSCode != "":
 		iv.Folder = it.VSCode
 	case it.Kind == KindWeb:

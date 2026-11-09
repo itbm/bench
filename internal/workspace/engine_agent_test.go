@@ -84,26 +84,38 @@ func TestAgentEventIsOneAlertWithItsWords(t *testing.T) {
 }
 
 func TestAgentAfterAnAlertIsStillNotified(t *testing.T) {
+	bell := term.Alert{Bell: true}
+	wordsOff := strings.Replace(exampleConfig(t), "agent_words = true", "agent_words = false", 1)
 	for _, tt := range []struct {
-		name  string
-		alert term.Alert
-		body  string
+		name   string
+		config string
+		alert  term.Alert
+		body   string
+		report term.Status
+		line   string
+		mark   string
 	}{
-		{"bell", term.Alert{Bell: true}, "Rang the bell."},
-		{"notification", term.Alert{Title: "Claude Code", Body: "Claude needs your permission"}, "Claude Code: Claude needs your permission"},
+		{"bell", "", bell, "Rang the bell.", agentSays(term.StateBlocked, term.KindPermission, approve),
+			"Needs your permission: " + approve, "Needs your permission: " + approve},
+		{"notification", "", term.Alert{Title: "Claude Code", Body: "Claude needs your permission"}, "Claude Code: Claude needs your permission",
+			agentSays(term.StateBlocked, term.KindPermission, approve), "Needs your permission: " + approve, "Needs your permission: " + approve},
+		// A bell says less than the agent's line, even without its words.
+		{"bell, then blocked without words", "", bell, "Rang the bell.", agentSays(term.StateBlocked, "", ""), agentNeedsText, agentNeedsText},
+		{"bell, agent_words off", wordsOff, bell, "Rang the bell.", agentSays(term.StateBlocked, term.KindPermission, approve),
+			agentPermissionText, "Needs your permission: " + approve},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			h := agentHarness(t, setup{})
+			h := agentHarness(t, setup{config: tt.config})
 			// The agent rings the bell, or asks for a notification, just
 			// before it reports, so that the alert is in the batch before.
-			// The alert has posted already, but the agent's words follow.
+			// The alert has posted already, but the agent's line follows.
 			h.alert("w5", tt.alert)
-			h.report("w5", agentSays(term.StateBlocked, term.KindPermission, approve))
+			h.report("w5", tt.report)
 			n := h.p.Notifications()
-			if len(n) != 2 || n[0].Body != tt.body || n[1].Body != "Needs your permission: "+approve {
+			if len(n) != 2 || n[0].Body != tt.body || n[1].Body != tt.line {
 				t.Fatalf("notifications: %+v", n)
 			}
-			if got := h.item("w5").Attention; got != "Needs your permission: "+approve {
+			if got := h.item("w5").Attention; got != tt.mark {
 				t.Errorf("attention: %q", got)
 			}
 			// That's once: notifyGap holds the next one back.
@@ -127,9 +139,10 @@ func TestAgentAfterAnAlertIsStillNotified(t *testing.T) {
 		t.Errorf("attention: %q", got)
 	}
 
-	// An agent's notification without its words would say less than the
-	// alert, so notifyGap holds it back: for an agent that sends no words,
-	// such as Codex, and while the agent_words setting is off.
+	// After a notification, an agent's notification without its words
+	// would say less than the notification did, so notifyGap holds it
+	// back: for an agent that sends no words, such as Codex, and while the
+	// agent_words setting is off.
 	for _, tt := range []struct {
 		name   string
 		config string
@@ -139,7 +152,7 @@ func TestAgentAfterAnAlertIsStillNotified(t *testing.T) {
 	}{
 		{"no words", exampleConfig(t), term.Alert{Title: "Codex", Body: "Codex wants to run npm test"},
 			agentSays(term.StateBlocked, "", ""), agentNeedsText},
-		{"agent_words off", strings.Replace(exampleConfig(t), "agent_words = true", "agent_words = false", 1),
+		{"agent_words off", wordsOff,
 			term.Alert{Title: "Claude Code", Body: "Claude needs your permission"},
 			agentSays(term.StateBlocked, term.KindPermission, approve), "Needs your permission: " + approve},
 	} {
@@ -456,6 +469,11 @@ func TestAgentThatCarriesOnAtOnceIsNotified(t *testing.T) {
 				if it := h.item("w5"); it.Agent != tt.agent || it.Attention != tt.why || h.p.Badge() != 1 {
 					t.Errorf("agent %q, attention %q, badge %d", it.Agent, it.Attention, h.p.Badge())
 				}
+				// The View keeps the event for VoiceOver, with the same
+				// line.
+				if it := h.item("w5"); it.AgentEvent != 1 || it.AgentEventLine != tt.why {
+					t.Errorf("event %d, line %q", it.AgentEvent, it.AgentEventLine)
+				}
 			})
 		}
 	}
@@ -467,6 +485,74 @@ func TestAgentThatCarriesOnAtOnceIsNotified(t *testing.T) {
 	h.report("w5", agentSays(term.StateWorking, "", ""))
 	if it := h.item("w5"); it.Agent != agentWorking || it.Attention != "" || len(h.p.Notifications()) != 0 {
 		t.Errorf("agent %q, attention %q, notifications %+v", it.Agent, it.Attention, h.p.Notifications())
+	}
+}
+
+func TestAgentEventsAreCounted(t *testing.T) {
+	permission := "Needs your permission: " + approve
+	for _, seen := range []bool{false, true} {
+		name := "out of sight"
+		if seen {
+			name = "in view"
+		}
+		t.Run(name, func(t *testing.T) {
+			h := agentHarness(t, setup{})
+			if seen {
+				mustOK(t, h.e.SwitchTab(1))
+				h.settle()
+			}
+			// event checks the View's count of events and the latest
+			// one's line, after one more event if raised.
+			n := 0
+			event := func(what string, raised bool, line string) {
+				t.Helper()
+				if raised {
+					n++
+				}
+				if it := h.item("w5"); it.AgentEvent != n || it.AgentEventLine != line {
+					t.Errorf("%s: event %d, line %q; want %d, %q", what, it.AgentEvent, it.AgentEventLine, n, line)
+				}
+			}
+			event("at first", false, "")
+			h.report("w5", agentSays(term.StateBlocked, term.KindPermission, approve))
+			event("blocked", true, permission)
+			h.report("w5", agentSays(term.StateBlocked, term.KindPermission, approve))
+			event("the same report again", false, permission)
+			// Work is no event, and the last one's line stays.
+			h.report("w5", agentSays(term.StateWorking, "", "Running the tests"))
+			event("working", false, permission)
+			// A finished agent that the user sees is forgotten at once,
+			// but its event counts.
+			h.report("w5", agentSays(term.StateDone, "", "Tests passed"))
+			event("done", true, "Finished: Tests passed")
+			h.report("w5", agentSays(term.StateError, "", "rsync failed"))
+			event("error", true, "Stopped with an error: rsync failed")
+			if !seen {
+				h.report("w5", agentSays(term.StateError, "", "rsync failed"))
+				event("the same error again", false, "Stopped with an error: rsync failed")
+			}
+			// Words that come from a notification just after a report
+			// without words, in the next batch, are no new event, but the
+			// line has them.
+			h.report("w5", agentSays(term.StateBlocked, term.KindPermission, ""))
+			event("blocked without words", true, agentPermissionText)
+			h.alert("w5", term.Alert{Title: "Codex", Body: "Approval requested: npm test"})
+			event("its notification", false, "Needs your permission: Approval requested: npm test")
+			// A bell later is no event either, nor is clearing the report.
+			h.alert("w5", term.Alert{Bell: true})
+			event("a bell", false, "Needs your permission: Approval requested: npm test")
+			h.report("w5", agentSays(term.StateClear, "", ""))
+			event("clear", false, "Needs your permission: Approval requested: npm test")
+
+			// With agent status off, the View has neither, and turning it
+			// on again gives the same count, which never goes back.
+			h.saveSetting(func(s *SettingsView) { s.AgentStatus = false })
+			if it := h.item("w5"); it.AgentEvent != 0 || it.AgentEventLine != "" {
+				t.Errorf("agent status off: event %d, line %q", it.AgentEvent, it.AgentEventLine)
+			}
+			h.saveSetting(func(s *SettingsView) { s.AgentStatus = true })
+			event("agent status on again", false, "Needs your permission: Approval requested: npm test")
+		})
 	}
 }
 
@@ -581,6 +667,44 @@ func TestAgentInACommandIsNotifiedAsItEnds(t *testing.T) {
 				}
 				if it := h.item(id); it.Agent != tt.agent || it.AgentText != "Tests passed" || !it.Ended || it.Attention != tt.mark {
 					t.Errorf("agent %q, text %q, ended %v, attention %q", it.Agent, it.AgentText, it.Ended, it.Attention)
+				}
+			})
+		}
+	}
+}
+
+func TestAgentInAShellIsNotifiedAsItEnds(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		first, then term.Status
+		why         string
+	}{
+		{"done", agentSays(term.StateDone, "", "Tests passed"), term.Status{}, "Finished: Tests passed"},
+		{"error", agentSays(term.StateError, "", "rsync failed"), term.Status{}, "Stopped with an error: rsync failed"},
+		{"done, then working", agentSays(term.StateDone, "", "Tests passed"), agentSays(term.StateWorking, "", ""), "Finished: Tests passed"},
+	} {
+		for _, batch := range []string{"same batch", "separate batches"} {
+			t.Run(tt.name+", "+batch, func(t *testing.T) {
+				h := agentHarness(t, setup{})
+				// A shell with no command ends just after its agent's
+				// report, as with "codex exec …; exit", which Bench then
+				// removes with its item.
+				h.terms.cb.Status("w5", tt.first)
+				if tt.then.State != "" {
+					h.terms.cb.Status("w5", tt.then)
+				}
+				if batch == "separate batches" {
+					h.advance(2 * frame)
+				}
+				h.terms.end("w5")
+				h.terms.cb.Exit("w5", nil)
+				h.advance(2 * frame)
+				want := platform.Notification{ItemID: "w5", Title: "zsh — ~/code", Subtitle: "Code", Body: tt.why}
+				if n := h.p.Notifications(); len(n) != 1 || n[0] != want {
+					t.Errorf("notifications: %+v", n)
+				}
+				if _, ok := h.view().Items["w5"]; ok {
+					t.Error("the item should be gone")
 				}
 			})
 		}

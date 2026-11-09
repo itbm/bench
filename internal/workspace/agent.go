@@ -23,7 +23,8 @@ import (
 // event gets one mark and one notification, with the agent's words. An
 // alert just before the report, in an earlier batch, has posted its own
 // notification already. The agent's notification then follows it, once,
-// if it has the agent's words (see postAgentNoteLocked).
+// after a bell, or after a notification if it has the agent's words (see
+// postAgentNoteLocked).
 const agentEcho = 2 * time.Second
 
 // What an agent's state means to the user, for its mark and its
@@ -65,7 +66,7 @@ type agentStatus struct {
 	marked bool
 	// notify is set while the agent's notification waits to be posted, at
 	// the end of the batch of terminal events, or before then if its
-	// command ends (see postAgentNoteLocked).
+	// session ends (see postAgentNoteLocked).
 	notify bool
 }
 
@@ -153,13 +154,15 @@ func (e *Engine) agentReportLocked(it *Item, s term.Status) {
 
 // agentNeedsLocked applies an agent's report that it needs the user, has
 // finished, or stopped with an error. The same report again is the same
-// event, which changes nothing more. While the user can see the terminal,
-// nothing is marked or posted: an agent that needs them shows as waiting,
-// and one that finished or stopped shows nothing, as they saw it happen.
-// Otherwise the terminal is marked, with the agent's words, and its
-// notification waits for the end of the batch of terminal events, for a
-// notification that the agent may have asked for with the report, whose
-// text becomes the words if the agent had none (see agentEchoLocked).
+// event, which changes nothing more. A new one raises the item's count of
+// events, with its line, seen or not, for VoiceOver (ItemView.AgentEvent).
+// While the user can see the terminal, nothing is marked or posted: an
+// agent that needs them shows as waiting, and one that finished or
+// stopped shows nothing, as they saw it happen. Otherwise the terminal is
+// marked, with the agent's words, and its notification waits for the end
+// of the batch of terminal events, for a notification that the agent may
+// have asked for with the report, whose text becomes the words if the
+// agent had none (see agentEchoLocked).
 func (e *Engine) agentNeedsLocked(it *Item, s term.Status) {
 	now := e.clk.Now()
 	kind := ""
@@ -175,8 +178,10 @@ func (e *Engine) agentNeedsLocked(it *Item, s term.Status) {
 	it.agentNote = agentStatus{}
 	e.unmarkWaitingLocked(it)
 	it.agent = agentStatus{state: s.State, kind: kind, msg: s.Msg, words: s.Msg, at: now, marked: it.agent.marked}
-	e.touch()
 	why := agentLine(s.State, kind, s.Msg, true)
+	it.agentEvent++
+	it.agentEventLine = why
+	e.touch()
 	if unseen, _ := e.markLocked(it, why); !unseen {
 		if s.State != term.StateBlocked {
 			it.agent = agentStatus{}
@@ -197,9 +202,10 @@ func (e *Engine) agentNeedsLocked(it *Item, s term.Status) {
 // carried on or quit in the same batch, while its notification waits
 // (Item.agentNote), as the alert came with that report. If the agent had
 // no words, a notification's text becomes them, on the mark while it has
-// the agent's line, and in the agent's notification if that's still to be
-// posted. Its body is what the agent says; its title is only the name it
-// gives itself.
+// the agent's line, in the agent's notification if that's still to be
+// posted, and in the line of the event, which is that report's, without a
+// new event. Its body is what the agent says; its title is only the name
+// it gives itself.
 func (e *Engine) agentEchoLocked(it *Item, a term.Alert) bool {
 	ag, marked := &it.agent, it.agent.marked
 	if n := &it.agentNote; n.notify {
@@ -215,9 +221,11 @@ func (e *Engine) agentEchoLocked(it *Item, a term.Alert) bool {
 	}
 	if ag.words == "" && !a.Bell && a.Body != "" {
 		ag.words = a.Body
+		line := agentLine(ag.state, ag.kind, ag.words, true)
 		if marked {
-			it.attention = agentLine(ag.state, ag.kind, ag.words, true)
+			it.attention = line
 		}
+		it.agentEventLine = line
 		e.touch()
 	}
 	return true
@@ -240,9 +248,11 @@ func (e *Engine) postAgentNotesLocked() {
 // the agent_words setting is on. If the agent finished or stopped, and
 // then carried on or quit in the same batch, it's the notification of that
 // report (Item.agentNote). A bell or a notification that Bench posted for
-// the terminal less than agentEcho before doesn't have the agent's words,
-// so the agent's notification still goes if it has them, although
-// notifyGap hasn't passed. Without them, it would say less than the alert
+// the terminal less than agentEcho before says less than the agent's
+// notification: a bell says only that, and a notification doesn't have
+// the agent's words. So the agent's notification still goes, although
+// notifyGap hasn't passed, after a bell, and after a notification if it
+// has the words. Without them, it would say less than the notification
 // did. That happens once: a program still gets at most two notifications
 // within notifyGap.
 func (e *Engine) postAgentNoteLocked(it *Item) {
@@ -256,7 +266,7 @@ func (e *Engine) postAgentNoteLocked(it *Item) {
 		return
 	}
 	withWords := e.cfg.Settings.AgentWords && a.words != ""
-	if withWords && !it.alertNoted.IsZero() && e.clk.Now().Sub(it.alertNoted) < agentEcho {
+	if (withWords || it.alertBell) && !it.alertNoted.IsZero() && e.clk.Now().Sub(it.alertNoted) < agentEcho {
 		it.notified = time.Time{}
 	}
 	e.notifyTerminalLocked(it, agentLine(a.state, a.kind, a.words, withWords))
@@ -267,7 +277,7 @@ func (e *Engine) postAgentNoteLocked(it *Item) {
 // forgets the agent or its next report takes its place, as when it
 // carries on or quits at once (Item.agentNote). The mark of such an agent
 // stays, so its notification goes too, at the end of the batch of terminal
-// events, or as its command ends, with the words of a notification that
+// events, or as its session ends, with the words of a notification that
 // the agent asked for with its report (see agentEchoLocked). A waiting
 // agent's notification is dropped, as its mark is (see
 // unmarkWaitingLocked).

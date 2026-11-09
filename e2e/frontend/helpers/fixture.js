@@ -582,13 +582,17 @@ function buildView(world) {
   const unreadOn = world.settings.unreadCounts !== false;
   if (!unreadOn) for (const it of Object.values(items)) delete it.unread;
   // So is what a terminal's agent reports (agent, agentKind, and
-  // agentText), while the agent_status setting is on.
+  // agentText), with the count of its events and the latest one's line
+  // (agentEvent and agentEventLine, see FakeGo's agentEvent), while the
+  // agent_status setting is on.
   const agentsOn = world.settings.agentStatus !== false;
   if (!agentsOn) {
     for (const it of Object.values(items)) {
       delete it.agent;
       delete it.agentKind;
       delete it.agentText;
+      delete it.agentEvent;
+      delete it.agentEventLine;
     }
   }
   const agentIs = (id, state) => agentsOn && world.items[id].agent === state;

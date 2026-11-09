@@ -110,8 +110,8 @@ func (e *Engine) queueTerm(add func(q *termQueue)) {
 // engine's lock, which an arrange can hold for a while. Agents' reports go
 // first, so that a bell or notification sent with one, which can be in
 // the same batch whatever the order of the bytes, is part of it (see
-// agentEchoLocked), and their notifications are posted last, unless a
-// command ends before then (see postAgentNoteLocked).
+// agentEchoLocked), and their notifications are posted last, unless the
+// session ends before then (see postAgentNoteLocked).
 func (e *Engine) flushTerms() {
 	q := &e.tq
 	q.sendMu.Lock()
@@ -182,13 +182,14 @@ func (e *Engine) applyTermEventLocked(ev termEvent) {
 	}
 	if ev.exit {
 		e.agentEndedLocked(it)
+		// The notification of an agent that finished or stopped as the
+		// session ended goes now, as it would in an earlier batch: a
+		// shell's item is removed below, and a command's notification
+		// says less than the agent's, so it goes after it. notifyGap then
+		// holds the command's notification back.
+		e.postAgentNoteLocked(it)
 		if it.Command != "" {
 			it.ended, it.failed = true, ev.failed
-			// The notification of an agent that finished or stopped as
-			// the command ended says more than the command's own, so it
-			// goes first, as it would in an earlier batch. notifyGap then
-			// holds the command's notification back.
-			e.postAgentNoteLocked(it)
 			e.commandEndedLocked(it, ev.failed)
 			e.touch()
 			return

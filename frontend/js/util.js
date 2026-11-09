@@ -162,7 +162,21 @@ const LINE_BREAKS = /[\u2028\u2029]/g;
 // characters, or ''. They are the agent's own words, so they are never
 // changed in other ways, such as by sentence.
 export function agentWords(item) {
-  return String((item && item.agentText) || '').replace(LINE_BREAKS, ' ').replace(UNSAFE, '').trim();
+  return oneLine(item && item.agentText);
+}
+
+// agentEventLine returns the line of the latest event of the agent in an
+// item's terminal (ItemView's agentEventLine), as Go's mark says it, with
+// the agent's words, such as "Finished: Tests passed", on one line and
+// without UNSAFE characters, as agentWords has the words; or ''.
+export function agentEventLine(item) {
+  return oneLine(item && item.agentEventLine);
+}
+
+// oneLine returns text that a program chose on one line, as LINE_BREAKS
+// become spaces, without UNSAFE characters.
+function oneLine(text) {
+  return String(text || '').replace(LINE_BREAKS, ' ').replace(UNSAFE, '').trim();
 }
 
 // agentLine says the state of the agent in an item's terminal and its

@@ -1738,6 +1738,17 @@ class FakeGo {
     await this.emit('term:data', { id: itemId, data: bytes.toString('base64'), offset: before.length });
   }
 
+  // agentEvent changes a terminal's item as Go does for a new report from
+  // its agent that it needs the user, has finished, or stopped with an
+  // error: fields, such as agent, agentText, and attention, change the
+  // item, and the count of its agent's events (agentEvent) goes up by one,
+  // with line as the event's line (agentEventLine), as its mark says it.
+  // It doesn't send the View.
+  agentEvent(itemId, line, fields = {}) {
+    const it = this.world.items[itemId];
+    Object.assign(it, fields, { agentEvent: (it.agentEvent || 0) + 1, agentEventLine: line });
+  }
+
   mTermSnapshot(itemId) {
     const bytes = this.termBytes(itemId);
     const data = bytes.subarray(this.termCleared.get(itemId) || 0);

@@ -116,8 +116,9 @@ func (e *Engine) clearSeenLocked() bool {
 // bell only when it marks the terminal, not again while it's marked. An
 // alert that's part of what the terminal's agent reported changes nothing
 // more (see agentEchoLocked), and nor does a bell while the mark has the
-// agent's words, which stay. If the alert posts, it records when, so that
-// the agent's notification can still follow (see postAgentNoteLocked).
+// agent's words, which stay. If the alert posts, it records when, and
+// whether it was a bell, so that the agent's notification can still
+// follow (see postAgentNoteLocked).
 func (e *Engine) terminalAlertLocked(it *Item, a term.Alert) {
 	if e.agentEchoLocked(it, a) || (a.Bell && it.agent.marked && it.attention != "") {
 		return
@@ -136,7 +137,7 @@ func (e *Engine) terminalAlertLocked(it *Item, a term.Alert) {
 		posted = e.notifyTerminalLocked(it, noteText(a.Title, a.Body))
 	}
 	if posted {
-		it.alertNoted = it.notified
+		it.alertNoted, it.alertBell = it.notified, a.Bell
 	}
 }
 
@@ -166,7 +167,7 @@ func (e *Engine) notifyTerminalLocked(it *Item, body string) bool {
 		return false
 	}
 	it.notified = now
-	it.alertNoted = time.Time{}
+	it.alertNoted, it.alertBell = time.Time{}, false
 	n := platform.Notification{ItemID: it.ID, Title: e.shownTitleLocked(it), Body: body}
 	if ti, _ := e.model.Where(it.ID); ti >= 0 {
 		n.Subtitle = e.model.Tabs[ti].Name

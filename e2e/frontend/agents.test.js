@@ -6,7 +6,8 @@
 // terminal's sub-tab while its agent works, has finished, or stopped with
 // an error, and the bell with the agent's own words while it needs you;
 // the same marks, rolled up, on its tab and the overview's card; what
-// VoiceOver says; and the views that each window tells Go it draws
+// VoiceOver says for each event that Go counts (ItemView's agentEvent and
+// agentEventLine); and the views that each window tells Go it draws
 // (TermAttach and TermDetach), as Go answers a program's question for the
 // terminal's attributes only while no view draws the terminal.
 
@@ -291,7 +292,7 @@ test('VoiceOver hears an agent that needs you once, in its words, and not the be
   const permission = 'zsh — ~/code/bench: needs your permission: approve Bash: npm test.';
 
   // The report first, and then the bell.
-  Object.assign(fake.world.items.w5, { agent: 'waiting', agentKind: 'permission', agentText: 'approve Bash: npm test' });
+  fake.agentEvent('w5', PERMISSION, { agent: 'waiting', agentKind: 'permission', agentText: 'approve Bash: npm test' });
   await fake.emitState();
   await toastSays(page, permission);
   await ring(page, fake, 'one');
@@ -304,7 +305,7 @@ test('VoiceOver hears an agent that needs you once, in its words, and not the be
   await fake.emitState();
   await settle(page);
   await fake.termOut('w5', 'two\x07');
-  Object.assign(fake.world.items.w5, { agent: 'waiting', agentKind: 'question', agentText: 'Which branch?' });
+  fake.agentEvent('w5', 'Has a question for you: Which branch?', { agent: 'waiting', agentKind: 'question', agentText: 'Which branch?' });
   await fake.emitState();
   const question = 'zsh — ~/code/bench: has a question for you: Which branch?';
   await toastSays(page, question);
@@ -324,13 +325,117 @@ test('VoiceOver hears an agent that needs you once, in its words, and not the be
   await page.click(tab(0));
   await fake.waitForCall('SwitchTab');
   await page.waitForSelector(tab(0) + '[aria-selected="true"]');
-  Object.assign(fake.world.items.w6, { agent: 'done', agentText: 'All 12 tests pass', attention: 'Finished: All 12 tests pass' });
+  fake.agentEvent('w6', 'Finished: All 12 tests pass', { agent: 'done', agentText: 'All 12 tests pass', attention: 'Finished: All 12 tests pass' });
   await fake.emitState();
   await toastSays(page, 'go test — ~/code/bench in Code: finished: All 12 tests pass.');
-  Object.assign(fake.world.items.w6, { agent: 'error', agentText: '', attention: 'Stopped with an error' });
+  fake.agentEvent('w6', 'Stopped with an error', { agent: 'error', agentText: '', attention: 'Stopped with an error' });
   await fake.emitState();
   await toastSays(page, 'go test — ~/code/bench in Code: stopped with an error.');
   assert.equal((await toastTexts(page)).length, 5);
+});
+
+test('VoiceOver hears an agent that finishes and carries on at once, once, and not the bell that comes with it', async (t) => {
+  const world = defaultWorld();
+  world.voiceOver = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
+  await page.click(tab(0));
+  await fake.waitForCall('SwitchTab');
+  await page.waitForSelector(tab(0) + '[aria-selected="true"]');
+  await recordToast(page);
+  // Claude Code finishes, rings the bell, and starts a prompt that waited,
+  // all in one batch: Go's View has the agent at work, and its event, with
+  // the line that Go marked and posted.
+  await fake.termOut('w5', 'one\x07');
+  fake.agentEvent('w5', 'Finished: Tests passed', { agent: 'working', attention: 'Finished: Tests passed' });
+  await fake.emitState();
+  const finished = 'zsh — ~/code/bench in Code: finished: Tests passed.';
+  await toastSays(page, finished);
+  await toastGone(page);
+  await settle(page, 600);
+  assert.deepEqual(await toastTexts(page), [finished]);
+  // A bell 2 seconds later is announced.
+  await later(page, 2100);
+  await fake.termOut('w5', 'two\x07');
+  await toastSays(page, 'zsh — ~/code/bench in Code: rang the bell.');
+});
+
+test('VoiceOver hears an agent that finishes in view once, as Go forgets it at once', async (t) => {
+  const world = defaultWorld();
+  world.voiceOver = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
+  await recordToast(page);
+  // The user sees the terminal, so Go shows nothing of the agent, but its
+  // event counts.
+  fake.agentEvent('w5', 'Finished: Tests passed');
+  await fake.emitState();
+  const finished = 'zsh — ~/code/bench: finished: Tests passed.';
+  await toastSays(page, finished);
+  await toastGone(page);
+  // Views with the same event say nothing more.
+  await fake.emitState();
+  await fake.emitState();
+  await settle(page, AGENT_GAP + 200);
+  assert.deepEqual(await toastTexts(page), [finished]);
+});
+
+test('VoiceOver hears a command that ends just after its agent finished once, in the agent\'s line', async (t) => {
+  const world = defaultWorld();
+  world.voiceOver = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
+  await recordToast(page);
+  // The agent reports as it ends, so the end of its command is part of
+  // the same event, as Go posts one notification for both.
+  fake.agentEvent('w6', 'Finished: Tests passed', { agent: 'done', agentText: 'Tests passed', attention: 'Finished: Tests passed' });
+  await fake.emitState();
+  const finished = 'go test — ~/code/bench: finished: Tests passed.';
+  await toastSays(page, finished);
+  await toastGone(page);
+  Object.assign(fake.world.items.w6, { ended: true, attention: 'Its command has finished' });
+  await fake.emitState();
+  await settle(page, AGENT_GAP + 200);
+  assert.deepEqual(await toastTexts(page), [finished]);
+
+  // A command that ends 2 seconds after its agent's event is announced.
+  Object.assign(fake.world.items.w6, { ended: false, attention: '' });
+  await fake.emitState();
+  await later(page, 2100);
+  fake.world.items.w6.ended = true;
+  await fake.emitState();
+  await toastSays(page, 'go test — ~/code/bench: its command has finished.');
+});
+
+test('VoiceOver doesn\'t hear an agent\'s events from before the window\'s first View, or again as agent status comes back on', async (t) => {
+  const world = defaultWorld();
+  world.voiceOver = true;
+  Object.assign(world.items.w6, {
+    agent: 'done', agentText: 'Tests passed', attention: 'Finished: Tests passed', agentEvent: 3, agentEventLine: 'Finished: Tests passed',
+  });
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
+  await recordToast(page);
+  await fake.emitState();
+  await settle(page, AGENT_GAP + 200);
+  assert.equal(await page.$('#toast.show'), null);
+  // With agent status off, Go leaves the events out; back on, they're the
+  // same events.
+  fake.world.settings.agentStatus = false;
+  await fake.emitState();
+  await settle(page);
+  fake.world.settings.agentStatus = true;
+  await fake.emitState();
+  await settle(page, AGENT_GAP + 200);
+  assert.deepEqual(await toastTexts(page), []);
+  // The next one is new.
+  fake.agentEvent('w6', 'Stopped with an error', { agent: 'error', agentText: '', attention: 'Stopped with an error' });
+  await fake.emitState();
+  await toastSays(page, 'go test — ~/code/bench: stopped with an error.');
 });
 
 test('VoiceOver hears each new report of an agent, with the line it had a moment ago too, but once a second at most', async (t) => {
@@ -343,14 +448,14 @@ test('VoiceOver hears each new report of an agent, with the line it had a moment
   // Codex sends no words. It needs the user's permission, works, and
   // needs it again for its next command, at once.
   const permission = 'zsh — ~/code/bench: needs your permission.';
-  Object.assign(fake.world.items.w5, { agent: 'waiting', agentKind: 'permission' });
+  fake.agentEvent('w5', 'Needs your permission', { agent: 'waiting', agentKind: 'permission' });
   await fake.emitState();
   await toastSays(page, permission);
   await toastGone(page);
   Object.assign(fake.world.items.w5, { agent: 'working', agentKind: '' });
   await fake.emitState();
   await settle(page);
-  Object.assign(fake.world.items.w5, { agent: 'waiting', agentKind: 'permission' });
+  fake.agentEvent('w5', 'Needs your permission', { agent: 'waiting', agentKind: 'permission' });
   await fake.emitState();
   await page.waitForFunction(() => window.toastTexts.length === 2);
   assert.deepEqual(await toastTexts(page), [permission, permission]);
@@ -366,14 +471,15 @@ test('VoiceOver hears a report once when its words come just after it, from a no
   await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
   await recordToast(page);
   // Codex reports without words, and posts a notification just after it.
-  // Go gives the report the notification's words, in a View of its own.
+  // Go gives the report the notification's words, in a View of its own,
+  // with the same event.
   const permission = 'zsh — ~/code/bench: needs your permission.';
-  Object.assign(fake.world.items.w5, { agent: 'waiting', agentKind: 'permission', agentText: '' });
+  fake.agentEvent('w5', 'Needs your permission', { agent: 'waiting', agentKind: 'permission', agentText: '' });
   await fake.emitState();
   await toastSays(page, permission);
   await toastGone(page);
   await settle(page, 100);
-  fake.world.items.w5.agentText = 'Approval requested: npm test';
+  Object.assign(fake.world.items.w5, { agentText: 'Approval requested: npm test', agentEventLine: 'Needs your permission: Approval requested: npm test' });
   await fake.emitState();
   // The bell has the words, but they aren't announced again.
   await page.waitForFunction((sel) => (document.querySelector(sel) || {}).title === 'Needs your permission: Approval requested: npm test',
@@ -392,12 +498,12 @@ test('VoiceOver hears a program that reports over and over once a second at most
   const said = (n) => 'zsh — ~/code/bench: needs your permission: request ' + n + '.';
   let n = 0;
   const report = () => {
-    Object.assign(fake.world.items.w5, { agent: 'waiting', agentKind: 'permission', agentText: 'request ' + n });
+    fake.agentEvent('w5', 'Needs your permission: request ' + n, { agent: 'waiting', agentKind: 'permission', agentText: 'request ' + n });
     return fake.emitState();
   };
   await report();
   await toastSays(page, said(0));
-  // New words in each View, many within a second, twice over.
+  // A new event in each View, many within a second, twice over.
   for (const last of [20, 40]) {
     await toastGone(page);
     while (n < last) {
@@ -414,19 +520,28 @@ test('VoiceOver hears a program that reports over and over once a second at most
   }
 });
 
-test('VoiceOver hears at most 200 characters of an agent\'s words, and the bell\'s tooltip has them all', async (t) => {
+test('VoiceOver hears at most 200 characters of an agent\'s line, on one line, and the bell\'s tooltip has all its words', async (t) => {
   const world = defaultWorld();
   world.voiceOver = true;
   const { page, fake, close } = await openBench({ world });
   t.after(close);
   await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
-  // A character outside the Basic Multilingual Plane counts as one, and
-  // isn't cut in two.
-  const words = 'x'.repeat(199) + '\u{1F600}' + 'y'.repeat(300);
-  Object.assign(fake.world.items.w5, { agent: 'waiting', agentKind: 'question', agentText: words });
+  // "Has a question for you: " has 24 characters, so the line's 200th is
+  // the emoji. A character outside the Basic Multilingual Plane counts as
+  // one, and isn't cut in two.
+  const words = 'x'.repeat(175) + '\u{1F600}' + 'y'.repeat(300);
+  fake.agentEvent('w5', 'Has a question for you: ' + words, { agent: 'waiting', agentKind: 'question', agentText: words });
   await fake.emitState();
-  await toastSays(page, 'zsh — ~/code/bench: has a question for you: ' + 'x'.repeat(199) + '\u{1F600}…');
+  await toastSays(page, 'zsh — ~/code/bench: has a question for you: ' + 'x'.repeat(175) + '\u{1F600}…');
   assert.equal(await page.getAttribute(sub('w5') + ' .subtab-bell', 'title'), 'Has a question for you: ' + words);
+
+  // A line separator in the line becomes a space, and characters that
+  // turn text round go, as in the words.
+  await toastGone(page);
+  await later(page, AGENT_GAP);
+  fake.agentEvent('w5', 'Has a question for you: Which branch‮?', { agentText: 'Which branch‮?' });
+  await fake.emitState();
+  await toastSays(page, 'zsh — ~/code/bench: has a question for you: Which branch?');
 });
 
 test('a terminal\'s own window announces what its agent reports too', async (t) => {
@@ -436,7 +551,7 @@ test('a terminal\'s own window announces what its agent reports too', async (t) 
   t.after(close);
   await fake.emitState();
   await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
-  Object.assign(fake.world.items.w5, { agent: 'waiting', agentKind: 'auth', agentText: 'GitHub token expired' });
+  fake.agentEvent('w5', 'Needs you to sign in: GitHub token expired', { agent: 'waiting', agentKind: 'auth', agentText: 'GitHub token expired' });
   await fake.emitState();
   await toastSays(page, 'zsh — ~/code/bench: needs you to sign in: GitHub token expired.');
 });

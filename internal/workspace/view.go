@@ -492,6 +492,18 @@ type ItemView struct {
 	Agent     string `json:"agent,omitempty"`
 	AgentKind string `json:"agentKind,omitempty"`
 	AgentText string `json:"agentText,omitempty"`
+	// AgentEvent counts the events of the terminal's agent that call for
+	// the user: each new report that it needs the user, has finished, or
+	// stopped with an error, whether or not the user can see the
+	// terminal. It never goes back, so VoiceOver announces an event when
+	// it changes. AgentEventLine is the latest event's line, as its mark
+	// says it, with the agent's words, such as "Finished: Tests passed":
+	// text to show as it is. Words that Go takes from a notification sent
+	// with the report change the line, but they're no new event. Both
+	// stay after the agent carries on, or Bench forgets it, and both are
+	// left out while the agent_status setting is off.
+	AgentEvent     int    `json:"agentEvent,omitempty"`
+	AgentEventLine string `json:"agentEventLine,omitempty"`
 	// Used orders items by when they were last shown or focused, for the
 	// jump palette to list the most recent first: the higher, the more
 	// recent. It's left out for an item that hasn't been used since Bench
