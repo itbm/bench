@@ -51,7 +51,10 @@ type covering struct {
 // picture-in-picture window, don't count: they're meant to stay over
 // Bench, which covers the whole screen when it fills it. Of the apps it
 // hasn't told the user about, the first it puts away gets a toast
-// (tellCoveredLocked); the others get theirs another time.
+// (tellCoveredLocked); the others get theirs another time. It reads the
+// running apps again first: Bench may have read them last while an app
+// was hidden, and shown the app since, as Keep over Bench does, and a
+// hidden app is passed over.
 func (e *Engine) hideCoveringLocked() {
 	if e.cfg.Settings.CoveringWindows == config.CoveringLeave {
 		return
@@ -60,6 +63,7 @@ func (e *Engine) hideCoveringLocked() {
 	if content.W <= 0 || content.H <= 0 {
 		return
 	}
+	e.loadRunning()
 	keep := map[string]bool{}
 	if browser := e.makingBrowserLocked(); browser != "" {
 		keep[strings.ToLower(browser)] = true
