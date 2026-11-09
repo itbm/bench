@@ -1,16 +1,22 @@
 // Package privacy has no code. Its tests check that Bench connects only
 // where README.md's "Permissions and privacy" says it does. They read
-// Bench's Go, Objective-C, C, and frontend files, whatever their build
-// tags, so the Mac's code is checked on Linux too. They fail for each
-// connection, listener, client, or name lookup that allowed doesn't list,
-// with the file and line. They also fail for an entry in allowed that the
-// code no longer uses, so that the list stays exact.
+// Bench's Go, Objective-C, C, C++, and frontend files, whatever their
+// build tags, so the Mac's code is checked on Linux too. The check is
+// static. It looks for the known ways to connect, listen, or look a name
+// up, which the lists below name. The tests fail for each use of one that
+// allowed doesn't list, with the file and line. They also fail for an
+// entry in allowed that the code no longer uses, so that the list stays
+// exact.
 //
 // The tests read the code. They don't run it. So they can't see what other
 // programs do, such as the user's shell or `code serve-web`, or what modules
 // from outside Bench do, such as Wails' server for the browser preview.
 // They also can't see a client that one file makes and another file uses
-// without the name of its type.
+// without the name of its type. And they can't see a way to connect that
+// the lists don't name, or one in a file of a kind that they don't read.
+// Nor can they see a name that the code spells another way, such as
+// window["fetch"], or an address that the code makes as it runs, such as
+// an image's src that it joins from parts.
 package privacy
 
 import (
@@ -103,21 +109,26 @@ var networkTools = []string{
 	"nscurl", "dig", "nslookup", "ping",
 }
 
-// native are the Objective-C and C calls that connect, or start something
-// that does. They're looked for in .m, .h, and .c files, and in the C code
-// above a Go file's import "C".
+// native are the Objective-C, C, and C++ calls that connect, look a name
+// up, or start something that does. They're looked for in Objective-C, C,
+// and C++ files, and in the C code above a Go file's import "C".
 var native = regexp.MustCompile(`NSURLSession|NSURLConnection|NSURLDownload|(data|download|upload|stream|webSocket)TaskWith|` +
-	`nw_connection|nw_listener|nw_browser|CFStreamCreatePairWithSocket|CFSocketCreate|CFHTTP|CFHost|NSNetService|` +
+	`nw_connection|nw_listener|nw_browser|CFStreamCreatePairWithSocket|CFSocketCreate|CFHTTP|CFHost|NSHost\b|NSNetService|` +
+	`SCNetworkReachabilityCreateWith|DNSService|\bres_n?(query|search)|` +
 	`getStreamsToHost|ContentsOfURL|getaddrinfo|gethostbyname|\bconnect\(|\bsocket\(|` +
 	`loadRequest:|startDownloadUsingRequest:|resumeDownloadFromResumeData:|SPUStandardUpdaterController|SUUpdater\b`)
 
-// web are the frontend's ways to reach the network. Its pages and scripts
-// come from Bench's own asset server, and so do the tiles' icons
-// (decision 51), so it needs none of them. An address that starts with //
-// counts, as it means the same scheme on another host.
-var web = regexp.MustCompile(`\bfetch\s*\(|XMLHttpRequest|\bWebSocket\(|EventSource|sendBeacon|` +
-	`\b(import|from)\s*\(?\s*['"](https?:)?//|\b(src|srcset|href|action|poster)\s*=\s*['"]?(https?:)?//|` +
-	`url\(\s*['"]?(https?:)?//`)
+// web are the frontend's ways to reach the network: the calls that
+// connect, and an address on another host in an attribute, a style, or a
+// meta refresh. Its pages and scripts come from Bench's own asset server,
+// and so do the tiles' icons (decision 51), so it needs none of them. An
+// address that starts with // counts, as it means the same scheme on
+// another host.
+var web = regexp.MustCompile(`\bfetch\s*\(|XMLHttpRequest|\bWebSocket\s*\(|WebSocketStream|WebTransport|RTCPeerConnection|` +
+	`EventSource|sendBeacon|\b(import|from)\s*\(?\s*['"](https?:)?//|` +
+	`\b(src|srcset|href|action|poster|data)\s*=\s*['"]?(https?:)?//|` +
+	`setAttribute\(\s*['"](src|srcset|href|action|poster|data)['"]\s*,\s*['"](https?:)?//|` +
+	`url\(\s*['"]?(https?:)?//|image-set\(\s*['"]?(https?:)?//|\b(?i:url)\s*=\s*['"]?(https?:)?//`)
 
 // allowed is every place that may connect: the file, the names or calls it
 // may use, and where it connects and why. Keep it in step with README.md's
@@ -226,7 +237,7 @@ func scanRepo(t *testing.T) uses {
 }
 
 // scan reads every file of Bench's under dir: Go files outside tests,
-// Objective-C and C files, and frontend files.
+// Objective-C, C, and C++ files, and frontend files.
 func scan(dir string) (uses, error) {
 	u := uses{}
 	var errs []error
@@ -269,9 +280,9 @@ func scanFile(p, rel string, u uses) error {
 			return nil
 		}
 		return scanGo(p, rel, u)
-	case ".m", ".h", ".c":
+	case ".m", ".mm", ".h", ".c", ".cc", ".cpp", ".cxx", ".hh", ".hpp":
 		return scanText(p, rel, native, u)
-	case ".js", ".mjs", ".html", ".css":
+	case ".js", ".mjs", ".html", ".css", ".svg":
 		return scanText(p, rel, web, u)
 	}
 	return nil
