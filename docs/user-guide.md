@@ -2069,11 +2069,11 @@ is neither Bench nor an app with a window in the current tab:
 - Bench posts a notification, which says the terminal's title, its tab,
   and why. Clicking the notification brings Bench forward on the terminal's
   tab and shows the terminal. Bench posts at most one notification for a
-  terminal every 5 seconds (two when an agent's words follow a bell or
-  notification), and for the bell only when it marks the terminal, not
-  again for each bell while it's marked. Untick **Notify me
-  when a terminal in another tab needs attention** in [Settings](#settings)
-  to have only the bells.
+  terminal every 5 seconds (two when an agent's notification follows a
+  bell, or its words follow a notification), and for the bell only when it
+  marks the terminal, not again for each bell while it's marked. Untick
+  **Notify me when a terminal in another tab needs attention** in
+  [Settings](#settings) to have only the bells.
 
 An agent's sub-tab shows what the agent is doing, whether you can see the
 terminal or not:
@@ -2099,21 +2099,27 @@ same marks.
 Each time an agent needs you while you can't see it, you get one bell and
 one notification. An agent can also ring the bell, or ask for a
 notification, as it reports, as Claude Code and Codex can: Bench counts
-that as part of the same event, even if the agent carries on at once. If
-the agent sends no words of its own, as Codex doesn't, Bench uses the text
-of that notification. A bell that comes later doesn't take the place of
-the agent's words. If the bell or notification comes just before the
-report, Bench has posted it already. The agent's notification then comes
-after it, but only if the agent sent words of its own and **Show what the
-agent says in notifications** is on. If an agent in a terminal that runs a
-command finishes as the command ends, the notification has the agent's
-words, not "Its command has finished."
+that as part of the same event, also when an agent that has finished, or
+stopped with an error, carries on at once. If the agent sends no words of
+its own, as Codex doesn't, Bench uses the text of that notification. A
+bell that comes later doesn't take the place of the agent's words. If the
+bell or notification comes a moment before the report, rather than with
+it, Bench has posted it already. The agent's notification then comes after
+it: always after a bell, and after a notification only if the agent sent
+words of its own and **Show what the agent says in notifications** is on.
+If an agent in a terminal that runs a command finishes, or stops with an
+error, as the command ends, the notification is the agent's, such as
+"Finished: Tests passed", not "Its command has finished." If the shell
+ends as the agent finishes, as with `codex exec …; exit`, you still get
+the agent's notification.
 
 When Claude Code or Codex quits, it takes its marks off. If an agent ends
 without doing so, as when it crashes, its dots and its bell go once the
 shell that started it has the terminal back, also in a shell that you
-started in the terminal, such as `sh -i` or `nix develop`. A green circle
-or red octagon stays until you see the terminal.
+started in the terminal, such as `sh -i` or `nix develop`. They stay
+while a shell that the agent started has the terminal, as with vim's
+`:sh`, and while the programs that you run in that shell run. A green
+circle or red octagon stays until you see the terminal.
 
 An agent's words can hold a command, the path of a file, or other text
 from your work, and Notification Centre keeps notifications until you
@@ -2141,8 +2147,9 @@ asks tmux, not Bench, whether it can show its status, so its sub-tab shows
 nothing.
 
 While VoiceOver is on, Bench also says when a terminal rings the bell or
-its command finishes, whether you can see the terminal or not, and what an
-agent needs, in its words. See [VoiceOver](#voiceover).
+its command finishes, whether you can see the terminal or not, and when an
+agent needs you, finishes, or stops with an error, in its words. See
+[VoiceOver](#voiceover).
 
 The bells go when you show the terminal, except an agent's, which stays
 while the agent waits for you. While you work in a window docked
@@ -3346,21 +3353,23 @@ new output as it comes. Bench also says:
 - When a terminal's command finishes, such as "go test — ~/code/bench: its
   command has finished.", or "go test — ~/code/bench: its command ended
   with an error."
-- When a terminal's agent needs you, with what it needs in its own words,
+- When a terminal's agent needs you, finishes, or stops with an error,
+  whether you can see the terminal or not, with the agent's own words,
   such as "zsh — ~/code/bench: needs your permission: approve Bash: npm
-  test.", and when it finishes or stops with an error while you can't see
-  the terminal, such as "zsh — ~/code/bench: finished." Bench doesn't
-  say when an agent starts to work. If the agent rings the bell as it
-  reports, Bench says only the agent's words.
+  test." or "zsh — ~/code/bench: finished." Bench says it even if the
+  agent carries on at once, or its shell in a tab ends. Bench doesn't say
+  when an agent starts to work. If the agent rings the bell as it reports,
+  or its command ends with it, Bench says only the agent's words.
 
 Bench names the terminal by the title on its sub-tab. If the terminal is in
 another tab, Bench says which tab too, such as "go test — ~/code/bench in
 Code: its command has finished." Bench says a bell or a finished command
 at most once every 5 seconds for one terminal. It says each new report of
 an agent, even one with the same words as a moment ago, but at most once a
-second for one terminal, with the agent's latest words. If the words are
-long, Bench says the first 200 characters, then "…". The tooltip has them
-all.
+second for one terminal, with the agent's latest words. The same report
+sent again isn't a new one. If what Bench would say is long, it says the
+first 200 characters of the agent's line, then "…". The tooltip has all
+the words.
 
 They show as a message at the bottom of the window, or in the title bar
 while the status bar is hidden. **Help ▸ Recent Messages** keeps them. If

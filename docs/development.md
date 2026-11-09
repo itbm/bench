@@ -4226,8 +4226,9 @@ later and Codex 0.164 or later. Allow notifications the first time macOS
 asks. Some checks print an agent's reports with `printf`, inside `sh -c`,
 so that a program other than the shell has the terminal, as an agent
 does: a report that the shell prints itself lasts until the next program
-that the shell runs ends. `YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==` is "approve
-Bash: npm test" in base64.
+that the shell runs ends, and in a shell started in the terminal, such as
+`sh -i`, until that shell ends. `YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==` is
+"approve Bash: npm test" in base64.
 
 - [ ] **The status check**: in the Code tab's terminal, run
       `sh -c 'stty raw -echo; printf "\033]7501;?\007\033[c"; sleep 1; dd bs=200 count=1 2>/dev/null | od -c; stty sane'`,
@@ -4286,9 +4287,11 @@ Bash: npm test" in base64.
       `sh -c 'sleep 3; printf "\007"; sleep 0.5; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 30'`
       and switch to Comms: two notifications, "Rang the bell." and then
       "Needs your permission: approve Bash: npm test". Untick **Show what
-      the agent says in notifications**, save, and do it again: only
-      "Rang the bell.", and the bell's tooltip still has the words. Tick
-      it again.
+      the agent says in notifications**, save, and do it again: "Rang the
+      bell." and then "Needs your permission", and the bell's tooltip
+      still has the words. Run
+      `sh -c 'sleep 3; printf "\033]9;Approve it\007"; sleep 0.5; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 30'`
+      and switch to Comms: only "Approve it". Tick it again.
 - [ ] **Finished**: ask Claude Code something short, and switch to Comms
       while it works. When it finishes, its sub-tab gets a green circle
       with a tick and the bell, with "Finished", and Claude Code's summary
@@ -4316,6 +4319,12 @@ Bash: npm test" in base64.
       `sh -c 'printf "\033]7501;state=working\007"; sleep 1'; sh -c 'printf "\033]7501;state=blocked\007"; sleep 5'`:
       the dots show, then the bell, for the whole 5 seconds, and the bell
       goes as the second `sh` ends. Run `exit`.
+- [ ] **A program's own shell**: run
+      `sh -c 'printf "\033]7501;state=working\007"; sh -i; sleep 5'`. At
+      the inner prompt, run `ls` and
+      `for i in 1 2 3 4 5 6 7 8 9 10; do /bin/echo $i; done` a few times:
+      the dots stay. Run `exit`: the dots stay for the 5 seconds, and go as
+      `sh -c` ends.
 - [ ] **A full reset**: run
       `sh -c 'printf "\033]7501;state=working\007"; sleep 3; printf "\033c"; sleep 30'`:
       the dots show, and go after 3 seconds.
@@ -4334,9 +4343,15 @@ Bash: npm test" in base64.
       `sh -c 'sleep 3; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 2; printf "\033]7501;state=working\007"; sleep 2; printf "\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBucG0gdGVzdA==\007"; sleep 30'`:
       VoiceOver says "*title*: needs your permission: approve Bash: npm
       test." twice. Do **Finished** again: it says "*title* in Code:
-      finished.". It reads the sub-tab as "*title*, Terminal, working"
-      while Claude Code works, and the Code tab's name with "1 agent
-      working".
+      finished.". Ask again and watch it finish: it says "*title*:
+      finished." once. It reads the sub-tab as "*title*, Terminal,
+      working" while Claude Code works, and the Code tab's name with "1
+      agent working". Quit Claude Code, and press ⌘T for a new terminal.
+      In it, type
+      `sleep 3; printf '\033]7501;state=done:msg=VGVzdHMgcGFzc2Vk\007'; exit`,
+      press Return, and switch to Comms: VoiceOver says "*title* in Code:
+      finished: Tests passed.", a notification says "Finished: Tests
+      passed", and the new terminal goes.
 - [ ] **Reduce motion**: turn on **Reduce motion** in **System Settings ▸
       Accessibility ▸ Display**: the dots stop pulsing, and still show.
 - [ ] **Light and dark, and Increase contrast**: in light mode, dark mode,
