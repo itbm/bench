@@ -410,6 +410,61 @@ test('VoiceOver hears a command that ends just after its agent finished once, in
   await toastSays(page, 'go test — ~/code/bench: its command has finished.');
 });
 
+test('VoiceOver hears an agent whose shell ends with its event once, in one View with the end or in the one before', async (t) => {
+  const world = defaultWorld();
+  world.voiceOver = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
+  await page.click(tab(0));
+  await fake.waitForCall('SwitchTab');
+  await page.waitForSelector(tab(0) + '[aria-selected="true"]');
+  await recordToast(page);
+  // The agent reports, and its shell ends, in one batch: no View has the
+  // terminal with its event, but the View lists it as gone.
+  fake.agentEvent('w5', 'Finished: Tests passed', { agent: 'done', agentText: 'Tests passed', attention: 'Finished: Tests passed' });
+  fake.shellEnds('w5');
+  await fake.emitState();
+  const finished = 'zsh — ~/code/bench in Code: finished: Tests passed.';
+  await toastSays(page, finished);
+  await toastGone(page);
+  await fake.emitState();
+  // In two batches, the View with the end has nothing new.
+  fake.agentEvent('w6', 'Stopped with an error: rsync failed', { agent: 'error', agentText: 'rsync failed', attention: 'Stopped with an error: rsync failed' });
+  await fake.emitState();
+  const stopped = 'go test — ~/code/bench in Code: stopped with an error: rsync failed.';
+  await toastSays(page, stopped);
+  await toastGone(page);
+  fake.shellEnds('w6');
+  await fake.emitState();
+  await settle(page, AGENT_GAP + 200);
+  assert.deepEqual(await toastTexts(page), [finished, stopped]);
+});
+
+test('VoiceOver hears the line that waits for a second as the shell ends, at once', async (t) => {
+  const world = defaultWorld();
+  world.voiceOver = true;
+  const { page, fake, close } = await openBench({ world });
+  t.after(close);
+  await page.waitForFunction(() => window.bench.terminalReader('w5') === true);
+  await recordToast(page);
+  const permission = 'zsh — ~/code/bench: needs your permission.';
+  fake.agentEvent('w5', 'Needs your permission', { agent: 'waiting', agentKind: 'permission' });
+  await fake.emitState();
+  await toastSays(page, permission);
+  await toastGone(page);
+  // The next event waits for a second, but the shell ends first.
+  fake.agentEvent('w5', 'Finished: Tests passed', { agent: '', agentKind: '' });
+  await fake.emitState();
+  fake.shellEnds('w5');
+  await fake.emitState();
+  const finished = 'zsh — ~/code/bench: finished: Tests passed.';
+  await toastSays(page, finished);
+  assert.deepEqual(await toastTexts(page), [permission, finished]);
+  const [first, second] = await toastTimes(page);
+  assert.ok(second - first < AGENT_GAP, 'the second came ' + Math.round(second - first) + ' ms after the first');
+});
+
 test('VoiceOver doesn\'t hear an agent\'s events from before the window\'s first View, or again as agent status comes back on', async (t) => {
   const world = defaultWorld();
   world.voiceOver = true;

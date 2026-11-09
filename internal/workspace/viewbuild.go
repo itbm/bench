@@ -25,6 +25,7 @@ func (e *Engine) buildViewLocked() View {
 		Display:          e.displayViewLocked(d),
 		Items:            map[string]ItemView{},
 		Floating:         e.floatingViewsLocked(),
+		GoneTerminals:    e.goneTerminals,
 		Front:            e.frontLocked(),
 		Mode:             string(m.Mode),
 		SizeClass:        string(d.class),

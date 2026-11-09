@@ -46,6 +46,12 @@ type View struct {
 	// Floating lists what's "Not in a tab": popped-out items, then open
 	// standard windows Bench isn't managing (with IDs "f<window id>").
 	Floating []ItemView `json:"floating"`
+	// GoneTerminals lists the terminals that Bench removed as their shells
+	// ended since the last View, as they last were, while the agent_status
+	// setting is on, if their agents have had events. An event in the same
+	// batch of terminal events as the end is in no View's Items, so
+	// VoiceOver takes it from here.
+	GoneTerminals []ItemView `json:"goneTerminals,omitempty"`
 	// Front is the window in front, the one the user last had the keyboard
 	// in outside Bench's main window, if it isn't docked in a pane: a
 	// popped-out item, a window not in a tab ("f<window id>"), or an item

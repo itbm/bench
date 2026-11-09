@@ -679,6 +679,9 @@ type Engine struct {
 	// agentNotes are the terminals whose agents' notifications wait for
 	// the end of a batch of terminal events (see agent.go).
 	agentNotes []string
+	// goneTerminals are the terminals with agents that Bench removed as
+	// their shells ended, since the last View it sent (View.GoneTerminals).
+	goneTerminals []ItemView
 	// updates is what Bench knows of its releases, which state.json saves,
 	// and updateTimer looks again when that's due (see updates.go).
 	updates     config.UpdatesState
@@ -1277,6 +1280,7 @@ func (e *Engine) flushState() {
 	// reading them.
 	watch, watchChanged := e.dockBadgeWatchChangedLocked()
 	v := e.buildViewLocked()
+	e.goneTerminals = nil
 	bar, barChanged := e.menuBarChangedLocked(v)
 	badge, badgeChanged := e.badgeChangedLocked()
 	track, trackChanged := e.dragTrackingChangedLocked()

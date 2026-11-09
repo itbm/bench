@@ -522,15 +522,23 @@ func TestAgentEventsAreCounted(t *testing.T) {
 			h.report("w5", agentSays(term.StateWorking, "", "Running the tests"))
 			event("working", false, permission)
 			// A finished agent that the user sees is forgotten at once,
-			// but its event counts.
+			// but its event counts, once.
 			h.report("w5", agentSays(term.StateDone, "", "Tests passed"))
 			event("done", true, "Finished: Tests passed")
 			h.report("w5", agentSays(term.StateError, "", "rsync failed"))
 			event("error", true, "Stopped with an error: rsync failed")
-			if !seen {
-				h.report("w5", agentSays(term.StateError, "", "rsync failed"))
-				event("the same error again", false, "Stopped with an error: rsync failed")
-			}
+			h.report("w5", agentSays(term.StateError, "", "rsync failed"))
+			event("the same error again", false, "Stopped with an error: rsync failed")
+			// Codex's wordless done, its notification, and working, in one
+			// batch, are one event, with the notification's words.
+			h.terms.cb.Status("w5", agentSays(term.StateDone, "", ""))
+			h.terms.cb.Alert("w5", term.Alert{Title: "Codex", Body: "Fixed the failing test"})
+			h.terms.cb.Status("w5", agentSays(term.StateWorking, "", ""))
+			h.advance(2 * frame)
+			event("done without words, with its notification", true, "Finished: Fixed the failing test")
+			// After working, the same done is a new event.
+			h.report("w5", agentSays(term.StateDone, "", ""))
+			event("done after working", true, agentDoneText)
 			// Words that come from a notification just after a report
 			// without words, in the next batch, are no new event, but the
 			// line has them.
@@ -706,9 +714,48 @@ func TestAgentInAShellIsNotifiedAsItEnds(t *testing.T) {
 				if _, ok := h.view().Items["w5"]; ok {
 					t.Error("the item should be gone")
 				}
+				// The View sent next lists the terminal as it was, with
+				// its agent's event, which no View may have had, and the
+				// one after doesn't.
+				if gone := lastView(h).GoneTerminals; len(gone) != 1 || gone[0].ID != "w5" || gone[0].Tab != 1 ||
+					gone[0].AgentEvent != 1 || gone[0].AgentEventLine != tt.why {
+					t.Errorf("gone terminals: %+v", gone)
+				}
+				mustOK(t, h.e.SwitchTab(1))
+				h.advance(2 * frame)
+				if gone := lastView(h).GoneTerminals; gone != nil {
+					t.Errorf("gone terminals in the View after: %+v", gone)
+				}
 			})
 		}
 	}
+
+	// A shell whose agent has had no event isn't listed, nor is one while
+	// agent status is off.
+	for _, report := range []bool{false, true} {
+		h := agentHarness(t, setup{})
+		if report {
+			h.report("w5", agentSays(term.StateDone, "", "Tests passed"))
+			h.saveSetting(func(s *SettingsView) { s.AgentStatus = false })
+		}
+		h.terms.end("w5")
+		h.terms.cb.Exit("w5", nil)
+		h.advance(2 * frame)
+		if gone := lastView(h).GoneTerminals; gone != nil {
+			t.Errorf("reported %v: gone terminals %+v", report, gone)
+		}
+	}
+}
+
+// lastView returns the View that Bench sent last.
+func lastView(h *harness) View {
+	h.t.Helper()
+	h.em.mu.Lock()
+	defer h.em.mu.Unlock()
+	if len(h.em.states) == 0 {
+		h.t.Fatal("no View was sent")
+	}
+	return h.em.states[len(h.em.states)-1]
 }
 
 func TestAgentReportsArentSaved(t *testing.T) {

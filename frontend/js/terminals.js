@@ -633,12 +633,19 @@ function spokenName(view, it) {
 // window for its terminal. What a terminal does while VoiceOver is off, or
 // before this window's first View of it, isn't announced later. Go leaves
 // the count out while agent status is off, so the last one is kept, and
-// the first one after that is taken as it is.
+// the first one after that is taken as it is. A shell that ends in the
+// same batch as its agent's event has gone before a View has the event,
+// so Go lists it, as it was, in the next View (goneTerminals). Its latest
+// event is then said at once, if it's new, or if its line still waits.
 function announceChanges(view, mine) {
   const items = (view && view.items) || {};
   const agentsOn = Boolean(view && view.settings && view.settings.agentStatus);
-  for (const id of heard.keys()) {
+  const gone = new Map(((view && view.goneTerminals) || []).map((it) => [it.id, it]));
+  for (const [id, was] of heard) {
     if (!items[id] || !mine(id)) {
+      const it = items[id] ? null : gone.get(id);
+      const waits = Boolean(told.has(id) && told.get(id).timer);
+      if (it && settings.reader && was.event !== undefined && (it.agentEvent !== was.event || waits)) sayAgent(id, view, it);
       heard.delete(id);
       said.delete(id);
       spoke.delete(id);

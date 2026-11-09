@@ -667,6 +667,10 @@ function buildView(world) {
     },
     items,
     floating: world.floating.map((f) => ({ ...f, tab: -1 })),
+    // goneTerminals are the terminals whose shells have ended since the
+    // last View, as they were, while their agents had events (see FakeGo's
+    // shellEnds).
+    ...((world.goneTerminals || []).length ? { goneTerminals: clone(world.goneTerminals) } : {}),
     // front is the window in front before Bench, if it's in no tab, for
     // Add front window to this pane.
     ...(world.front ? { front: world.front } : {}),

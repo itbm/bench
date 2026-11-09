@@ -158,11 +158,14 @@ func (e *Engine) agentReportLocked(it *Item, s term.Status) {
 // events, with its line, seen or not, for VoiceOver (ItemView.AgentEvent).
 // While the user can see the terminal, nothing is marked or posted: an
 // agent that needs them shows as waiting, and one that finished or
-// stopped shows nothing, as they saw it happen. Otherwise the terminal is
-// marked, with the agent's words, and its notification waits for the end
-// of the batch of terminal events, for a notification that the agent may
-// have asked for with the report, whose text becomes the words if the
-// agent had none (see agentEchoLocked).
+// stopped shows nothing, as they saw it happen. Bench forgets the latter
+// at once, but keeps its report for agentEcho (Item.agentSeen): until the
+// agent reports that it works or is idle, the same report again within
+// that time is still the same event. Otherwise the terminal is marked,
+// with the agent's words, and its notification waits for the end of the
+// batch of terminal events, for a notification that the agent may have
+// asked for with the report, whose text becomes the words if the agent had
+// none (see agentEchoLocked).
 func (e *Engine) agentNeedsLocked(it *Item, s term.Status) {
 	now := e.clk.Now()
 	kind := ""
@@ -173,9 +176,13 @@ func (e *Engine) agentNeedsLocked(it *Item, s term.Status) {
 		it.agent.at = now
 		return
 	}
+	if a := it.agentSeen; it.agent.state == "" && a.state == s.State && a.msg == s.Msg && now.Sub(a.at) < agentEcho {
+		it.agentSeen.at = now
+		return
+	}
 	// The new report's notification takes the place of the one that a
 	// finished agent left, as its mark does.
-	it.agentNote = agentStatus{}
+	it.agentNote, it.agentSeen = agentStatus{}, agentStatus{}
 	e.unmarkWaitingLocked(it)
 	it.agent = agentStatus{state: s.State, kind: kind, msg: s.Msg, words: s.Msg, at: now, marked: it.agent.marked}
 	why := agentLine(s.State, kind, s.Msg, true)
@@ -184,7 +191,7 @@ func (e *Engine) agentNeedsLocked(it *Item, s term.Status) {
 	e.touch()
 	if unseen, _ := e.markLocked(it, why); !unseen {
 		if s.State != term.StateBlocked {
-			it.agent = agentStatus{}
+			it.agent, it.agentSeen = agentStatus{}, it.agent
 		}
 		return
 	}
@@ -200,16 +207,21 @@ func (e *Engine) agentNeedsLocked(it *Item, s term.Status) {
 // that it needs the user, has finished, or stopped with an error. That
 // includes the report of an agent that finished or stopped, and then
 // carried on or quit in the same batch, while its notification waits
-// (Item.agentNote), as the alert came with that report. If the agent had
-// no words, a notification's text becomes them, on the mark while it has
-// the agent's line, in the agent's notification if that's still to be
-// posted, and in the line of the event, which is that report's, without a
-// new event. Its body is what the agent says; its title is only the name
-// it gives itself.
+// (Item.agentNote), as the alert came with that report. So does the report
+// of an agent that finished or stopped while the user could see it, which
+// Bench forgot at once, if it's still the latest event (Item.agentSeen).
+// If the agent had no words, a notification's text becomes them, on the
+// mark while it has the agent's line, in the agent's notification if
+// that's still to be posted, and in the line of the event, which is that
+// report's, without a new event. Its body is what the agent says; its
+// title is only the name it gives itself.
 func (e *Engine) agentEchoLocked(it *Item, a term.Alert) bool {
 	ag, marked := &it.agent, it.agent.marked
-	if n := &it.agentNote; n.notify {
+	switch n := &it.agentNote; {
+	case n.notify:
 		ag, marked = n, it.attention == agentLine(n.state, n.kind, n.words, true)
+	case it.agentSeen.state != "":
+		ag, marked = &it.agentSeen, false
 	}
 	switch ag.state {
 	case term.StateBlocked, term.StateDone, term.StateError:

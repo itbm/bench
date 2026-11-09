@@ -153,9 +153,12 @@ class FakeGo {
     await this.page.evaluate(([e, d]) => window.__benchEmit(e, d), [event, data]).catch(() => {});
   }
 
-  // emitState pushes the current view.
+  // emitState pushes the current view. The terminals that it lists as
+  // gone (goneTerminals) aren't listed again, as in Go.
   emitState() {
-    return this.emit('bench:state', this.view());
+    const view = this.view();
+    delete this.world.goneTerminals;
+    return this.emit('bench:state', view);
   }
 
   // changed sends the view soon, after the call that changed it returns,
@@ -1747,6 +1750,16 @@ class FakeGo {
   agentEvent(itemId, line, fields = {}) {
     const it = this.world.items[itemId];
     Object.assign(it, fields, { agentEvent: (it.agentEvent || 0) + 1, agentEventLine: line });
+  }
+
+  // shellEnds removes a terminal's item as Go does as its shell ends. If
+  // its agent has had events while the agent_status setting is on, the
+  // next View that's sent lists the terminal as it was (goneTerminals). It
+  // doesn't send the View.
+  shellEnds(itemId) {
+    const it = buildView(this.world).items[itemId];
+    if (it && it.agentEvent) this.world.goneTerminals = [...(this.world.goneTerminals || []), it];
+    this.dropItem(itemId);
   }
 
   mTermSnapshot(itemId) {

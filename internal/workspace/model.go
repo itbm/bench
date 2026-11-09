@@ -205,6 +205,11 @@ type Item struct {
 	// error, and then carried on or quit in the same batch of terminal
 	// events, while its notification waits to be posted (see
 	// keepFinishedNoteLocked).
+	// agentSeen is the report of an agent that finished or stopped with an
+	// error while the user could see the terminal, which Bench forgets at
+	// once, until the agent's next event. For agentEcho after it, the same
+	// report again, a bell, or a notification is still part of it (see
+	// agentNeedsLocked and agentEchoLocked).
 	// agentEvent counts the agent's events that call for the user: each
 	// new report that it needs the user, has finished, or stopped with an
 	// error, whether or not the user saw it (see agentNeedsLocked).
@@ -214,6 +219,7 @@ type Item struct {
 	// the count never goes back, and they aren't saved either.
 	agent          agentStatus
 	agentNote      agentStatus
+	agentSeen      agentStatus
 	agentEvent     int
 	agentEventLine string
 	// page, host, site, offSite, and notSecure describe the page a Web

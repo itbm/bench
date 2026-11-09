@@ -194,7 +194,17 @@ func (e *Engine) applyTermEventLocked(ev termEvent) {
 			e.touch()
 			return
 		}
-		ti, _ := e.model.Where(it.ID)
+		ti, p := e.model.Where(it.ID)
+		if e.cfg.Settings.AgentStatus && it.agentEvent > 0 {
+			// The agent's latest event may be in this batch, so that no
+			// View has it: the next View lists the terminal as it was, for
+			// VoiceOver (View.GoneTerminals).
+			pane := ""
+			if p != nil {
+				pane = p.ID
+			}
+			e.goneTerminals = append(e.goneTerminals, e.itemViewLocked(it, ti, pane))
+		}
 		e.removeItemLocked(it)
 		if ti == e.model.Current {
 			e.arrangeLocked(arrangeOpts{})
