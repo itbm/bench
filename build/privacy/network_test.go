@@ -115,20 +115,21 @@ var networkTools = []string{
 var native = regexp.MustCompile(`NSURLSession|NSURLConnection|NSURLDownload|(data|download|upload|stream|webSocket)TaskWith|` +
 	`nw_connection|nw_listener|nw_browser|CFStreamCreatePairWithSocket|CFSocketCreate|CFHTTP|CFHost|NSHost\b|NSNetService|` +
 	`SCNetworkReachabilityCreateWith|DNSService|\bres_n?(query|search)|` +
-	`getStreamsToHost|ContentsOfURL|getaddrinfo|gethostbyname|\bconnect\(|\bsocket\(|` +
+	`getStreamsToHost|ContentsOfURL|getaddrinfo|gethostbyname|\bconnect\s*\(|\bsocket\s*\(|` +
 	`loadRequest:|startDownloadUsingRequest:|resumeDownloadFromResumeData:|SPUStandardUpdaterController|SUUpdater\b`)
 
 // web are the frontend's ways to reach the network: the calls that
-// connect, and an address on another host in an attribute, a style, or a
-// meta refresh. Its pages and scripts come from Bench's own asset server,
-// and so do the tiles' icons (decision 51), so it needs none of them. An
-// address that starts with // counts, as it means the same scheme on
-// another host.
+// connect, an address on another host in an attribute or a style, and any
+// meta refresh. The frontend's pages and scripts come from Bench's own
+// asset server, and so do the tiles' icons (decision 51), so it needs none
+// of them. An address that starts with // counts, as it means the same
+// scheme on another host. A meta refresh's address needs no "url=", so the
+// test looks for its http-equiv, in a page or in a script.
 var web = regexp.MustCompile(`\bfetch\s*\(|XMLHttpRequest|\bWebSocket\s*\(|WebSocketStream|WebTransport|RTCPeerConnection|` +
 	`EventSource|sendBeacon|\b(import|from)\s*\(?\s*['"](https?:)?//|` +
 	`\b(src|srcset|href|action|poster|data)\s*=\s*['"]?(https?:)?//|` +
 	`setAttribute\(\s*['"](src|srcset|href|action|poster|data)['"]\s*,\s*['"](https?:)?//|` +
-	`url\(\s*['"]?(https?:)?//|image-set\(\s*['"]?(https?:)?//|\b(?i:url)\s*=\s*['"]?(https?:)?//`)
+	`url\(\s*['"]?(https?:)?//|image-set\(\s*['"]?(https?:)?//|(?i:http-?equiv)['"]?\s*[=,:]\s*['"]?(?i:refresh)`)
 
 // allowed is every place that may connect: the file, the names or calls it
 // may use, and where it connects and why. Keep it in step with README.md's
@@ -280,7 +281,7 @@ func scanFile(p, rel string, u uses) error {
 			return nil
 		}
 		return scanGo(p, rel, u)
-	case ".m", ".mm", ".h", ".c", ".cc", ".cpp", ".cxx", ".hh", ".hpp":
+	case ".m", ".mm", ".h", ".c", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx":
 		return scanText(p, rel, native, u)
 	case ".js", ".mjs", ".html", ".css", ".svg":
 		return scanText(p, rel, web, u)
