@@ -349,6 +349,53 @@ func TestKeepOverBenchAddsAFloatRule(t *testing.T) {
 	}
 }
 
+// Undo of Keep over Bench puts away again an app that Keep over Bench
+// showed, even if Bench last read the running apps while the app was
+// hidden, as an arrangement after the hide does: Bench reads them again
+// first, so it doesn't take the app as still hidden.
+func TestUndoKeepOverBenchHidesAnAppShownSinceBenchLooked(t *testing.T) {
+	h := newHarness(t, setup{})
+	h.comeForward()
+	if !h.p.IsHidden(finderID) {
+		t.Fatal("Finder should be hidden")
+	}
+	// An arrangement reads the running apps, with Finder hidden.
+	mustOK(t, h.e.Rearrange())
+	h.drain()
+	mustOK(t, h.e.KeepOverBench(finderID))
+	if h.p.IsHidden(finderID) {
+		t.Fatal("Keep over Bench should show Finder again")
+	}
+	mustOK(t, h.e.Undo(h.em.lastUndo(t)))
+	if !h.p.IsHidden(finderID) {
+		t.Error("Finder covers Bench again, so Undo should hide it again")
+	}
+}
+
+// The same as Bench comes forward in the browser preview, where Undo
+// doesn't put Finder away, as Bench isn't the active app there.
+func TestDemoComeForwardHidesAnAppShownSinceBenchLooked(t *testing.T) {
+	h := newHarness(t, setup{options: func(o *Options) { o.Demo = true }})
+	mustOK(t, h.e.DemoComeForward())
+	h.drain()
+	if !h.p.IsHidden(finderID) {
+		t.Fatal("Finder should be hidden")
+	}
+	mustOK(t, h.e.Rearrange())
+	h.drain()
+	mustOK(t, h.e.KeepOverBench(finderID))
+	mustOK(t, h.e.Undo(h.em.lastUndo(t)))
+	h.drain()
+	if h.p.IsHidden(finderID) {
+		t.Fatal("Bench isn't in front, so Undo should leave Finder shown")
+	}
+	mustOK(t, h.e.DemoComeForward())
+	h.drain()
+	if !h.p.IsHidden(finderID) {
+		t.Error("Finder covers Bench again, so Bench should hide it as it comes forward")
+	}
+}
+
 func TestKeepOverBenchPutsParkedWindowsBack(t *testing.T) {
 	h := newHarness(t, setup{world: twoFinderWindows})
 	downloads := h.windowID(finderID, "Downloads")
