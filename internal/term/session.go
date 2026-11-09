@@ -35,6 +35,9 @@ const (
 	// maxStatuses is the most program status reports passed on from one
 	// read of output.
 	maxStatuses = 16
+	// maxStarters is the most processes that startedIn looks at, from a
+	// group's leader up through the processes that started it.
+	maxStarters = 16
 )
 
 // session is one running (or ended) process in a pseudo-terminal.
@@ -494,11 +497,14 @@ func (s *session) noteStatus(statuses []Status, reporter, starter int) bool {
 
 // programEnded reports, once, that the program that reported a live status
 // in a shell has gone. If a group other than the shell's had the terminal
-// as the status was read, the program has gone once that group no longer
-// has it: the program has ended or stopped, even in a shell that the shell
-// started. If not, a program other than the shell has had the terminal
-// since, and now the shell has it back, as at its prompt. A session that
-// runs a command reports its end with Exit instead. emitMu must be held.
+// as the status was read, the program is in that group. It has gone once
+// the terminal is in neither that group nor a group that the program
+// started, such as an interactive shell's, or one that such a shell
+// started: the program has ended or stopped, even in a shell that the shell
+// started. If no group but the shell's had the terminal, a program other
+// than the shell has had it since, and now the shell has it back, as at its
+// prompt. A session that runs a command reports its end with Exit instead.
+// emitMu must be held.
 func (s *session) programEnded() bool {
 	if !s.live {
 		return false
@@ -508,7 +514,10 @@ func (s *session) programEnded() bool {
 	case !ok:
 		return false
 	case s.reporter != 0:
-		if pgrp == s.reporter {
+		// While the program's own child has the terminal, the program
+		// still runs. The processes are read only while a group other
+		// than the program's has the terminal.
+		if pgrp == s.reporter || s.startedIn(pgrp, s.reporter) {
 			return false
 		}
 	case pgrp != s.cmd.Process.Pid:
@@ -519,6 +528,30 @@ func (s *session) programEnded() bool {
 	}
 	s.live, s.away, s.reporter, s.starter = false, false, 0, 0
 	return true
+}
+
+// startedIn reports whether a process in group started the leader of group
+// pgrp, or started a process that did, and so on: then the leader is a
+// child of the program in group, or a child of its child. It looks no
+// further up than the session's shell, which no program in it started, and
+// at most maxStarters processes. It reads the processes, so s.mu mustn't be
+// held.
+func (s *session) startedIn(pgrp, group int) bool {
+	pid := pgrp
+	for range maxStarters {
+		if pid == s.cmd.Process.Pid {
+			return false
+		}
+		ppid, ok := processParent(pid)
+		if !ok {
+			return false
+		}
+		if g, err := unix.Getpgid(ppid); err == nil && g == group {
+			return true
+		}
+		pid = ppid
+	}
+	return false
 }
 
 // applyOSC handles one OSC sequence, and reports whether it might change the

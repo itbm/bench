@@ -441,6 +441,37 @@ func TestManagerReportsProgramEnd(t *testing.T) {
 	})
 }
 
+func TestManagerKeepsStatusWhileAChildHasTheTerminal(t *testing.T) {
+	m, r := newTestManager(t)
+	startSh(t, m, "t1", shOptions(t))
+	noEnd := func(while string) {
+		t.Helper()
+		// Give an end that shouldn't come time to show itself.
+		time.Sleep(20 * m.titleEvery)
+		if got, want := states(r, "t1"), []string{StateWorking}; !slices.Equal(got, want) {
+			t.Fatalf("statuses %s = %q, want %q", while, got, want)
+		}
+	}
+
+	// A program reports that it's working, then runs an interactive shell
+	// that takes the terminal and gives it to a program of its own. Then it
+	// runs one that has the terminal at its prompt, as vim's :sh does. The
+	// program runs all the while, and it ends once a line is typed.
+	write(t, m, "t1", `sh -c 'printf "\033]7501;state=working\007"; sleep 0.3; sh -ic "sleep 0.3; :"; echo "ran-$((40+2))"; PS1="in""ner> " sh -i; echo "over-$((40+2))"; read line'`+"\n")
+	waitOutput(t, r, "t1", "ran-42", wait)
+	noEnd("once the program's shell has run a program of its own")
+	waitOutput(t, r, "t1", "inner> ", wait)
+	noEnd("while the program's shell has the terminal at its prompt")
+	write(t, m, "t1", "exit\n")
+	waitOutput(t, r, "t1", "over-42", wait)
+	noEnd("once the program has the terminal back")
+	write(t, m, "t1", "\n")
+	waitFor(t, wait, "the end of the program", func() bool { return slices.Contains(states(r, "t1"), StateEnded) })
+	if got, want := states(r, "t1"), []string{StateWorking, StateEnded}; !slices.Equal(got, want) {
+		t.Errorf("statuses = %q, want %q", got, want)
+	}
+}
+
 func TestManagerCommandStatusEndsWithExit(t *testing.T) {
 	m, r := newTestManager(t)
 	opts := shOptions(t)
