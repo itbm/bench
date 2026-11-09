@@ -501,10 +501,12 @@ func (s *session) noteStatus(statuses []Status, reporter, starter int) bool {
 // the terminal is in neither that group nor a group that the program
 // started, such as an interactive shell's, or one that such a shell
 // started: the program has ended or stopped, even in a shell that the shell
-// started. If no group but the shell's had the terminal, a program other
-// than the shell has had it since, and now the shell has it back, as at its
-// prompt. A session that runs a command reports its end with Exit instead.
-// emitMu must be held.
+// started. While the terminal is in a group with no process left, nothing
+// is decided: a job has just ended there, and the shell that ran it hasn't
+// yet taken the terminal back. If no group but the shell's had the
+// terminal, a program other than the shell has had it since, and now the
+// shell has it back, as at its prompt. A session that runs a command
+// reports its end with Exit instead. emitMu must be held.
 func (s *session) programEnded() bool {
 	if !s.live {
 		return false
@@ -518,6 +520,12 @@ func (s *session) programEnded() bool {
 		// still runs. The processes are read only while a group other
 		// than the program's has the terminal.
 		if pgrp == s.reporter || s.startedIn(pgrp, s.reporter) {
+			return false
+		}
+		// A group with no process left is a job that has just ended, and
+		// the shell that ran it, which may be the program's own, hasn't
+		// yet taken the terminal back. The next look decides.
+		if err := unix.Kill(-pgrp, 0); err == unix.ESRCH {
 			return false
 		}
 	case pgrp != s.cmd.Process.Pid:

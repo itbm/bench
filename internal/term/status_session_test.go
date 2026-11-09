@@ -454,14 +454,25 @@ func TestManagerKeepsStatusWhileAChildHasTheTerminal(t *testing.T) {
 	}
 
 	// A program reports that it's working, then runs an interactive shell
-	// that takes the terminal and gives it to a program of its own. Then it
-	// runs one that has the terminal at its prompt, as vim's :sh does. The
-	// program runs all the while, and it ends once a line is typed.
-	write(t, m, "t1", `sh -c 'printf "\033]7501;state=working\007"; sleep 0.3; sh -ic "sleep 0.3; :"; echo "ran-$((40+2))"; PS1="in""ner> " sh -i; echo "over-$((40+2))"; read line'`+"\n")
+	// that takes the terminal and gives it to programs of its own. Then it
+	// runs one that has the terminal at its prompt, as vim's :sh does, and
+	// lines are typed there. The program runs all the while, and it ends
+	// once a line is typed. Most of the programs that the shells run are
+	// /bin/echo, not the shell's own echo, so each prints a line as it
+	// ends. Output makes Bench look at the terminal at once, so it can look
+	// after one of them has ended, but before the shell that ran it has
+	// taken the terminal back.
+	write(t, m, "t1", `sh -c 'printf "\033]7501;state=working\007"; sleep 0.3; sh -ic "sleep 0.3; for i in \$(seq 400); do /bin/echo \$i; done"; echo "ran-$((40+2))"; PS1="in""ner> " sh -i; echo "over-$((40+2))"; read line'`+"\n")
 	waitOutput(t, r, "t1", "ran-42", wait)
-	noEnd("once the program's shell has run a program of its own")
+	noEnd("once the program's shell has run programs of its own")
 	waitOutput(t, r, "t1", "inner> ", wait)
 	noEnd("while the program's shell has the terminal at its prompt")
+	for i := range 5 {
+		n := strconv.Itoa(i)
+		write(t, m, "t1", "for i in $(seq 80); do /bin/echo $i; done; /bin/echo typed-$((40+"+n+"))\n")
+		waitOutput(t, r, "t1", "typed-4"+n, wait)
+	}
+	noEnd("once lines have been typed at the program's shell's prompt")
 	write(t, m, "t1", "exit\n")
 	waitOutput(t, r, "t1", "over-42", wait)
 	noEnd("once the program has the terminal back")
