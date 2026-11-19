@@ -771,6 +771,12 @@ a version tag. To release version 0.2.0:
    git push origin v0.2.0
    ```
 
+   Or create the release on GitHub's **Releases** page, with the new tag
+   `v0.2.0` on `main`, and click **Publish release**. GitHub then creates
+   the tag, which starts the workflow. Don't click **Save draft**: a draft
+   doesn't create the tag. The release has no files until the workflow
+   adds them, a few minutes later.
+
 The workflow builds the universal `Bench.app` on a macOS runner, packages it
 as `Bench.dmg` and `Bench.zip` with `make dist`, and checks both as a
 download would see them: the signature, both architectures, and that
@@ -784,8 +790,13 @@ more when it notarises.
 - A tag with a suffix, such as `v0.2.0-beta.1`, makes a pre-release.
   GitHub's "latest" link, and so the README's download button, skips
   pre-releases.
-- If the release already exists, for example because you ran the workflow
-  again, it replaces the release's files.
+- If the release already exists, for example because you created it on
+  the Releases page or ran the workflow again, the workflow replaces the
+  release's files. It also puts the install steps at the top of the
+  release's notes, and keeps the notes that you wrote below them. Two
+  hidden markers (`<!-- install -->` and `<!-- /install -->`) go around
+  the install steps, so that a later run replaces them and doesn't add them
+  again. The title, and whether it's a pre-release, stay as you set them.
 - The README's download button links to
   `releases/latest/download/Bench.dmg`, so keep the file names.
 
