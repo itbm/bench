@@ -131,12 +131,28 @@ processor.
 1. [Download Bench.dmg](https://github.com/itbm/bench/releases/latest/download/Bench.dmg)
    from the [latest release](https://github.com/itbm/bench/releases/latest).
 2. Open `Bench.dmg`, and drag **Bench** to **Applications**.
-3. Open Bench from Applications. Releases aren't notarised by Apple yet, so
-   the first time, macOS says it can't check Bench for malware and doesn't
-   open it. Close the message, open **System Settings ▸ Privacy &
-   Security**, scroll down, and click **Open Anyway** next to the message
-   about Bench. You only need to do this once for each version.
-4. Follow Bench's welcome guide to turn on the **Accessibility**
+3. Remove the quarantine mark from Bench. Open **Terminal**, and run this
+   command:
+
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/Bench.app
+   ```
+
+   macOS puts the quarantine mark on files that you download. Bench doesn't
+   have an Apple Developer ID signature yet, and Apple hasn't notarised it,
+   so Gatekeeper doesn't open a Bench that has the mark. On macOS 15
+   (Sequoia) and later, Control-click ▸ **Open** doesn't get past this
+   block.
+
+   If you don't want to use Terminal, open Bench, and close the message that
+   says macOS can't check Bench for malware. Then open **System Settings ▸
+   Privacy & Security**, scroll down, and click **Open Anyway** next to the
+   message about Bench. If macOS says that Bench is damaged, or you can't
+   find **Open Anyway**, use the command.
+
+   Do this step again each time you download a new version yourself.
+4. Open Bench from Applications.
+5. Follow Bench's welcome guide to turn on the **Accessibility**
    permission, which lets Bench move and size your windows. It can also
    open Bench when you log in, and start you off with a few tabs of apps
    you have.

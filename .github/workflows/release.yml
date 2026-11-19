@@ -8,8 +8,9 @@ name: Release
 # A push that changes the packaging, or a run started by hand, builds the
 # same files and keeps them as an artifact, without a release.
 #
-# With no signing secrets, Bench.app is signed ad hoc, and people must click
-# Open Anyway in System Settings the first time they open it. Add the
+# With no signing secrets, Bench.app is signed ad hoc, and people must
+# remove the quarantine mark with xattr, or click Open Anyway in System
+# Settings, the first time they open it. Add the
 # secrets that docs/development.md#release-a-new-version lists, and the
 # workflow signs with a Developer ID certificate and notarises instead.
 #
@@ -266,7 +267,13 @@ jobs:
             if [ "$NOTARISED" = true ]; then
               echo "2. Open Bench from Applications."
             else
-              echo "2. Open Bench from Applications. This build isn't notarised by Apple yet, so macOS says it can't check Bench for malware and doesn't open it. Close the message, open **System Settings ▸ Privacy & Security**, scroll down, and click **Open Anyway** next to the message about Bench. You only need to do this once per version."
+              echo "2. Remove the quarantine mark from Bench. Open **Terminal**, and run this command:"
+              echo
+              echo '   ```sh'
+              echo '   xattr -dr com.apple.quarantine /Applications/Bench.app'
+              echo '   ```'
+              echo
+              echo "   Then open Bench from Applications. This build has no Apple Developer ID signature and isn't notarised, so Gatekeeper doesn't open it while it has the mark that macOS puts on downloads. On macOS 15 (Sequoia) and later, Control-click ▸ **Open** doesn't get past this block. If you don't want to use Terminal, open Bench, close the message, open **System Settings ▸ Privacy & Security**, scroll down, and click **Open Anyway** next to the message about Bench. Do this step again each time you download a new version yourself."
             fi
             echo "3. Follow Bench's guide to turn on the Accessibility permission, so that Bench can arrange your windows."
             echo

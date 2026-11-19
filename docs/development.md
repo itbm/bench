@@ -798,9 +798,11 @@ run `make app`, then `make dist`.
 ### Signing and notarising releases
 
 Without any secrets, the workflow signs `Bench.app` ad hoc. macOS then
-won't open a downloaded Bench until the person clicks **Open Anyway** in
-**System Settings ▸ Privacy & Security**, and it forgets Bench's
-Accessibility permission with each update (see
+won't open a downloaded Bench until the person removes the quarantine mark
+(`xattr -dr com.apple.quarantine /Applications/Bench.app`) or clicks
+**Open Anyway** in **System Settings ▸ Privacy & Security**. On macOS 15
+and later, Control-click ▸ **Open** doesn't get past Gatekeeper. macOS also
+forgets Bench's Accessibility permission with each update (see
 [Signing and the Accessibility permission](#signing-and-the-accessibility-permission)).
 The release notes and the README explain both.
 
@@ -822,7 +824,8 @@ With the three Apple Account secrets as well, it notarises `Bench.app` and
 `Bench.dmg` with `scripts/notarise.sh`, and staples Apple's tickets to them,
 so they open without a warning, even offline. If Apple rejects a file, the
 job prints Apple's log, which says why. After the first notarised release,
-update the README's install steps, which describe Open Anyway.
+update the README's install steps, which describe the quarantine command
+and Open Anyway.
 
 The repository has no certificate yet, so these steps haven't run. Expect to
 fix something on their first run: start the workflow by hand first, which
