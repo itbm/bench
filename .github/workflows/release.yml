@@ -253,6 +253,12 @@ jobs:
           path: dist/
           retention-days: 14
 
+      # A release that you create on GitHub's Releases page, with a new
+      # tag, starts this workflow too. Then the release exists already, so
+      # the workflow adds its files to it, and puts the install steps at the
+      # top of its notes, above the notes that you wrote. The two markers
+      # around the install steps let a later run replace them, not add them
+      # again.
       - name: Publish the release
         if: env.PUBLISH == 'true'
         env:
@@ -261,6 +267,7 @@ jobs:
         run: |
           notes="$RUNNER_TEMP/notes.md"
           {
+            echo "<!-- install -->"
             echo "## Install"
             echo
             echo "1. Download **Bench.dmg** below, open it, and drag Bench to Applications."
@@ -286,14 +293,35 @@ jobs:
               echo
               echo "**Updating?** macOS ties the Accessibility permission to each build of an app that isn't notarised. After you update, open **System Settings ▸ Privacy & Security ▸ Accessibility**, select Bench, click **−**, then open Bench and turn the permission on again."
             fi
+            echo "<!-- /install -->"
           } >"$notes"
           prerelease=()
           case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
           files=(dist/Bench.dmg dist/Bench.zip dist/SHA256SUMS.txt)
           if [ -f dist/appcast.xml ]; then files+=(dist/appcast.xml); fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "The release exists. Replacing its files."
+            echo "The release exists. Replacing its files and its install steps."
             gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+            # Takes out the install steps of an earlier run, and the empty
+            # lines at the start and end of the rest of the notes, so that
+            # each run gives the same notes. GitHub's Releases page saves
+            # notes with CRLF line ends, so the markers can end in a CR.
+            gh release view "$GITHUB_REF_NAME" --json body --jq .body >"$RUNNER_TEMP/old-notes.md"
+            awk '
+              { sub(/\r$/, "") }
+              $0 == "<!-- install -->" { skip = 1 }
+              !skip && NF { if (started) while (blank-- > 0) print ""; blank = 0; started = 1; print }
+              !skip && !NF { blank++ }
+              $0 == "<!-- /install -->" { skip = 0 }
+            ' "$RUNNER_TEMP/old-notes.md" >"$RUNNER_TEMP/rest.md"
+            {
+              cat "$notes"
+              if grep -q '[^[:space:]]' "$RUNNER_TEMP/rest.md"; then
+                echo
+                cat "$RUNNER_TEMP/rest.md"
+              fi
+            } >"$RUNNER_TEMP/new-notes.md"
+            gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/new-notes.md"
           else
             gh release create "$GITHUB_REF_NAME" "${files[@]}" \
               --verify-tag --title "Bench $VERSION" --generate-notes --notes "$(cat "$notes")" "${prerelease[@]}"
